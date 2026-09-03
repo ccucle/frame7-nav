@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>FRAME 7 · 카카오내비 실전 테스트</title>
+
+<!-- Kakao JavaScript SDK -->
+<script src="https://t1.kakaocdn.net/kakao_js_sdk/2.8.2/kakao.min.js"></script>
+
+<!-- Kakao Maps JavaScript SDK + services(주소→좌표 변환) -->
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=12928fb05aeed665559796e06a21bf3b&libraries=services"></script>
+
+<style>
+:root {
+  font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR",sans-serif;
+  color-scheme:light;
+}
+body {
+  margin:0; background:#f5f5f7; color:#111;
+  padding:env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+}
+main { max-width:560px; margin:24px auto; }
+.card {
+  background:white; border-radius:22px; padding:20px;
+  box-shadow:0 8px 28px rgba(0,0,0,.08);
+}
+h1 { font-size:22px; margin:0 0 8px; }
+.label { color:#777; font-size:13px; margin-top:16px; }
+.value { font-size:16px; margin-top:4px; word-break:keep-all; }
+.status {
+  margin-top:18px; padding:14px; background:#f7f7f8;
+  border-radius:14px; font-size:14px; line-height:1.5;
+}
+button {
+  width:100%; margin-top:16px; padding:16px 14px; border:0;
+  border-radius:15px; background:#fee500; color:#111;
+  font-size:17px; font-weight:800;
+}
+button:disabled { opacity:.45; }
+.small { color:#777; font-size:12px; line-height:1.5; margin-top:12px; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>FRAME 7 · 카카오내비 테스트</h1>
+
+    <div class="label">목적지</div>
+    <div class="value" id="destName">수목원국수</div>
+
+    <div class="label">주소</div>
+    <div class="value" id="destAddress">서울 구로구 연동로 255</div>
+
+    <div class="label">좌표</div>
+    <div class="value" id="coords">자동 확인 중…</div>
+
+    <div class="status" id="status">Kakao SDK 초기화 및 주소 검색 중…</div>
+
+    <button id="navBtn" disabled>카카오내비로 출발</button>
+
+    <div class="small">
+      출발지는 카카오내비가 실행될 때 기기의 현재 위치를 사용합니다.
+      주소 좌표는 카카오 지도 JavaScript SDK의 services 라이브러리로 자동 확인합니다.
+    </div>
+  </div>
+</main>
+
+<script>
+const DEST = {
+  name: "수목원국수",
+  address: "서울 구로구 연동로 255",
+  x: null,
+  y: null
+};
+
+const statusEl = document.getElementById("status");
+const coordsEl = document.getElementById("coords");
+const navBtn = document.getElementById("navBtn");
+
+function setStatus(msg) {
+  statusEl.textContent = msg;
+}
+
+function fail(msg) {
+  setStatus("실패 · " + msg);
+  navBtn.disabled = true;
+}
+
+function geocodeDestination() {
+  if (!window.kakao || !kakao.maps || !kakao.maps.services) {
+    fail("카카오 지도 SDK 또는 services 라이브러리를 불러오지 못했습니다. JavaScript SDK 도메인 등록을 확인하세요.");
+    return;
+  }
+
+  const geocoder = new kakao.maps.services.Geocoder();
+
+  geocoder.addressSearch(DEST.address, function(result, status) {
+    if (status !== kakao.maps.services.Status.OK || !result || !result.length) {
+      fail("목적지 주소의 좌표를 찾지 못했습니다.");
+      return;
+    }
+
+    DEST.x = Number(result[0].x);
+    DEST.y = Number(result[0].y);
+
+    coordsEl.textContent = `경도 ${DEST.x} · 위도 ${DEST.y}`;
+    setStatus("준비 완료 · 목적지 좌표를 확인했습니다.");
+    navBtn.disabled = false;
+  });
+}
+
+function initKakaoNavi() {
+  try {
+    if (typeof Kakao === "undefined") {
+      fail("카카오 JavaScript SDK를 불러오지 못했습니다.");
+      return;
+    }
+
+    if (!Kakao.isInitialized()) {
+      Kakao.init("12928fb05aeed665559796e06a21bf3b");
+    }
+
+    geocodeDestination();
+  } catch (e) {
+    fail("초기화 오류: " + e.message);
+  }
+}
+
+navBtn.addEventListener("click", function() {
+  try {
+    if (DEST.x == null || DEST.y == null) {
+      fail("목적지 좌표가 아직 준비되지 않았습니다.");
+      return;
+    }
+
+    Kakao.Navi.start({
+      name: DEST.name,
+      x: DEST.x,
+      y: DEST.y,
+      coordType: "wgs84"
+    });
+  } catch (e) {
+    fail("카카오내비 실행 오류: " + e.message);
+  }
+});
+
+window.addEventListener("load", initKakaoNavi);
+</script>
+</body>
+</html>
