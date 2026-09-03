@@ -3,7 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>FRAME 7 NAV</title>
+<title>FRAME 7 NAV · 카카오내비</title>
+<meta name="description" content="FRAME 7 차량 이동 링크 · 카카오내비로 출발">
+<meta name="theme-color" content="#FEE500">
+
+<link rel="icon" href="/frame7-nav/favicon.svg" type="image/svg+xml">
+<link rel="shortcut icon" href="/frame7-nav/favicon.svg">
+<link rel="apple-touch-icon" href="/frame7-nav/favicon.svg">
+<link rel="canonical" href="https://ccucle.github.io/frame7-nav/">
+
+<meta property="og:title" content="FRAME 7 NAV · 카카오내비">
+<meta property="og:description" content="FRAME 7 차량 이동 링크 · 카카오내비로 출발">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://ccucle.github.io/frame7-nav/">
+<meta property="og:site_name" content="FRAME 7 NAV">
+<meta property="og:image" content="https://ccucle.github.io/frame7-nav/favicon.svg">
+
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="FRAME 7 NAV · 카카오내비">
+<meta name="twitter:description" content="FRAME 7 차량 이동 링크 · 카카오내비로 출발">
+<meta name="twitter:image" content="https://ccucle.github.io/frame7-nav/favicon.svg">
+
 <script src="https://t1.kakaocdn.net/kakao_js_sdk/2.8.2/kakao.min.js"></script>
 <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=12928fb05aeed665559796e06a21bf3b&libraries=services"></script>
 <style>
@@ -36,7 +56,11 @@ const statusEl=document.getElementById('status');
 const navBtn=document.getElementById('navBtn');
 function setStatus(msg){statusEl.textContent=msg}
 function fail(msg){setStatus('실패 · '+msg);navBtn.disabled=true}
-function renderDestination(){nameEl.textContent=DEST.name||'목적지 이름 없음';addressEl.textContent=DEST.address||'주소 없음'}
+function renderDestination(){
+ nameEl.textContent=DEST.name||'목적지 이름 없음';
+ addressEl.textContent=DEST.address||'주소 없음';
+ if(DEST.name){document.title=`${DEST.name} · FRAME 7 NAV`;}
+}
 function geocodeDestination(){
  if(!DEST.address){fail('주소가 전달되지 않았습니다.');return}
  if(!window.kakao||!kakao.maps||!kakao.maps.services){fail('카카오 지도 SDK 또는 services 라이브러리를 불러오지 못했습니다.');return}
