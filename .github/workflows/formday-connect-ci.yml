@@ -6,6 +6,12 @@ on:
     paths:
       - 'formday-connect/**'
       - '.github/workflows/formday-connect-ci.yml'
+  pull_request:
+    branches:
+      - formday-connect-firebase-rest-20261123
+    paths:
+      - 'formday-connect/**'
+      - '.github/workflows/formday-connect-ci.yml'
   workflow_dispatch:
 permissions:
   contents: read

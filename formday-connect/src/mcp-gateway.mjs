@@ -32,7 +32,8 @@ export function buildReadOnlyServer(dispatch){
    title:name.replace(/^formday_/,"FORMDAY · "),
    description:descriptions[name],inputSchema:z.object(inputSchema),
    annotations:{readOnlyHint:true,destructiveHint:false,
-    idempotentHint:true,openWorldHint:false}
+    idempotentHint:true,openWorldHint:false},
+   _meta:{securitySchemes:[{type:"oauth2",scopes:["formday:read"]}]}
   },async(args)=>{
    const result=await dispatch(name,args||{});
    return {content:[{type:"text",text:JSON.stringify(result)}]};

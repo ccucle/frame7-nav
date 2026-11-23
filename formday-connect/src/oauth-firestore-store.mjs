@@ -66,6 +66,7 @@ export function createFirestoreOAuthStore(db){
   putAccess:(k,v)=>put("access",k,v),
   getAccess:k=>get("access",k),
   putRefresh:(k,v)=>put("refresh",k,v),
+  getRefresh:k=>get("refresh",k),
   takeRefresh:k=>take("refresh",k),
   updateGrantCredential
  };

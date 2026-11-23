@@ -23,7 +23,7 @@ function testStore(){
   putCode:put("code"),getCode:get("code"),takeCode:take("code"),
   putGrant:put("grant"),getGrant:get("grant"),
   putAccess:put("access"),getAccess:get("access"),
-  putRefresh:put("refresh"),takeRefresh:take("refresh"),
+  putRefresh:put("refresh"),getRefresh:get("refresh"),takeRefresh:take("refresh"),
   updateGrantCredential:(key,newCipher)=>{
    const previous=maps.grant.get(key);if(!previous)throw Error("unknown grant");
    maps.grant.set(key,{...previous,credentialCiphertext:newCipher});
@@ -98,6 +98,23 @@ test("auth code -> user-bound read-only bearer -> refresh",async()=>{
   grant_type:"refresh_token",refresh_token:result.refresh_token,client_id:CLIENT
  }));
 });
+test("wrong OAuth client cannot invalidate the legitimate refresh token",async()=>{
+ const {oauth}=fixture();
+ const code=await authorize(oauth);
+ const tokens=await oauth.exchangeCode({
+  grant_type:"authorization_code",code,client_id:CLIENT,
+  redirect_uri:CALLBACK,resource:ORIGIN+"/mcp",code_verifier:VERIFIER
+ });
+ await assert.rejects(oauth.refresh({
+  grant_type:"refresh_token",refresh_token:tokens.refresh_token,
+  client_id:"https://chatgpt.com/oauth/other-client/client.json"
+ }),/not valid for this OAuth client/);
+ const renewed=await oauth.refresh({
+  grant_type:"refresh_token",refresh_token:tokens.refresh_token,client_id:CLIENT
+ });
+ assert.ok(renewed.access_token);
+});
+
 test("authorization code cannot be exchanged twice",async()=>{
  const {oauth}=fixture();const code=await authorize(oauth);
  const input={grant_type:"authorization_code",code,client_id:CLIENT,

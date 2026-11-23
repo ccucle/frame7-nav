@@ -67,7 +67,7 @@ function validateId({uid,idToken,refreshToken}){
 function checkStore(store){
  check(store?.durable===true,"OAuth requires durable, transactional token storage");
  for(const name of ["putFlow","takeFlow","putCode","getCode","takeCode",
-   "putGrant","getGrant","putAccess","getAccess","putRefresh","takeRefresh","updateGrantCredential"]){
+   "putGrant","getGrant","putAccess","getAccess","putRefresh","getRefresh","takeRefresh","updateGrantCredential"]){
   check(typeof store?.[name]==="function","Durable OAuth store missing "+name);
  }
  if(store.volatile===true)err("Volatile token storage is prohibited outside of tests");
@@ -185,11 +185,16 @@ export function createOAuthCore({
   const refreshToken=params?.refresh_token,clientId=params?.client_id;
   check(OPAQUE.test(refreshToken||"")&&CIMD.test(clientId||""),
     "Invalid refresh request");
-  const record=await store.takeRefresh(hash(refreshToken));
+  const key=hash(refreshToken);
+  const record=await store.getRefresh(key);
   check(record&&record.expiresAt>now(),"Refresh token expired or used");
   const grant=await store.getGrant(record.grantId);
   check(grant&&grant.expiresAt>now()&&grant.clientId===clientId,
     "Refresh token not valid for this OAuth client");
+  // An invalid client must not consume the rightful client's refresh token.
+  const consumed=await store.takeRefresh(key);
+  check(consumed&&consumed.grantId===record.grantId,
+    "Refresh token already used");
   const currentRefresh=await vault.open(grant.credentialCiphertext);
   const latest=await refreshFirebaseToken(currentRefresh);
   const verified=await verifyFirebaseIdToken(latest.idToken);
