@@ -7,9 +7,10 @@
 <title>FORMDAY · 운동 & 식단 캘린더</title>
 <meta name="description" content="웨이트 세트 기록, 식단과 체중을 하나의 캘린더에서 관리하는 FORMDAY.">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="app.css?v=0.3.0">
-<link rel="stylesheet" href="workouts.css?v=0.3.0">
-<link rel="stylesheet" href="meals.css?v=0.3.0">
+<link rel="stylesheet" href="app.css?v=0.4.0-rc.1">
+<link rel="stylesheet" href="workouts.css?v=0.4.0-rc.1">
+<link rel="stylesheet" href="meals.css?v=0.4.0-rc.1">
+<link rel="stylesheet" href="accounts.css?v=0.4.0-rc.1">
 <link rel="icon" href="data:,">
 </head>
 <body>
@@ -27,12 +28,12 @@
     <div class="side-caption">MINI CALENDAR</div>
     <div class="mini-head"><span id="mini-title"></span><div><button class="btn btn-quiet btn-small" id="mini-prev" aria-label="이전 달">‹</button><button class="btn btn-quiet btn-small" id="mini-next" aria-label="다음 달">›</button></div></div>
     <div class="mini-cal" id="mini-cal"></div>
-    <div class="side-foot">● 개인 기록은 현재 브라우저에만 저장됩니다.<br>AI 자동 관리와 구글 계정 동기화는 아직 연결되지 않은 확장 기능입니다.</div>
+    <div class="side-foot" id="account-storage-note">현재 브라우저 기록은 계정 기록과 분리됩니다. 로그인 후 옮길 기록을 선택할 수 있습니다.</div>
   </aside>
   <main class="main" id="main-content">
     <div class="toprow">
-      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.3.0</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
-      <div class="header-actions"><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-outline meal-quick" id="new-meal">＋ 식단 기록</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
+      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.4.0-rc.1</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
+      <div class="header-actions"><button class="btn btn-outline account-quick" id="account-btn">계정 · 동기화</button><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-outline meal-quick" id="new-meal">＋ 식단 기록</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
     </div>
     <div id="storage-status" class="storage-status" role="status"></div>
     <div id="demo-banner" class="demo-banner hide"><span>✳ 현재 표시된 운동·식단·체중은 <b>체험용 샘플</b>입니다. 실제 개인 기록이 아닙니다.</span><button id="clear-demo">샘플 지우기</button></div>
@@ -67,11 +68,13 @@
 </div>
 <div class="mobile-nav"><button data-mobile="calendar" class="active"><b>▦</b>캘린더</button><button data-mobile="add"><b>⊕</b>일정 등록</button><button data-mobile="detail"><b>◫</b>하루 기록</button></div>
 <div id="modal-root"></div><div id="toast-root" role="status" aria-live="polite"></div>
-<script defer src="data.js?v=0.3.0"></script>
-<script defer src="workouts.js?v=0.3.0"></script>
-<script defer src="nutrition.js?v=0.3.0"></script>
-<script defer src="core.js?v=0.3.0"></script>
-<script defer src="meals.js?v=0.3.0"></script>
-<script defer src="app.js?v=0.3.0"></script>
+<script defer src="data.js?v=0.4.0-rc.1"></script>
+<script defer src="workouts.js?v=0.4.0-rc.1"></script>
+<script defer src="nutrition.js?v=0.4.0-rc.1"></script>
+<script defer src="core.js?v=0.4.0-rc.1"></script>
+<script defer src="meals.js?v=0.4.0-rc.1"></script>
+<script defer src="cloud.js?v=0.4.0-rc.1"></script>
+<script defer src="accounts.js?v=0.4.0-rc.1"></script>
+<script defer src="app.js?v=0.4.0-rc.1"></script>
 </body>
 </html>

@@ -61,3 +61,5 @@
 .nutrition .missing-info,.nutrition .legacy-info{border-top:1px solid #e4eae5;padding-top:9px;line-height:1.75}
 .nutrition .legacy-info{color:#947348}.macro-caption{gap:8px;flex-wrap:wrap}.macro-caption>span:last-child{margin-left:auto}
 @media(max-width:730px){.header-actions{width:100%}.header-actions .btn{flex:1;min-height:44px}.nutrition .helper{font-size:11px}.stat-number{white-space:normal;overflow-wrap:anywhere}}
+.account-quick{max-width:230px;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:730px){.header-actions .btn{flex:1 1 calc(50% - 4px)}.account-quick{max-width:none}}

@@ -12,7 +12,7 @@ const C = require('../fitplan/core.js');
 const N = require('../fitplan/nutrition.js');
 const directory = path.join(__dirname, '../fitplan');
 const html = fs.readFileSync(path.join(directory, 'index.html'), 'utf8');
-const scripts = ['data.js', 'workouts.js', 'nutrition.js', 'core.js', 'meals.js', 'app.js'].map((name) => [name, fs.readFileSync(path.join(directory, name), 'utf8')]);
+const scripts = ['data.js', 'workouts.js', 'nutrition.js', 'core.js', 'meals.js', 'cloud.js', 'accounts.js', 'app.js'].map((name) => [name, fs.readFileSync(path.join(directory, name), 'utf8')]);
 const decode = (s = '') => s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 class ClassList {
   constructor(value = '') { this.items = new Set(value.split(/\s+/).filter(Boolean)); }
@@ -86,7 +86,8 @@ function boot(raw, options = {}) {
   let failWrites = false, unique = 0;
   const storage = {
     getItem: (key) => map.get(key) ?? null,
-    setItem(key, value) { if (failWrites && key === C.STORE) throw new Error('QuotaExceededError'); writes.push([key, value]); map.set(key, value); }
+    setItem(key, value) { if (failWrites && key === C.STORE) throw new Error('QuotaExceededError'); writes.push([key, value]); map.set(key, value); },
+    removeItem(key) { map.delete(key); }
   };
   class FixedDate extends Date { constructor(...args) { super(...(args.length ? args : ['2026-11-23T12:00:00Z'])); } static now() { return Date.parse('2026-11-23T12:00:00Z'); } }
   class TestURL extends URL {
@@ -105,6 +106,8 @@ function boot(raw, options = {}) {
   if (options.storageDenied) Object.defineProperty(context, 'localStorage', { get() { throw new Error('SecurityError'); } });
   for (const [name, code] of scripts) {
     if (name === 'app.js' && options.mealMount) context.FormdayMeals = { mount: options.mealMount };
+    if (name === 'app.js' && options.cloudFactory) context.FormdayCloud = {create:options.cloudFactory};
+    if (name === 'app.js' && options.accountMount) context.FormdayAccounts = {mount:options.accountMount};
     vm.runInContext(code, context, { filename: name });
   }
   return { document, context, map, writes, storage, confirmations, downloads, windowListeners,
@@ -117,6 +120,63 @@ function boot(raw, options = {}) {
     }
   };
 }
+
+test('account activation switches the persistence scope and logout restores untouched guest records', () => {
+  const raw=JSON.stringify(legacyState()), accountMap=new Map();
+  const accountStorage={getItem:key=>accountMap.get(key)??null,setItem:(key,value)=>accountMap.set(key,value)};
+  const accountStore=C.makeStore(accountStorage);
+  const accountState=accountStore.save(C.normalizeState({events:[],settings:{protein:90,carbs:170,fat:45},demo:false}), '');
+  let hooks, savedNotifications=0;
+  const state={available:true,loading:false,user:null,active:false,dirty:false,syncing:false,conflict:false,error:'',lastSyncedAt:null,selectionRequired:false,localCount:1,remoteCount:0};
+  const app=boot(raw,{cloudFactory(options){hooks=options;return {
+    status:()=>({...state}),init:async()=>({...state}),
+    afterLocalSave(){savedNotifications++;},isActiveStorageKey:key=>key==='account-record'
+  };}});
+  state.user={id:'user-account',username:'account_user'};state.active=true;
+  hooks.onActivate({user:state.user,store:accountStore,state:accountState});
+  assert.match(app.get('account-btn').textContent,/account_user/);
+  assert.doesNotMatch(app.get('calendar').innerHTML,/기존 벤치 기록/);
+  app.get('settings-btn').click();
+  app.get('s-protein').value='100';app.get('save-settings').click();
+  assert.equal(accountStore.load().data.settings.protein,100);
+  assert.equal(savedNotifications,1);
+  assert.equal(app.map.get(C.STORE),raw);
+  state.user=null;state.active=false;hooks.onGuest();
+  assert.match(app.get('calendar').innerHTML,/기존 벤치 기록/);
+  assert.equal(app.map.get(C.STORE),raw);
+  assert.equal(app.get('undo-btn').disabled,true);
+});
+
+test('account requests and unacknowledged recovery information cannot be silently closed', () => {
+  let pending=true,dirty=true;
+  const app=boot(undefined,{cloudFactory(){return {status:()=>({available:true,user:null}),init:async()=>({}),isActiveStorageKey:key=>key===C.STORE};},
+    accountMount(){return {update(){},draft:()=>({pending,recoveryPending:dirty}),isDirty:()=>dirty,destroy(){}};}});
+  app.get('account-btn').click();app.get('account-close').click();
+  assert.ok(app.get('account-editor'));
+  assert.equal(app.confirmations.length,0);
+  pending=false;app.get('account-close').click();
+  assert.equal(app.confirmations.length,1);
+  assert.match(app.confirmations[0],/복구 코드.*다시 볼 수 없습니다/);
+  assert.equal(app.get('account-editor'),null);
+});
+
+test('the real account modules show unavailable API state while the existing calendar remains usable', async () => {
+  const raw=JSON.stringify(legacyState());
+  const app=boot(raw);
+  await new Promise(resolve=>setImmediate(resolve));
+  app.get('account-btn').click();
+  const editor=app.get('account-editor');
+  assert.ok(editor);
+  assert.match(editor.querySelector('[data-fa-node="connection-title"]').textContent,/브라우저에 저장/);
+  assert.equal(editor.querySelector('[data-fa-submit="login"]').disabled,true);
+  assert.equal(editor.querySelector('[data-fa-action="retry"]').hidden,false);
+  assert.equal(app.map.get(C.STORE),raw);
+  app.get('account-close').click();
+  assert.equal(app.get('account-editor'),null);
+  assert.match(app.get('calendar').innerHTML,/기존 벤치 기록/);
+  app.get('settings-btn').click();
+  assert.ok(app.get('save-settings'));
+});
 const legacyEvent = (overrides = {}) => ({ id: 'legacy-workout', date: '2026-11-23', start: '07:00', end: '08:00', type: 'strength', title: '기존 벤치 기록', repeat: 'none', completed: true, detail: { exercise: '벤치프레스', sets: 3, weight: 60, reps: 10, notes: '이전 메모' }, ...overrides });
 const legacyState = () => ({ events: [legacyEvent()], settings: { protein: 150, carbs: 200, fat: 50 } });
 
@@ -345,6 +405,7 @@ test('catalog fetch errors are retryable and successful catalog responses are ca
   const app = boot(JSON.stringify(stateWith()), {
     mealMount(container, detail, options) { callbacks = options; return dummyMealController(); },
     async fetch(url, options) {
+      if (url.startsWith('/api/')) return { ok: false, status: 404, json: async () => ({error:{code:'NOT_FOUND',message:'계정 서버 연결 전'}}) };
       assert.match(url, /^food-catalog\.json/);
       assert.ok(options.signal instanceof AbortSignal);
       requests++;

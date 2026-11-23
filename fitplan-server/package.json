@@ -1,0 +1,21 @@
+{
+  "name": "formday-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Same-origin account and PostgreSQL storage service for FORMDAY",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "start": "node server.cjs",
+    "migrate": "node migrate.cjs",
+    "test": "node --test ../fitplan-dev/server*.test.cjs"
+  },
+  "dependencies": {
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.17"
+  }
+}
