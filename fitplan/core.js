@@ -229,6 +229,12 @@
 
   function normalizeState(raw) {
     if (!plain(raw)) fail('FORMDAY 기록 파일이 아닙니다.');
+    // v0.6.0's sync dialog exported a wrapper that the normal importer did not read.
+    // Unwrap only the calendar slot, then apply every existing schema check.
+    if (raw.app === 'FORMDAY-cloud-manual-backup') {
+      if (raw.kind !== 'calendar' || !plain(raw.data)) fail('캘린더 백업 파일이 아닙니다.');
+      raw = raw.data;
+    }
     if (raw.app !== undefined && raw.app !== 'formday') fail('FORMDAY 기록 파일이 아닙니다.');
     if (raw.version !== undefined && ![1, 2, 3].includes(raw.version)) fail('지원하지 않는 백업 버전입니다.');
     if (raw.schemaVersion !== undefined && ![1, 2, 3].includes(raw.schemaVersion)) fail('지원하지 않는 기록 버전입니다.');
@@ -288,7 +294,7 @@
 
   function weightRecords(state, until) {
     if (!validDate(until)) fail('조회 날짜가 올바르지 않습니다.');
-    return actualRecords(state).filter(record => record.type === 'weight' && record.date <= until && record.completed && typeof record.detail.weight === 'number' && Number.isFinite(record.detail.weight) && record.detail.weight > 0).sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start) || a.id.localeCompare(b.id));
+    return actualRecords(state).filter(record => !record.isSample && record.type === 'weight' && record.date <= until && record.completed && typeof record.detail.weight === 'number' && Number.isFinite(record.detail.weight) && record.detail.weight > 0).sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start) || a.id.localeCompare(b.id));
   }
 
   function volume(detail) {

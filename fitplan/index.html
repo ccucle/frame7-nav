@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="cloud-sync.css?v=0.6.0">
 <link rel="stylesheet" href="iron.css?v=0.4.0">
 <link rel="stylesheet" href="iron-independent.css?v=0.5.0">
+<link rel="stylesheet" href="theme.css?v=0.6.1">
 <link rel="icon" href="data:,">
 </head>
 <body>
@@ -46,7 +47,7 @@
   </aside>
   <main class="main" id="main-content">
     <div class="toprow">
-      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.6.0</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
+      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.6.1</span></div><h1 class="page-title">나의 건강 캘린더</h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
       <div class="header-actions"><button class="btn btn-outline" id="fd-account-btn" type="button" disabled title="계정 로그인 준비 중">👤 Google 로그인</button><button class="btn btn-outline" id="fd-sync-open" type="button">☁ 기기 동기화</button><button class="btn btn-outline" id="cloud-backup">↓ 무료 백업</button><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-outline meal-quick" id="new-meal">＋ 식단 기록</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
     </div>
     <div id="storage-status" class="storage-status" role="status"></div>
@@ -54,7 +55,7 @@
     <div id="fd-iron-root" class="fd-iron-root" aria-label="훈련 대시보드 및 운동 도감"></div>
     <div id="fd-ind-root" class="fd-ind-root" aria-label="독립 웨이트 루틴 및 운동 세션"></div>
     <section class="stats" aria-label="선택한 날짜 요약">
-      <div class="stat"><div class="stat-label">운동 완료 <span class="stat-icon">🏋</span></div><div class="stat-number" id="stat-workout">0 / 0</div><div class="stat-note">선택 날짜의 운동 계획</div></div>
+      <div class="stat"><div class="stat-label">기록한 운동 <span class="stat-icon">🏋</span></div><div class="stat-number" id="stat-workout">0 / 0</div><div class="stat-note">본세트 기록·유산소 완료 / 등록 운동</div></div>
       <div class="stat"><div class="stat-label">식단 섭취 열량 <span class="stat-icon">🥗</span></div><div class="stat-number" id="stat-kcal">0 <small style="font-size:11px;color:#92a2a2">kcal</small></div><div class="stat-note" id="stat-kcal-note">기록된 식단 기준</div></div>
       <div class="stat"><div class="stat-label">단백질 <span class="stat-icon">🥚</span></div><div class="stat-number" id="stat-protein">0 <small style="font-size:11px;color:#92a2a2">g</small></div><div class="stat-note" id="stat-protein-note">목표 대비 분석</div></div>
       <div class="stat"><div class="stat-label">최근 체중 <span class="stat-icon">⚖</span></div><div class="stat-number" id="stat-weight">—</div><div class="stat-note" id="stat-weight-note">기록을 추가해보세요</div></div>
@@ -107,7 +108,7 @@
       <button type="button" class="fd-account-logout" id="fd-logout" hidden>Google 계정 로그아웃</button>
     </div>
     <p class="fd-account-status" id="fd-account-status" role="status" aria-live="polite">Firebase 연결을 확인하는 중입니다.</p>
-    <p class="fd-account-warning" id="fd-account-warning">Google 로그인은 계정 인증 기능입니다. 운동 기록 자동 동기화는 아직 연결되지 않았습니다. 기존 웹앱을 삭제하지 마세요.</p>
+    <p class="fd-account-warning" id="fd-account-warning">같은 Google 계정으로 로그인한 뒤 기기 동기화에서 캘린더와 웨이트의 연결 상태를 확인하세요.</p>
   </div>
 </dialog>
 <dialog class="fd-sync-dialog" id="fd-sync-dialog" aria-labelledby="fd-sync-title">
@@ -132,16 +133,16 @@
 <script defer src="data.js?v=0.3.0"></script>
 <script defer src="workouts.js?v=0.3.0"></script>
 <script defer src="nutrition.js?v=0.3.0"></script>
-<script defer src="core.js?v=0.3.0"></script>
+<script defer src="core.js?v=0.6.1"></script>
+<script defer src="iron-data.js?v=0.6.1"></script>
 <script defer src="meals.js?v=0.3.0"></script>
-<script defer src="app.js?v=0.3.0"></script>
+<script defer src="app.js?v=0.6.1"></script>
 <script defer src="backup.js?v=0.3.1"></script>
-<script defer src="iron-data.js?v=0.4.0"></script>
-<script defer src="iron.js?v=0.4.0"></script>
-<script defer src="iron-store.js?v=0.5.0"></script>
-<script defer src="iron-independent.js?v=0.5.0"></script>
-<script defer src="sync-policy.js?v=0.6.0"></script>
-<script type="module" src="cloud-auth.js?v=0.5.2"></script>
-<script type="module" src="cloud-sync.js?v=0.6.0"></script>
+<script defer src="iron.js?v=0.6.1"></script>
+<script defer src="iron-store.js?v=0.6.1"></script>
+<script defer src="iron-independent.js?v=0.6.1"></script>
+<script defer src="sync-policy.js?v=0.6.1"></script>
+<script type="module" src="cloud-auth.js?v=0.6.1"></script>
+<script type="module" src="cloud-sync.js?v=0.6.1"></script>
 </body>
 </html>

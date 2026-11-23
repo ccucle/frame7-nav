@@ -19,8 +19,9 @@
   const catalog= D.all(workouts.catalog);
   function dataset(){
     const state=bridge.getState();
-    const a=D.analytics(core,workouts,state,new Date());
-    return {state,a};
+    const independent=root.FormdayIndependent?.getSnapshot?.();
+    const a=D.analytics(core,workouts,state,new Date(),independent);
+    return {state,a,independent};
   }
   function top(screenName){
     const labels={home:['IRON MODE','오늘의 퍼포먼스'],session:['WORKOUT SESSION','운동 실행'],library:['EXERCISE LIBRARY','운동 도감'],analysis:['TRAINING ANALYTICS','훈련 성과'],calendar:['TRAINING CALENDAR','통합 캘린더']};
@@ -36,11 +37,25 @@
       button.classList.toggle('fd-current',isSelected);
       button.setAttribute('aria-current',isSelected?'page':'false');
     });
+    document.querySelectorAll('[data-ind-nav]').forEach(button=>{
+      button.classList.remove('fd-current','active');button.setAttribute('aria-current','false');
+    });
+    const types=bridge.getVisibleTypes?.()||[];
+    const activeFilter=types.length===1?types[0]:'calendar';
+    document.querySelectorAll('[data-go]').forEach(button=>{
+      const selected=screenName==='calendar'&&button.dataset.go===activeFilter;
+      button.classList.toggle('active',selected);button.setAttribute('aria-current',selected?'page':'false');
+    });
+    document.querySelectorAll('[data-mobile]').forEach(button=>{
+      const selected=screenName==='calendar'&&button.dataset.mobile==='calendar';
+      button.classList.toggle('active',selected);button.setAttribute('aria-current',selected?'page':'false');
+    });
   }
   function setScreen(name){
     if(name==='session'&&root.FormdayIndependent){root.FormdayIndependent.open('start');return;}
     if(!['home','session','library','analysis','calendar'].includes(name))return;
-    screen=name;render();
+    if(document.body.dataset.fdScreen==='independent'&&root.FormdayIndependent?.beforeNavigate?.()===false)return;
+    screen=name;render(true);
     document.querySelector('#main-content')?.scrollIntoView({block:'start',behavior:'smooth'});
   }
   function banner(title,value,sub,icon){
@@ -53,32 +68,48 @@
     return groups.map(([name,value])=>'<div class="fd-bar-row"><span>'+html(name)+'</span><div class="fd-bar-track"><i style="width:'+Math.max(3,Math.round(value/max*100))+'%"></i></div><strong>'+n(value)+' <small>kg</small></strong></div>').join('');
   }
   function home(){
-    const {a,state}=dataset();
+    const {a,independent}=dataset();
     const dayList=a.currentWorkout;
     const strength=dayList[0]||null;
+    const unfinished=independent?.sessions?.find(s=>['ACTIVE','PAUSED','SAVED'].includes(s.status));
+    const routines=independent?.routines||[];
+    let trainingTitle='오늘의 웨이트를 시작하세요',trainingNote='자유 운동을 시작하거나 사용할 루틴을 선택하세요.',trainingAction='resume-workout',trainingLabel='운동 시작';
+    if(unfinished){
+      trainingTitle=unfinished.label;
+      trainingNote=unfinished.date+' · '+({ACTIVE:'운동 진행 중',PAUSED:'일시정지',SAVED:'임시 보관'})[unfinished.status]+' · 이어서 기록할 수 있습니다.';
+      trainingLabel='운동 이어하기';
+    }else if(routines.length){
+      trainingTitle='저장한 루틴으로 시작';
+      trainingNote=routines.length+'개 루틴 · '+routines.slice(0,2).map(r=>r.name).join(' · ');
+      trainingAction='choose-routine';trainingLabel='루틴 선택';
+    }else if(strength){
+      trainingTitle=strength.title;
+      trainingNote='오늘의 기존 웨이트 일정 · '+strength.detail.exercises.map(x=>x.name).slice(0,3).join(' · ');
+      trainingAction='open-legacy';trainingLabel='기존 일정 열기';
+    }
     const best=a.bestPR;
     const imageCredit='<a class="fd-photo-credit" target="_blank" rel="noopener noreferrer" href="https://unsplash.com/license">운동 분위기 사진 · Unsplash</a>';
     return '<section class="fd-hero fd-hero-photo" aria-label="오늘 운동 요약">'+img(D.PHOTOS.hero,'피트니스 운동 장면','fd-hero-image')+
       '<div class="fd-hero-shade"></div><div class="fd-hero-content"><span class="fd-overline"><i></i> FORMDAY / STRENGTH</span>'+
       '<h2>오늘도<br><em>기록 갱신하자.</em></h2>'+
       '<p>계획하고, 들어 올리고, 어제의 나를 넘어선다.</p>'+
-      '<button class="fd-action-primary" data-fd-route="session">운동 시작 <span>↗</span></button></div>'+imageCredit+'</section>'+
+      '<button class="fd-action-primary" data-fd-route="session">'+(unfinished?'운동 이어하기':'운동 시작')+' <span>↗</span></button></div>'+imageCredit+'</section>'+
       '<section class="fd-main-layout" aria-label="운동 대시보드">'+
-      '<div class="fd-feature-card"><div class="fd-feature-icon">▤</div><div class="fd-feature-details"><span class="fd-overline">TODAY\'S TRAINING</span><h3>'+html(strength?.title||'오늘의 웨이트 루틴')+'</h3><p>'+html(strength?strength.detail.exercises.map(x=>x.name).slice(0,3).join(' · ')+(strength.detail.exercises.length>3?' 외':'' ):'등록된 웨이트 일정이 없습니다. 지금 첫 루틴을 추가해 보세요.')+'</p></div>'+
-      '<button class="fd-feature-go" data-fd-action="'+(strength?'start-workout':'new-strength')+'" '+(strength?'data-fd-workout="'+html(strength.id)+'"':'')+' aria-label="'+(strength?'오늘 운동 실행':'웨이트 등록')+'">↗</button></div>'+
+      '<div class="fd-feature-card"><div class="fd-feature-icon">▤</div><div class="fd-feature-details"><span class="fd-overline">TODAY\'S TRAINING</span><h3>'+html(trainingTitle)+'</h3><p>'+html(trainingNote)+'</p></div>'+
+      '<button class="fd-feature-go" data-fd-action="'+trainingAction+'" '+(strength?'data-fd-workout="'+html(strength.id)+'"':'')+' aria-label="'+trainingLabel+'">↗</button></div>'+
       '<div class="fd-metrics">'+banner('최근 체중',unit(a.weight),'<span>실제 완료된 측정 기록 기준</span>','⌁')+
-      banner('이번 주 훈련',n(a.trainingDays)+' <small>일</small>','완료 세트·유산소 완료 날짜 기준','▦')+
+      banner('이번 주 훈련',n(a.trainingDays)+' <small>일</small>','완료 본세트·유산소 완료 날짜 기준','▦')+
       banner('완료한 본세트',n(a.completedSets)+' <small>세트</small>','워밍업 제외 · 이번 주','◈')+
       banner('총 운동량',n(a.totalVolume)+' <small>kg</small>','완료한 웨이트 본세트만 합산','▰')+'</div>'+
       '<div class="fd-insight-grid"><div class="fd-panel fd-pr-panel"><div class="fd-panel-head"><span>◉</span><h3>PERFORMANCE · 추정 1RM</h3></div>'+
       (best?'<p class="fd-pr-name">'+html(best.name)+'</p><div class="fd-pr-number">'+n(best.oneRM)+' <small>kg</small></div><p class="fd-hint">'+html(best.date)+' 완료 세트 · '+n(best.weight)+'kg × '+best.reps+'회</p>':
       '<p class="fd-pr-empty">아직 추정 1RM 기록이 없습니다.</p><p class="fd-hint">완료한 1~10회 본세트가 쌓이면 Epley 공식을 사용해 추정합니다.</p>')+
-      '<small class="fd-footnote">추정치로 실제 1RM 또는 최대 시도 안전성을 보장하지 않습니다.</small></div>'+
+      '<small class="fd-footnote">오늘까지의 전체 기록 중 최고 추정치입니다. 실제 1RM 또는 최대 시도 안전성을 보장하지 않습니다.</small></div>'+
       '<div class="fd-panel"><div class="fd-panel-head"><span>▥</span><h3>이번 주 부위별 볼륨</h3></div>'+progressByGroup(a)+
       '<button class="fd-text-link" data-fd-route="analysis">자세한 기록 분석 보기 →</button></div></div>'+
       '<div class="fd-photo-strip"><div>'+img(D.PHOTOS.equipment,'바벨과 웨이트가 있는 트레이닝 공간')+'<div class="fd-photo-strip-content"><span>EXERCISE LIBRARY</span><h3>운동 도감</h3><p>'+catalog.length+'개 종목 · 부위와 장비별 탐색</p><button data-fd-route="library">운동 찾아보기 ↗</button></div></div>'+
       '<div>'+img(D.PHOTOS.strength,'체력 훈련 이미지')+'<div class="fd-photo-strip-content"><span>WORKOUT LOG</span><h3>세트별 실행 기록</h3><p>중량 · 반복 · RPE · 휴식</p><button data-fd-route="session">오늘 운동 실행 ↗</button></div></div></div>'+
-      '<p class="fd-home-notice">계정 로그인과 클라우드 동기화는 별개입니다. 기록은 현재 브라우저에 저장되며, 무료 백업 버튼으로 파일을 보관할 수 있습니다.</p>'+
+      '<p class="fd-home-notice">기기 동기화에서 계정 연결 상태를 확인하세요. 캘린더와 IRON MODE의 실제 운동 기록을 함께 집계하며, 체험용 샘플과 루틴 목표는 통계에 포함하지 않습니다.</p>'+
       '</section>';
   }
   function tiles(list){
@@ -171,15 +202,17 @@
     const weights=[...a.prMap.values()].sort((x,y)=>y.oneRM-x.oneRM).slice(0,8);
     return '<section class="fd-analysis"><div class="fd-section-heading"><div><span class="fd-overline">TRAINING ANALYTICS</span><h2>숫자로 보는 성장</h2><p>이번 주 기록과 실제 완료한 운동만 집계했습니다.</p></div></div>'+
       '<div class="fd-metrics fd-analysis-metrics">'+banner('운동한 날짜',n(a.trainingDays)+' <small>일</small>','이번 주','▦')+
-      banner('웨이트 일정',n(a.strengthSessions)+' <small>회</small>','반복 일정 실제 기록 기준','◉')+
+      banner('기록한 웨이트',n(a.strengthSessions)+' <small>회</small>','이번 주 완료 본세트가 있는 운동','◉')+
       banner('완료 본세트',n(a.completedSets)+' <small>세트</small>','워밍업 제외','▥')+
       banner('총 볼륨',n(a.totalVolume)+' <small>kg</small>','중량 × 횟수 합계','▰')+'</div>'+
-      '<div class="fd-insight-grid"><div class="fd-panel"><h3>부위별 웨이트 볼륨</h3>'+progressByGroup(a)+'</div><div class="fd-panel"><h3>종목별 추정 1RM</h3>'+
+      '<div class="fd-insight-grid"><div class="fd-panel"><h3>이번 주 부위별 웨이트 볼륨</h3>'+progressByGroup(a)+'</div><div class="fd-panel"><h3>종목별 추정 1RM · 전체 기록</h3>'+
       (weights.length?weights.map(x=>'<div class="fd-pr-line"><span>'+html(x.name)+'</span><strong>'+n(x.oneRM)+' kg</strong></div>').join(''):'<p class="fd-hint">완료한 본세트 기록이 쌓이면 표시됩니다.</p>')+
-      '<p class="fd-footnote">Epley 추정식, 1~10회 완료 세트 기준. 실제 최대 중량과 다를 수 있습니다.</p></div></div>'+
+      '<p class="fd-footnote">오늘까지의 1~10회 완료 본세트 · Epley 추정식. 실제 최대 중량과 다를 수 있습니다.</p></div></div>'+
       '<button class="fd-outline" data-fd-route="calendar">캘린더에서 상세 기록 보기 →</button></section>';
   }
-  function render(){
+  function render(navigation=false){
+    // Data refreshes must not steal the screen or unsaved inputs from IRON.
+    if(!navigation&&document.body.dataset.fdScreen==='independent')return;
     top(screen);
     node.innerHTML=screen==='home'?home():screen==='library'?library():screen==='session'?session():screen==='analysis'?analysis():'';
     if(screen==='library')libraryResults();
@@ -221,6 +254,9 @@
     if(button.dataset.fdTimer) {changeTimer(button.dataset.fdTimer);return;}
     if(button.dataset.fdTime){timerDuration=Number(button.dataset.fdTime);timerRemaining=timerDuration;timerRunning=false;paintTimer();return;}
     const action=button.dataset.fdAction;
+    if(action==='resume-workout'){root.FormdayIndependent?.open('start');return;}
+    if(action==='choose-routine'){root.FormdayIndependent?.open('choose');return;}
+    if(action==='open-legacy'){bridge.editStrength(button.dataset.fdWorkout,bridge.getToday());return;}
     if(action==='new-strength'||action==='add-exercise'){bridge.openStrength(button.dataset.fdName||null,bridge.getToday());return;}
     if(action==='start-workout'){selectedWorkoutId=button.dataset.fdWorkout||null;selectedExerciseIndex=0;setScreen('session');return;}
     if(action==='edit-workout'){const {a}=dataset();bridge.editStrength(selectedWorkoutId||a.currentWorkout[0]?.id,a.today);return;}
@@ -241,14 +277,17 @@
   document.addEventListener('click',e=>{
     const target=e.target.closest('[data-fd-route],[data-fd-action],[data-fd-group],[data-fd-equip],[data-fd-exercise],[data-fd-pick-workout],[data-fd-next-exercise],[data-fd-prev-exercise],[data-fd-save-set],[data-fd-timer],[data-fd-time],#fd-lib-more');
     if(target)onClick(e);
-    else if(e.target.closest('[data-go]')||e.target.closest('[data-mobile="calendar"]')||e.target.closest('.mini-cal [data-mini]')) {
-      if(screen!=='calendar'||document.body.dataset.fdScreen==='independent'){screen='calendar';render();}
+    // app.js may have replaced the mini-calendar DOM earlier in this click.
+    // The date attribute survives on the original target; its ancestor does not.
+    else if(e.target.closest('[data-go]')||e.target.closest('[data-mobile="calendar"]')||e.target.closest('[data-mini]')) {
+      setScreen('calendar');
     }
   });
   node.addEventListener('input',e=>{
     if(e.target.id==='fd-lib-search'){query=e.target.value;pageSize=18;libraryResults();}
   });
   root.addEventListener('formday:changed',()=>render());
+  root.addEventListener('formday:iron-changed',()=>render());
   root.addEventListener('focus',()=>{if(screen==='home'||screen==='analysis')render();});
   root.setInterval(paintTimer,1000);
   render();

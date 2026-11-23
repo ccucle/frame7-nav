@@ -58,24 +58,70 @@
   function all(catalog){
     return (catalog||[]).map(x=>info(x.name,catalog));
   }
-  function records(core,state){
-    if(!state||!Array.isArray(state.events))return [];
-    const result=[];
-    for(const event of state.events){
-      const dates=event.repeat==='none'?[event.date]:Object.keys(event.occurrences||{});
+  function calendarRecords(core,state,day){
+    const result=new Map();
+    for(const event of state?.events||[]){
+      const dates=day?[day]:event.repeat==='none'?[event.date]:Object.keys(event.occurrences||{});
       for(const date of dates){
         const item=core.occurrence(event,date);
-        if(item&&!item.isSample)result.push(item);
+        if(!item||item.isSample)continue;
+        // A repeating event is one record per occurrence, not one per series.
+        const key='calendar:'+item.id+':'+date;
+        result.set(key,{...item,source:'calendar',recordKey:key});
       }
     }
+    return [...result.values()];
+  }
+  function independentRecords(core,independent){
+    const result=new Map();
+    for(const session of independent?.sessions||[]){
+      if(!['COMPLETED','PARTIAL'].includes(session.status)||session.isSample||!core.validDate(session.date))continue;
+      // Store identity is the only safe deduplication key. Matching names or
+      // weights may belong to two legitimate workouts and must not be merged.
+      const key='iron:'+session.id;
+      result.set(key,{id:session.id,date:session.date,start:'',end:'',type:'strength',
+        title:session.label,completed:true,isSample:false,source:'iron',recordKey:key,
+        status:session.status,detail:{exercises:session.exercises||[]}});
+    }
+    return [...result.values()];
+  }
+  function records(core,state,independent){
+    // Read-only projection: no migration, storage writes or routine targets.
+    return [...calendarRecords(core,state),...independentRecords(core,independent)];
+  }
+  function strengthSummary(detail,includeActual=true){
+    let setCount=0,completedSets=0,volume=0;
+    for(const exercise of detail?.exercises||[]){
+      for(const set of exercise.sets||[]){
+        if(set.warmup)continue;
+        setCount++;
+        if(!includeActual||set.done!==true||!Number.isFinite(set.weight)||set.weight<0||!Number.isInteger(set.reps)||set.reps<1)continue;
+        completedSets++;volume+=set.weight*set.reps;
+      }
+    }
+    return {setCount,completedSets,volume:Math.round(volume*100)/100};
+  }
+  function daySummary(core,state,independent,day,clock){
+    const today=core.iso(clock||new Date());
+    const entries=[...calendarRecords(core,state,day),...independentRecords(core,independent).filter(e=>e.date===day&&e.date<=today)];
+    const workouts=entries.filter(e=>e.type==='strength'||e.type==='cardio');
+    const result={workoutCount:workouts.length,completedWorkouts:0,strengthSessions:0,cardioSessions:0,setCount:0,completedSets:0,volume:0};
+    for(const record of workouts){
+      if(record.type==='strength'){
+        const sum=strengthSummary(record.detail,day<=today);
+        result.setCount+=sum.setCount;result.completedSets+=sum.completedSets;result.volume+=sum.volume;
+        if(sum.completedSets){result.completedWorkouts++;result.strengthSessions++;}
+      }else if(day<=today&&record.completed){result.completedWorkouts++;result.cardioSessions++;}
+    }
+    result.volume=Math.round(result.volume*100)/100;
     return result;
   }
-  function analytics(core,workouts,state,clock){
+  function analytics(core,workouts,state,clock,independent){
     const today=core.iso(clock||new Date());
     const monday=core.shiftDate(today,-((core.dateOf(today).getDay()+6)%7));
-    const history=records(core,state);
+    const history=records(core,state,independent).filter(e=>e.date<=today);
     const week=history.filter(e=>e.date>=monday&&e.date<=today);
-    const wkStrength=week.filter(e=>e.type==='strength');
+    const wkStrength=week.filter(e=>e.type==='strength'&&strengthSummary(e.detail).completedSets>0);
     const wkCardio=week.filter(e=>e.type==='cardio'&&e.completed);
     const byGroup={},prMap=new Map(),trainingDays=new Set();
     let totalVolume=0,completedSets=0;
@@ -86,14 +132,14 @@
       for(const ex of e.detail.exercises||[]){
         const group=(workouts.catalog.find(x=>x.name===ex.name)||{}).group||'기타';
         for(const s of ex.sets||[]){
-          if(!s.done)continue;
+          if(s.done!==true||s.warmup||!Number.isFinite(s.weight)||s.weight<0||!Number.isInteger(s.reps)||s.reps<1)continue;
           hasDone=true;
-          if(!s.warmup&&s.weight>0&&s.reps>=1&&s.reps<=10){
+          if(s.weight>0&&s.reps<=10){
             const estimate=s.reps===1?s.weight:s.weight*(1+s.reps/30);
             const previous=prMap.get(ex.name);
             if(!previous||estimate>previous.oneRM)prMap.set(ex.name,{name:ex.name,oneRM:estimate,weight:s.weight,reps:s.reps,date:e.date});
           }
-          if(isWeek&&!s.warmup){
+          if(isWeek){
             const vol=s.weight*s.reps;
             byGroup[group]=(byGroup[group]||0)+vol;totalVolume+=vol;completedSets++;
           }
@@ -106,7 +152,7 @@
       typeof e.detail.weight==='number'&&Number.isFinite(e.detail.weight)&&e.detail.weight>0)
       .sort((a,b)=>b.date.localeCompare(a.date)||b.start.localeCompare(a.start));
     const bestPR=[...prMap.values()].sort((a,b)=>b.oneRM-a.oneRM)[0]||null;
-    const currentWorkout=core.dayEvents(state,today).filter(e=>e.type==='strength');
+    const currentWorkout=calendarRecords(core,state,today).filter(e=>e.type==='strength');
     return {
       today,monday,week,history,trainingDays:trainingDays.size,
       strengthSessions:wkStrength.length,cardioSessions:wkCardio.length,
@@ -115,5 +161,5 @@
       bestPR,prMap,currentWorkout
     };
   }
-  return Object.freeze({PHOTOS,PHOTO_CREDITS,EQUIPMENT,MUSCLES,tips,info,all,records,analytics});
+  return Object.freeze({PHOTOS,PHOTO_CREDITS,EQUIPMENT,MUSCLES,tips,info,all,records,strengthSummary,daySummary,analytics});
 });
