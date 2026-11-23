@@ -46,7 +46,7 @@
 ## Not yet proven / release blockers
 
 1. **Critical:** OpenAI currently documents direct custom MCP connections as **web-only**. The requirement that iPhone ChatGPT must use the same plugin is NOT met; do not promise mobile support.
-2. Actual Node SDK runtime test and OAuth integration test remain unexecuted here (network installation of npm dependencies unavailable). Source parse checks and memory-mock tests are not sufficient for production.
+2. **Synthetic runtime tests PASS:** GitHub Actions Node.js 22 + actual MCP SDK successfully installed and ran 37 tests, including authenticated MCP initialize/list/call and OAuth token misuse rejection. This does **not** establish live Google OAuth, real Firestore data access, or mobile availability.
 3. Test and implement OAuth grant revocation, Firebase refresh token rotation consistency, transactional bundle issuance on partial failures, and rate limiting.
 4. Independent security review of privileged Firestore Admin credential, server-side CSP, CSRF and OAuth grant persistence.
 5. Actual Render server deployment would consume free instance hours and can cause charges if account has payment method and bandwidth/build quota is exceeded. No web service has been created.
@@ -54,7 +54,14 @@
 7. Add the new Render OAuth hostname to Firebase Authentication > Authorized domains. Current user account must remain unchanged.
 8. After production HTTPS testing, register custom MCP plugin in ChatGPT web if account has appropriate access and verify on iPhone before considering the feature complete.
 
-## Test commands (when dependencies are available)
+## Verified CI result
+
+- [GitHub Actions run #6 — 37 passed, 0 failed](https://github.com/ccucle/frame7-nav/actions/runs/45202274989)
+- Public repository on standard GitHub-hosted runners. No credentials, real user records or paid services were used.
+- Tests include the actual MCP SDK processing an authenticated synthetic `initialize`, `tools/list`, and `tools/call` exchange.
+- **Do not** infer Google login success, mobile ChatGPT plugin support or production security from this test suite.
+
+## Test commands
 
 ```bash
 cd formday-connect
