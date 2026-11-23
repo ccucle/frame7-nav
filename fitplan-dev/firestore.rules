@@ -1,0 +1,71 @@
+// FORMDAY candidate Firestore rules. NOT DEPLOYED.
+// Keep production deny-all until emulator tests pass.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    function profileValid() {
+      return request.resource.data.keys().hasAll(['app','schemaVersion','revision','settings','demo','favoriteFoodIds','eventCount','foodCount','occurrenceCount','exclusionCount'])
+        && request.resource.data.keys().hasOnly(['app','schemaVersion','revision','settings','demo','favoriteFoodIds','eventCount','foodCount','occurrenceCount'])
+        && request.resource.data.app == 'formday'
+        && request.resource.data.schemaVersion == 3
+        && request.resource.data.revision is string
+        && request.resource.data.settings is map
+        && request.resource.data.favoriteFoodIds is list
+        && request.resource.data.demo is bool
+        && request.resource.data.eventCount is int && request.resource.data.eventCount >= 0
+        && request.resource.data.foodCount is int && request.resource.data.foodCount >= 0
+        && request.resource.data.occurrenceCount is int && request.resource.data.occurrenceCount >= 0
+        && request.resource.data.exclusionCount is int && request.resource.data.exclusionCount >= 0;
+    }
+    function orderedDataValid(name) {
+      return request.resource.data.keys().hasAll(['order',name])
+        && request.resource.data.keys().hasOnly(['order',name])
+        && request.resource.data.order is int && request.resource.data.order >= 0
+        && request.resource.data[name] is map;
+    }
+    function occurrenceValid() {
+      return request.resource.data.keys().hasAll(['order','eventId','date','snapshot'])
+        && request.resource.data.keys().hasOnly(['order','eventId','date','snapshot'])
+        && request.resource.data.order is int && request.resource.data.order >= 0
+        && request.resource.data.eventId is string && request.resource.data.date is string
+        && request.resource.data.snapshot is map;
+    }
+    function exclusionValid() {
+      return request.resource.data.keys().hasAll(['eventId','date'])
+        && request.resource.data.keys().hasOnly(['eventId','date'])
+        && request.resource.data.eventId is string && request.resource.data.date is string;
+    }
+    match /users/{uid} {
+      allow read, write: if false;
+      match /profile/{docId} {
+        allow get: if owner(uid) && docId == 'current';
+        allow list: if false;
+        allow create, update: if owner(uid) && docId == 'current' && profileValid();
+        allow delete: if false;
+      }
+      match /events/{docId} {
+        allow read: if owner(uid);
+        allow create, update: if owner(uid) && orderedDataValid('event');
+        allow delete: if false;
+      }
+      match /occurrences/{docId} {
+        allow read: if owner(uid);
+        allow create, update: if owner(uid) && occurrenceValid();
+        allow delete: if false;
+      }
+      match /exclusions/{docId} {
+        allow read: if owner(uid);
+        allow create, update: if owner(uid) && exclusionValid();
+        allow delete: if false;
+      }
+      match /foods/{docId} {
+        allow read: if owner(uid);
+        allow create, update: if owner(uid) && orderedDataValid('food');
+        allow delete: if false;
+      }
+    }
+  }
+}
