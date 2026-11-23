@@ -161,3 +161,22 @@ test("no volatile OAuth token storage and no insecure origin",()=>{
  assert.ok(oauth);
  assert.throws(()=>createOAuthCore({origin:"http://local.example"}),/HTTPS/);
 });
+
+test('refresh rejects a different resource before consuming the token',async()=>{
+ const {oauth}=fixture();
+ const code=await authorize(oauth);
+ const tokens=await oauth.exchangeCode({grant_type:'authorization_code',code,
+  client_id:CLIENT,redirect_uri:CALLBACK,resource:ORIGIN+'/mcp',code_verifier:VERIFIER});
+ await assert.rejects(oauth.refresh({grant_type:'refresh_token',refresh_token:tokens.refresh_token,
+  client_id:CLIENT,resource:'https://other.example/mcp'}));
+ assert.ok((await oauth.refresh({grant_type:'refresh_token',refresh_token:tokens.refresh_token,
+  client_id:CLIENT,resource:ORIGIN+'/mcp'})).access_token);
+});
+
+test('refresh cannot request write scope',async()=>{
+ const {oauth}=fixture();const code=await authorize(oauth);
+ const tokens=await oauth.exchangeCode({grant_type:'authorization_code',code,
+  client_id:CLIENT,redirect_uri:CALLBACK,resource:ORIGIN+'/mcp',code_verifier:VERIFIER});
+ await assert.rejects(oauth.refresh({grant_type:'refresh_token',refresh_token:tokens.refresh_token,
+  client_id:CLIENT,scope:'formday:write'}));
+});

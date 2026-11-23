@@ -3,7 +3,7 @@
  * The user must click the explicit approval button; no auto consent.
  */
 import {initializeApp} from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
-import {getAuth,GoogleAuthProvider,signInWithPopup}
+import {initializeAuth,inMemoryPersistence,browserPopupRedirectResolver,GoogleAuthProvider,signInWithPopup,signOut}
  from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
 
 const firebaseConfig={
@@ -25,7 +25,8 @@ if(!/^[A-Za-z0-9_-]{40,128}$/.test(csrf||"")){
 }else{
  try{
   const app=initializeApp(firebaseConfig,"formday-connect-oauth");
-  auth=getAuth(app);
+  auth=initializeAuth(app,{persistence:inMemoryPersistence,
+   popupRedirectResolver:browserPopupRedirectResolver});
  }catch(e){button.disabled=true;explain("Google 로그인 초기화에 실패했습니다.",true);}
 }
 button?.addEventListener("click",()=>{
@@ -56,8 +57,9 @@ button?.addEventListener("click",()=>{
   if(callback.protocol!=="https:"||callback.hostname!=="chatgpt.com")
    throw Error("승인된 ChatGPT 복귀 주소가 아닙니다");
   explain("읽기 권한을 승인했습니다. ChatGPT로 돌아갑니다.");
+  await signOut(auth);
   window.location.assign(callback.href);
  }).catch(()=>{
-  explain("Google 인증을 완료하지 못했습니다. 기록이나 Google 계정은 변경되지 않았습니다.",true);
- }).finally(()=>{busy=false;button.disabled=false;});
+  explain("Google 인증을 완료하지 못했습니다. ChatGPT에서 다시 연결해 주세요.",true);
+ }).finally(async()=>{await signOut(auth).catch(()=>{});busy=false;button.disabled=false;});
 });

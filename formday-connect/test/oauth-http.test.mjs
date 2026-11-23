@@ -75,3 +75,20 @@ test("token endpoint delegates code exchange and hides errors",async()=>{
  assert.equal((await response.json()).token_type,"Bearer");
  assert.equal(core.counts().issued,1);
 });
+
+test('consent CSP permits only the configured Firebase auth iframe',async()=>{
+ const handle=createOauthHttpRoutes({core:fakeCore(),origin:base,consentScript:'a'.repeat(200)});
+ const result=await handle(req('/oauth/consent',{headers:{cookie:'fd_oauth_flow='+secret+'; fd_oauth_csrf='+csrf}}));
+ assert.match(result.headers.get('content-security-policy'),/frame-src https:\/\/healthy-df79f\.firebaseapp\.com/);
+});
+
+test('authorization and consent failures never expose internal exception text',async()=>{
+ const core=fakeCore();
+ core.begin=core.approve=async()=>{throw Error('PRIVATE_CREDENTIAL_SENTINEL');};
+ const handle=createOauthHttpRoutes({core,origin:base,consentScript:'a'.repeat(200)});
+ const begin=await handle(req('/oauth/authorize'));
+ assert.doesNotMatch(await begin.text(),/PRIVATE_CREDENTIAL/);
+ const complete=await handle(req('/oauth/complete',{method:'POST',headers:{origin:base,
+  cookie:'fd_oauth_flow='+secret+'; fd_oauth_csrf='+csrf},body:JSON.stringify({csrf,approved:true})}));
+ assert.doesNotMatch(await complete.text(),/PRIVATE_CREDENTIAL/);
+});

@@ -19,14 +19,17 @@ jobs:
   unit-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 7
+    strategy:
+      matrix:
+        node: ['22', '24']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node }}
       - name: Install test dependencies (no scripts, no credentials)
         working-directory: formday-connect
-        run: npm install --ignore-scripts --no-audit --no-fund --no-package-lock
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run unit and security tests
         working-directory: formday-connect
         run: npm test

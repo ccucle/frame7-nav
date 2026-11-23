@@ -29,7 +29,9 @@ export function createFirebaseRefresh({apiKey,fetchImpl=fetch}={}){
   if(typeof result.id_token!=="string"||result.id_token.length<150||
      typeof result.refresh_token!=="string"||result.refresh_token.length<20||
      typeof result.user_id!=="string"||!/^[A-Za-z0-9_-]{6,128}$/.test(result.user_id)||
-     (result.project_id&&result.project_id!=="healthy-df79f"))
+     // Secure Token responses use the project number; ID-token aud/iss are
+     // verified independently against the textual project ID by the caller.
+     (result.project_id!=="188014722362"&&result.project_id!=="healthy-df79f"))
    throw Error("Firebase token response did not match the configured project");
   return {idToken:result.id_token,refreshToken:result.refresh_token,userId:result.user_id};
  };

@@ -11,7 +11,8 @@ const CIMD=/^https:\/\/chatgpt\.com\/oauth\/(?:client\.json|[A-Za-z0-9_-]{1,128}
 const CODE_TTL=2*60*1000, FLOW_TTL=5*60*1000,ACCESS_TTL=30*60*1000;
 const REFRESH_TTL=30*86400000;
 const OPAQUE=/^[A-Za-z0-9_-]{40,128}$/;
-const PKCE=/^[A-Za-z0-9_-]{43,128}$/;
+const PKCE=/^[A-Za-z0-9._~-]{43,128}$/;
+const CHALLENGE=/^[A-Za-z0-9_-]{43}$/;
 
 function err(message){throw new Error(message);}
 function check(ok,message){if(!ok)err(message);}
@@ -27,12 +28,14 @@ function str(value,min,max){
 }
 function validateOrigin(origin){
  const u=new URL(origin);
- check(u.protocol==="https:"&&u.pathname==="/"&&u.search===""&&u.hash==="","HTTPS origin required");
+ check(u.protocol==="https:"&&u.pathname==="/"&&u.search===""&&u.hash===""&&
+  !u.username&&!u.password,"HTTPS origin required");
  return u.origin;
 }
 function expectedRedirect(clientId,redirect){
  const u=new URL(redirect);
- check(u.protocol==="https:"&&u.hostname==="chatgpt.com"&&!u.port&&!u.search&&!u.hash,
+ check(u.protocol==="https:"&&u.hostname==="chatgpt.com"&&!u.port&&!u.search&&!u.hash&&
+   !u.username&&!u.password,
    "Callback must be an exact ChatGPT HTTPS URL");
  if(clientId==="https://chatgpt.com/oauth/client.json")
   check(u.pathname==="/connector_platform_oauth_redirect","Wrong stable ChatGPT callback");
@@ -47,7 +50,7 @@ function validateAuthParams(params,origin){
  check(str(clientId,35,250)&&CIMD.test(clientId),"Unrecognized ChatGPT CIMD client");
  check(str(redirect,25,300),"Missing redirect URI");
  expectedRedirect(clientId,redirect);
- check(params?.code_challenge_method==="S256"&&PKCE.test(params?.code_challenge||""),
+ check(params?.code_challenge_method==="S256"&&CHALLENGE.test(params?.code_challenge||""),
    "PKCE S256 required");
  const resource=origin+RESOURCE_PATH;
  check(params?.resource===resource,"Incorrect protected resource");
@@ -191,6 +194,10 @@ export function createOAuthCore({
   const grant=await store.getGrant(record.grantId);
   check(grant&&grant.expiresAt>now()&&grant.clientId===clientId,
     "Refresh token not valid for this OAuth client");
+  check(params.resource===undefined||params.resource===grant.resource,
+    "Refresh resource mismatch");
+  check(params.scope===undefined||params.scope===grant.scope,
+    "Refresh scope mismatch");
   // An invalid client must not consume the rightful client's refresh token.
   const consumed=await store.takeRefresh(key);
   check(consumed&&consumed.grantId===record.grantId,

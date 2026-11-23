@@ -1,9 +1,9 @@
 node_modules/
 .env
-.env.local
 .env.*
 !.env.example
 service-account*.json
 firebase-admin*.json
 *.pem
 *.key
+*.log
