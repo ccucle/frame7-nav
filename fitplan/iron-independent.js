@@ -520,6 +520,14 @@
     if(event.key!==M.KEY&&event.key!==null)return;
     revisionConflict=true;setMessage('다른 탭에서 독립 웨이트 기록을 변경했습니다. 충돌을 피하려면 최신 기록을 불러오세요.',true);render();
   });
+  document.addEventListener('visibilitychange',()=>{
+    // A phone call or app switch must not count hidden time as exercise time.
+    const s=current();
+    if(document.hidden&&s?.status==='ACTIVE'&&!blocked&&!revisionConflict){
+      try{state=store.save(M.changeState(state,s.id,'pause').next,state.revision);}
+      catch(e){setMessage('화면 전환 중 저장에 실패했습니다. '+e.message,true);}
+    } else if(!document.hidden&&document.body.dataset.fdScreen==='independent')render();
+  });
   root.addEventListener('pagehide',()=>{
     const s=current();
     if(s?.status==='ACTIVE'&&!blocked&&!revisionConflict){
