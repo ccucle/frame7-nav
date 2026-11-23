@@ -1,6 +1,7 @@
 (function () {
   'use strict';
   const C = globalThis.FormdayCore, W = globalThis.FormdayWorkouts, N = globalThis.FormdayNutrition, M = globalThis.FormdayMeals;
+  const F = globalThis.FormdayCloud, A = globalThis.FormdayAccounts;
   const { TYPES, DAYS } = globalThis.FormdayData;
   const $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s));
   const z = n => String(n).padStart(2, '0'), iso = C.iso, dateOf = C.dateOf, moveDay = C.shiftDate, uid = C.uid;
@@ -10,8 +11,8 @@
   const styl = type => { const t = TYPES[type]; return `--c:${t.color};--soft:${t.soft};--txt:${t.text}`; };
   let now = new Date(), today = iso(now), toastTimer, undoState = null, modalController = null, modalDirty = false, priorFocus = null;
   let storageAccessError = '';
-  let persistence;
-  try { persistence = C.makeStore(window.localStorage); }
+  let persistence, browserStorage = null, cloud = null, activeAccount = null;
+  try { browserStorage = window.localStorage; persistence = C.makeStore(browserStorage); }
   catch (error) { storageAccessError = '이 브라우저의 저장 공간에 접근할 수 없습니다.'; persistence = C.makeStore({getItem(){throw error;}, setItem(){throw error;}}); }
   const loaded = persistence.load();
   let blockedLoad = loaded.error || storageAccessError, corruptRaw = loaded.raw;
@@ -19,6 +20,66 @@
   let view = 'month', cursor = dateOf(today), selected = today, visibleTypes = new Set(Object.keys(TYPES)), searchTerm = '';
   let externalChange = false;
   let catalogPromise = null;
+
+  function cloudStatus() {
+    return cloud ? cloud.status() : {available:false,loading:false,user:null,active:false,dirty:false,syncing:false,conflict:false,error:'',lastSyncedAt:null,selectionRequired:false,localCount:data.events.length,remoteCount:0};
+  }
+  function accountStorageMessage() {
+    const s=cloudStatus();
+    if(s.active && s.user){
+      if(s.conflict)return `${s.user.username} · 기기 간 기록이 달라 확인이 필요합니다. 계정 메뉴에서 사용할 기록을 선택하세요.`;
+      if(s.error)return `${s.user.username} · 이 기기에 기록을 보관 중입니다. ${s.error}`;
+      if(s.syncing)return `${s.user.username} · 이 기기에 저장됨 · 계정과 동기화 중`;
+      if(s.dirty)return `${s.user.username} · 이 기기에 저장됨 · 계정에 전송 대기 중`;
+      return `${s.user.username} · 계정 기록을 사용 중입니다. 다른 기기의 변경은 ‘지금 동기화’로 확인할 수 있습니다.`;
+    }
+    if(s.user)return '브라우저 기록을 보고 있습니다 · 계정 메뉴에서 사용할 기록을 선택해 주세요.';
+    if(s.available===false)return '이 브라우저에 저장됩니다 · 계정 저장 연결은 준비 중입니다.';
+    return '이 브라우저에 저장됩니다 · 로그인 후 계정 기록과 동기화할 수 있습니다.';
+  }
+  function renderAccountControls(status=cloudStatus()) {
+    const button=$('#account-btn');
+    if(button)button.textContent=status.active&&status.user?`◉ ${status.user.username}`:status.user?'계정 기록 선택':'계정 · 동기화';
+    const note=$('#account-storage-note');
+    if(note)note.textContent=status.active?'계정 기록은 이 기기에 보관한 뒤 서버와 동기화합니다. AI와 Google Calendar 연동은 별도 확장 기능입니다.':'현재 브라우저 기록은 계정 기록과 분리됩니다. 로그인 후 옮길 기록을 선택할 수 있습니다. AI와 Google Calendar 연동은 별도 확장 기능입니다.';
+    if($('#account-editor'))modalController?.update?.(status);
+  }
+  function resetAccountView() {
+    undoState=null;externalChange=false;searchTerm='';$('#calendar-search').value='';
+    visibleTypes=new Set(Object.keys(TYPES));selected=today;cursor=dateOf(today);
+  }
+  function initializeCloud() {
+    if(!F || !browserStorage){renderAccountControls();return;}
+    try{
+      cloud=F.create({core:C,storage:browserStorage,fetch:(...args)=>fetch(...args),getLocal:()=>C.clone(data),
+        canSwitch:()=>!blockedLoad&&(!$('#modal-root').children.length||!!$('#account-editor')),
+        onActivate({user,store,state}){
+          persistence=store;data=C.normalizeState(state);activeAccount=user;
+          blockedLoad='';corruptRaw=null;resetAccountView();render();
+        },
+        onGuest(){
+          persistence=C.makeStore(browserStorage);const guest=persistence.load();
+          data=guest.data||C.normalizeState({events:guest.error?[]:buildSample(),settings:{...defaults},demo:!guest.error});
+          activeAccount=null;blockedLoad=guest.error||'';corruptRaw=guest.raw;resetAccountView();render();
+        },
+        onStatus(status){
+          renderAccountControls(status);
+          if(!blockedLoad&&!externalChange)showStorageState();
+        }
+      });
+      cloud.init().catch(()=>{renderAccountControls();});
+    }catch(error){cloud=null;renderAccountControls();}
+  }
+  function openAccount() {
+    if(!A || !cloud){
+      modal('계정과 동기화','<div class="hint-box">계정 저장을 아직 사용할 수 없습니다. 현재 브라우저 기록은 그대로 유지됩니다.</div>','<button class="btn btn-primary" id="account-close">닫기</button>');
+      $('#account-close').onclick=()=>closeModal();return;
+    }
+    modal('계정과 동기화','<div id="account-editor"></div>','<button class="btn btn-outline" id="account-close">닫기</button>');
+    $('.modal').classList.add('modal-account');
+    modalController=A.mount($('#account-editor'),{cloud,onExport:exportAccountData,onChange(){modalDirty=true;}});
+    $('#account-close').onclick=()=>closeModal();modalDirty=false;
+  }
 
   function loadCatalog() {
     if (!catalogPromise) {
@@ -69,7 +130,9 @@
       const saved = persistence.save(next, data.revision || '', options?.recovery ? {expectedRaw:corruptRaw} : undefined);
       data = saved; undoState = options?.recovery ? null : before;
       blockedLoad = ''; externalChange = false; corruptRaw = null;
-      render(); if (message) toast(message); return true;
+      render(); if (message) toast(message);
+      try { cloud?.afterLocalSave(saved); } catch(error) { toast('이 기기에 저장했습니다. 계정 동기화 상태를 확인해 주세요.',true); }
+      return true;
     } catch (error) {
       if (error.code === 'STORAGE_CONFLICT') externalChange = true;
       showStorageState(error.message || '저장하지 못했습니다. 입력 내용은 이 창에 유지됩니다.', true);
@@ -79,9 +142,10 @@
   function showStorageState(message, error) {
     const node = $('#storage-status');
     node.classList.toggle('storage-error', !!error);
-    node.innerHTML = `<span>${esc(message || '이 브라우저에 저장됩니다 · 기기 간 동기화는 준비 중입니다.')}</span>${blockedLoad?'<button class="btn btn-small btn-outline" id="export-raw">원본 내보내기</button>':''}${externalChange?'<button class="btn btn-small btn-outline" id="reload-records">최신 기록 불러오기</button>':''}`;
+    node.innerHTML = `<span>${esc(message || accountStorageMessage())}</span>${blockedLoad?'<button class="btn btn-small btn-outline" id="export-raw">원본 내보내기</button>':''}${externalChange?'<button class="btn btn-small btn-outline" id="reload-records">최신 기록 불러오기</button>':''}`;
     $('#export-raw')?.addEventListener('click',()=>downloadText(corruptRaw || '', 'formday-original-backup.txt', 'text/plain'));
     $('#reload-records')?.addEventListener('click',loadLatest);
+    renderAccountControls();
   }
   function loadLatest() {
     if (modalDirty && !confirm('입력 중인 변경을 취소하고 다른 탭의 최신 기록을 불러올까요?')) return;
@@ -194,7 +258,11 @@
   }
 
   function closeModal(force=false) {
-    if(!force && modalDirty && !confirm('저장하지 않은 변경을 취소할까요?'))return false;
+    const accountDraft=$('#account-editor')&&modalController?.draft?.();
+    if(!force&&accountDraft?.pending){toast('계정 요청이 끝난 뒤 닫아 주세요.');return false;}
+    const dirty=typeof modalController?.isDirty==='function'?modalController.isDirty():modalDirty;
+    const closeQuestion=accountDraft?.recoveryPending?'복구 코드는 이 화면을 닫으면 다시 볼 수 없습니다. 안전하게 보관하기 전에 닫을까요?':'저장하지 않은 변경을 취소할까요?';
+    if(!force && dirty && !confirm(closeQuestion))return false;
     modalController?.destroy();modalController=null;modalDirty=false;
     $('#modal-root').innerHTML='';$('.app').inert=false;$('.mobile-nav').inert=false;
     if(priorFocus?.isConnected)priorFocus.focus();priorFocus=null;return true;
@@ -339,14 +407,22 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
   }
   function exportData() {
     if(blockedLoad){downloadText(corruptRaw||'','formday-original-backup.txt','text/plain');return;}
-    const backup={app:'formday',version:C.VERSION,exportedAt:new Date().toISOString(),...C.clone(data)};
+    exportSnapshot(data);
+  }
+  function exportAccountData() {
+    if(blockedLoad){exportData();return;}
+    exportSnapshot(cloud?.getExportState?cloud.getExportState():data);
+  }
+  function exportSnapshot(state) {
+    const backup={app:'formday',version:C.VERSION,exportedAt:new Date().toISOString(),...C.normalizeState(state)};
     downloadText(JSON.stringify(backup,null,2),`formday-backup-${today}.json`);toast('기록 백업 파일 다운로드를 시작했습니다.');
   }
   async function importData(file) {
     try {
       if(file.size>16000000)throw new Error('백업 파일은 16MB 이하만 지원합니다.');
       const next=C.normalizeState(JSON.parse(await file.text()));
-      if(!confirm(`백업의 일정 ${next.events.length}개, 내 식품 ${next.customFoods.length}개와 목표를 가져올까요? 현재 기록을 대체하며, 이전 원본은 이 브라우저에 한 번 더 보관합니다.`))return;
+      const target=activeAccount?`${activeAccount.username} 계정의 이 기기 기록을 대체하고 서버에 동기화합니다.`:'현재 브라우저 기록을 대체합니다.';
+      if(!confirm(`백업의 일정 ${next.events.length}개, 내 식품 ${next.customFoods.length}개와 목표를 가져올까요? ${target} 이전 원본은 이 브라우저에 한 번 더 보관합니다.`))return;
       commit(next,'백업 기록을 복원했습니다.',{recovery:!!blockedLoad});
     }catch(error){toast('백업을 가져오지 않았습니다. '+(error.message||'파일 형식을 확인해 주세요.'),true);}
     finally{$('#import-file').value='';}
@@ -383,7 +459,7 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
         else (ds.mobile==='detail'?$('.rightbar'):$('#calendar-card')).scrollIntoView({block:'start',behavior:'smooth'});
       }
     });
-    $('#new-event').onclick=()=>openEvent();$('#new-meal').onclick=()=>openEvent({type:'meal'});$('#prev').onclick=()=>navigate(-1);$('#next').onclick=()=>navigate(1);
+    $('#new-event').onclick=()=>openEvent();$('#new-meal').onclick=()=>openEvent({type:'meal'});$('#account-btn').onclick=openAccount;$('#prev').onclick=()=>navigate(-1);$('#next').onclick=()=>navigate(1);
     $('#today').onclick=()=>{refreshToday();chooseDay(today);};
     $('#mini-prev').onclick=()=>{cursor=new Date(cursor.getFullYear(),cursor.getMonth()-1,1);render();};
     $('#mini-next').onclick=()=>{cursor=new Date(cursor.getFullYear(),cursor.getMonth()+1,1);render();};
@@ -427,12 +503,17 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
       if(e.key.toLowerCase()==='t'){e.preventDefault();refreshToday();chooseDay(today);}
     });
     window.addEventListener('storage',e=>{
-      if(e.key!==C.STORE&&e.key!==null)return;externalChange=true;
+      if(e.key!==null&&!(cloud?cloud.isActiveStorageKey(e.key):e.key===C.STORE))return;externalChange=true;
       showStorageState('다른 탭에서 기록이 변경됐습니다. 현재 입력을 확인한 뒤 최신 기록을 불러와 주세요.',true);
       $('#undo-btn').disabled=true;
     });
     window.addEventListener('focus',refreshToday);
+    window.addEventListener('beforeunload',e=>{
+      if($('#account-editor')&&modalController?.isDirty?.()){
+        e.preventDefault();e.returnValue='';
+      }
+    });
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshToday();});
   }
-  attach();render();
+  attach();render();initializeCloud();
 })();
