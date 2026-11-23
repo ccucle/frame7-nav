@@ -32,6 +32,11 @@ function show(message,problem=false){
   if(n){n.textContent=message;n.dataset.error=problem?'true':'false';}
 }
 function metadataKey(kind){return PREFIX+account.uid+':'+kind;}
+function ownerKey(kind){return PREFIX+'owner:'+kind;}
+function ownerConflict(kind){
+ const prev=localStorage.getItem(ownerKey(kind));
+ return !!(prev&&account&&prev!==account.uid&&local(kind).hasData);
+}
 function readMeta(kind){
   try{
     if(!account)return null;
@@ -45,7 +50,8 @@ function readMeta(kind){
 function saveMeta(kind,remoteRevision,localRevision){
   const obj={version:1,remoteRevision,localRevision,updatedAt:new Date().toISOString()};
   localStorage.setItem(metadataKey(kind),JSON.stringify(obj));
-  if(localStorage.getItem(metadataKey(kind))!==JSON.stringify(obj))
+  localStorage.setItem(ownerKey(kind),account.uid);
+  if(localStorage.getItem(metadataKey(kind))!==JSON.stringify(obj)||localStorage.getItem(ownerKey(kind))!==account.uid)
     throw Error('동기화 상태를 기기에 저장하지 못했습니다.');
 }
 function local(kind){
@@ -82,6 +88,7 @@ function cloudState(kind){
   if(s.issues)return '오류';
   if(!s.ready)return '서버 확인 중';
   try{
+    if(ownerConflict(kind))return 'account-mismatch';
     const l=local(kind);
     return P.decide({meta:readMeta(kind),local:l.hasData,localRevision:l.revision,
       remote:!!s.remote,remoteRevision:s.remote?.revision||''});
@@ -92,7 +99,8 @@ const names={
  'download':'기기에 클라우드 기록 적용 가능','review':'기기와 클라우드 기록이 모두 존재함',
  'push':'변경사항 서버 전송 대기','synced':'동기화 완료',
  'conflict':'양쪽 기록이 달라 자동 동기화 중단',
- 'server-missing':'서버 원본이 사라져 확인 필요'
+ 'server-missing':'서버 원본이 사라져 확인 필요',
+ 'account-mismatch':'다른 Google 계정의 로컬 기록이 남아 있음'
 };
 function actionLabel(value){
   return names[value]||value;
@@ -107,6 +115,7 @@ function slotView(kind){
  '<span class="fd-sync-state" data-state="'+safe(action)+'">'+safe(actionLabel(action))+'</span></div>'+
  '<p class="fd-sync-meta">'+safe(localState)+' · '+(hasRemote?'서버 기록 있음':'서버 기록 없음 또는 미확인')+'</p>'+
  (s.issues?'<p class="fd-sync-error">'+safe(s.issues)+'</p>':'')+
+ (action==='account-mismatch'?'<p class="fd-sync-error">이 브라우저에 다른 Google 계정으로 연결했던 기록이 있습니다. 계정이 다른 상태에서 동기화를 진행하지 않습니다. 기존 계정으로 다시 로그인하거나 백업 후 별도 이전 절차를 진행하세요.</p>':'')+
  (action==='first-upload'?'<p class="fd-sync-note">이 기기의 실제 기록을 처음 올릴 수 있습니다. 기존 JSON 백업을 먼저 보관하세요.</p>'+
   '<button type="button" data-sync-action="seed" data-kind="'+kind+'">이 기기 기록 최초 업로드</button>':'')+
  (action==='review'||action==='conflict'?'<p class="fd-sync-warning">양쪽에 다른 기록이 있습니다. 자동으로 합치거나 덮어쓰지 않습니다. 로컬 백업을 다운로드한 후 클라우드 기록을 선택할 수 있습니다.</p>'+
@@ -130,6 +139,7 @@ function readyToApply(kind){
 async function download(kind,interactive=false){
  const s=entry(kind);
  if(!writable()||s.working)return;
+ if(ownerConflict(kind)){show('기존 로컬 기록은 다른 Google 계정에 연결돼 있습니다. 원래 계정으로 로그인하거나 백업 후 계정을 분리해야 합니다.',true);return;}
  if(!readyToApply(kind)){show('현재 운동이나 입력창을 편집 중입니다. 먼저 기록을 저장·종료하고 다시 시도해 주세요.',true);return;}
  s.working=true;
  try{
@@ -175,6 +185,7 @@ async function download(kind,interactive=false){
 async function upload(kind,first=false){
  const s=entry(kind);
  if(!writable()||s.working||!s.ready)return;
+ if(ownerConflict(kind)){show('이 기기의 기록은 다른 Google 계정 소유로 표시돼 자동 전송하지 않았습니다.',true);return;}
  s.working=true;
  try{
   const l=local(kind),meta=readMeta(kind);
