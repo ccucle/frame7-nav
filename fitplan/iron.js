@@ -7,7 +7,7 @@
   const bridge=root.FormdayBridge;
   const core=root.FormdayCore, workouts=root.FormdayWorkouts, D=root.FormdayIronData;
   if(!node||!bridge||!core||!workouts||!D)return;
-  let screen='home',query='',muscle='전체',equipment='전체',selectedName='벤치프레스';
+  let screen='home',query='',muscle='전체',equipment='전체 장비',selectedName='벤치프레스';
   let pageSize=18,selectedWorkoutId=null,selectedExerciseIndex=0;
   let timerDuration=120,timerRemaining=120,timerDeadline=0,timerRunning=false;
   const $=s=>node.querySelector(s);
