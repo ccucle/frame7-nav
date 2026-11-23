@@ -35,7 +35,7 @@ function metadataKey(kind){return PREFIX+account.uid+':'+kind;}
 function ownerKey(kind){return PREFIX+'owner:'+kind;}
 function ownerConflict(kind){
  const prev=localStorage.getItem(ownerKey(kind));
- return !!(prev&&account&&prev!==account.uid&&local(kind).hasData);
+ return !!(prev&&account&&prev!==account.uid&&local(kind).hasStored);
 }
 function readMeta(kind){
   try{
@@ -61,7 +61,7 @@ function local(kind){
   const raw=localStorage.getItem(keys[kind]);
   const data=result.data;
   return {store,raw,data,hasData:P.isUserData(kind,data,raw!==null),
-    revision:data?.revision||''};
+    hasStored:raw!==null,revision:data?.revision||''};
 }
 function readRemote(snapshot){
   if(!snapshot.exists())return null;
@@ -90,7 +90,7 @@ function cloudState(kind){
   try{
     if(ownerConflict(kind))return 'account-mismatch';
     const l=local(kind);
-    return P.decide({meta:readMeta(kind),local:l.hasData,localRevision:l.revision,
+    return P.decide({meta:readMeta(kind),local:l.hasStored,localRevision:l.revision,
       remote:!!s.remote,remoteRevision:s.remote?.revision||''});
   }catch(e){s.issues=e.message;return '오류';}
 }
@@ -153,11 +153,11 @@ async function download(kind,interactive=false){
     return;
   }
   const l=local(kind),meta=readMeta(kind);
-  const action=P.decide({meta,local:l.hasData,localRevision:l.revision,remote:true,remoteRevision:remote.revision});
+  const action=P.decide({meta,local:l.hasStored,localRevision:l.revision,remote:true,remoteRevision:remote.revision});
   if(action!=='download'&&!(interactive&&(action==='review'||action==='conflict')))
     throw Error('기기나 서버의 기록이 바뀌었습니다. 다시 확인해 주세요.');
-  if(!interactive&&l.hasData&&!meta)throw Error('이 기기에 실제 기록이 있어 자동으로 교체하지 않았습니다.');
-  if(interactive&&l.hasData){
+  if(!interactive&&l.hasStored&&!meta)throw Error('이 기기에 저장된 기록이 있어 자동으로 교체하지 않았습니다.');
+  if(interactive&&l.hasStored){
     if(!window.confirm('이 기기의 현재 기록이 클라우드 기록으로 교체됩니다. 기존 기록은 기기에 별도 복구 사본을 만든 후 진행합니다. JSON 파일도 백업했는지 확인해 주세요. 계속할까요?'))return;
   }
   if(!readyToApply(kind))throw Error('클라우드 자료를 확인하는 동안 운동이나 입력 편집이 시작됐습니다. 기록을 보존하기 위해 적용을 중단했습니다.');
@@ -271,7 +271,7 @@ function login(user){
 function backup(kind){
  try{
   const l=local(kind);
-  if(!l.hasData)throw Error('다운로드할 실제 기록이 없습니다.');
+  if(!l.hasStored)throw Error('다운로드할 저장 기록이 없습니다.');
   const content=JSON.stringify({app:'FORMDAY-cloud-manual-backup',kind,exportedAt:new Date().toISOString(),data:l.data},null,2);
   const file=new Blob([content],{type:'application/json;charset=utf-8'});
   const url=URL.createObjectURL(file);
