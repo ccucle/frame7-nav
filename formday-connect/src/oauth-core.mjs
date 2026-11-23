@@ -52,7 +52,9 @@ function validateAuthParams(params,origin){
  const resource=origin+RESOURCE_PATH;
  check(params?.resource===resource,"Incorrect protected resource");
  const scopes=String(params?.scope||"").split(/\s+/).filter(Boolean);
- check(scopes.length===1&&scopes[0]===READ_SCOPE,"Read-only scope required");
+ check(scopes.includes(READ_SCOPE)&&scopes.length<=2&&
+  scopes.every(x=>x===READ_SCOPE||x==="offline_access")&&
+  new Set(scopes).size===scopes.length,"Read-only scope required");
  const state=params?.state||"";
  check(str(state,16,512),"CSRF state required");
  return {clientId,redirect,challenge:params.code_challenge,resource,scope:READ_SCOPE,state};
@@ -97,7 +99,7 @@ export function makeOauthMetadata(origin){
   code_challenge_methods_supported:["S256"],
   token_endpoint_auth_methods_supported:["none"],
   client_id_metadata_document_supported:true,
-  scopes_supported:[READ_SCOPE],
+  scopes_supported:[READ_SCOPE,"offline_access"],
   authorization_response_iss_parameter_supported:false
  });
 }

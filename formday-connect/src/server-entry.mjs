@@ -78,5 +78,5 @@ const {origin,app}=configure();
 const port=Number(process.env.PORT||3000);
 if(!Number.isInteger(port)||port<1||port>65535)throw Error("Invalid port");
 const server=createServer((req,res)=>{void handleRequest(req,res,origin,app);});
-server.requestTimeout=25000;server.headersTimeout=26000;
+server.requestTimeout=25000;server.headersTimeout=20000;
 server.listen(port,"0.0.0.0");

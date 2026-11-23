@@ -30,7 +30,7 @@ export function buildReadOnlyServer(dispatch){
  for(const [name,inputSchema] of Object.entries(schemas)){
   server.registerTool(name,{
    title:name.replace(/^formday_/,"FORMDAY · "),
-   description:descriptions[name],inputSchema,
+   description:descriptions[name],inputSchema:z.object(inputSchema),
    annotations:{readOnlyHint:true,destructiveHint:false,
     idempotentHint:true,openWorldHint:false}
   },async(args)=>{
