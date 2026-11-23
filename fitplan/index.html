@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="backup.css?v=0.3.1">
 <link rel="stylesheet" href="cloud-auth.css?v=0.3.2">
 <link rel="stylesheet" href="iron.css?v=0.4.0">
+<link rel="stylesheet" href="iron-independent.css?v=0.5.0">
 <link rel="icon" href="data:,">
 </head>
 <body>
@@ -22,14 +23,17 @@
     <div class="side-caption">IRON MODE / TRAINING</div>
     <nav class="fd-main-nav" aria-label="퍼포먼스 네비게이션">
       <button type="button" data-fd-route="home" class="fd-route fd-current"><span>⌂</span> 대시보드</button>
-      <button type="button" data-fd-route="session" class="fd-route"><span>◉</span> 운동 실행</button>
+      <button type="button" data-ind-nav="start" class="fd-route"><span>◉</span> 운동 시작</button>
+      <button type="button" data-ind-nav="routines" class="fd-route"><span>▤</span> 내 루틴</button>
+      <button type="button" data-ind-nav="programs" class="fd-route"><span>◎</span> 프로그램</button>
+      <button type="button" data-ind-nav="history" class="fd-route"><span>▦</span> 운동 기록</button>
       <button type="button" data-fd-route="library" class="fd-route"><span>▧</span> 운동 도감</button>
       <button type="button" data-fd-route="analysis" class="fd-route"><span>▥</span> 운동 성과</button>
     </nav>
     <div class="side-caption">WORKSPACE / 기록</div>
     <nav>
       <button class="nav-button active" data-go="calendar"><span class="nav-symbol">▦</span> 통합 캘린더</button>
-      <button class="nav-button" data-go="strength"><span class="nav-symbol">🏋</span> 웨이트 기록</button>
+      <button class="nav-button" data-go="strength"><span class="nav-symbol">🏋</span> 이전 웨이트 기록</button>
       <button class="nav-button" data-go="cardio"><span class="nav-symbol">◈</span> 유산소 관리</button>
       <button class="nav-button" data-go="meal"><span class="nav-symbol">♧</span> 식단 · 영양</button>
       <button class="nav-button" data-go="weight"><span class="nav-symbol">↗</span> 체중 추적</button>
@@ -41,18 +45,20 @@
   </aside>
   <main class="main" id="main-content">
     <div class="toprow">
-      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.4.0</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
+      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.5.0</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
       <div class="header-actions"><button class="btn btn-outline" id="fd-account-btn" type="button" disabled title="Google 로그인 준비 중">👤 Google 로그인</button><button class="btn btn-outline" id="cloud-backup">☁ 무료 백업</button><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-outline meal-quick" id="new-meal">＋ 식단 기록</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
     </div>
     <div id="storage-status" class="storage-status" role="status"></div>
     <div id="demo-banner" class="demo-banner hide"><span>✳ 현재 표시된 운동·식단·체중은 <b>체험용 샘플</b>입니다. 실제 개인 기록이 아닙니다.</span><button id="clear-demo">샘플 지우기</button></div>
     <div id="fd-iron-root" class="fd-iron-root" aria-label="훈련 대시보드 및 운동 도감"></div>
+    <div id="fd-ind-root" class="fd-ind-root" aria-label="독립 웨이트 루틴 및 운동 세션"></div>
     <section class="stats" aria-label="선택한 날짜 요약">
       <div class="stat"><div class="stat-label">운동 완료 <span class="stat-icon">🏋</span></div><div class="stat-number" id="stat-workout">0 / 0</div><div class="stat-note">선택 날짜의 운동 계획</div></div>
       <div class="stat"><div class="stat-label">식단 섭취 열량 <span class="stat-icon">🥗</span></div><div class="stat-number" id="stat-kcal">0 <small style="font-size:11px;color:#92a2a2">kcal</small></div><div class="stat-note" id="stat-kcal-note">기록된 식단 기준</div></div>
       <div class="stat"><div class="stat-label">단백질 <span class="stat-icon">🥚</span></div><div class="stat-number" id="stat-protein">0 <small style="font-size:11px;color:#92a2a2">g</small></div><div class="stat-note" id="stat-protein-note">목표 대비 분석</div></div>
       <div class="stat"><div class="stat-label">최근 체중 <span class="stat-icon">⚖</span></div><div class="stat-number" id="stat-weight">—</div><div class="stat-note" id="stat-weight-note">기록을 추가해보세요</div></div>
     </section>
+    <section class="fi-calendar-summary" id="fd-iron-calendar" aria-label="IRON MODE 완료한 웨이트 기록" hidden></section>
     <section class="card" id="calendar-card">
       <div class="calendar-toolbar">
         <div class="toolbar-top">
@@ -78,10 +84,10 @@
 </div>
 <div class="mobile-nav">
   <button data-fd-route="home" class="fd-current"><b>⌂</b>홈</button>
-  <button data-fd-route="session"><b>◉</b>운동</button>
-  <button data-fd-route="library"><b>▧</b>도감</button>
+  <button data-ind-nav="start"><b>◉</b>운동</button>
+  <button data-ind-nav="routines"><b>▤</b>루틴</button>
   <button data-fd-route="calendar"><b>▦</b>캘린더</button>
-  <button data-mobile="add"><b>⊕</b>추가</button>
+  <button data-fd-route="library"><b>▧</b>도감</button>
 </div>
 <dialog class="fd-account-dialog" id="fd-account-dialog" aria-labelledby="fd-account-title">
   <header class="fd-account-head"><div><h2 id="fd-account-title">FORMDAY · Google 계정 확인</h2><p>계정 로그인 시범 연결입니다. 기록 동기화는 아직 활성화하지 않았습니다.</p></div><button class="fd-account-close" id="fd-account-close" type="button" aria-label="닫기">×</button></header>
@@ -101,6 +107,8 @@
 <script defer src="backup.js?v=0.3.1"></script>
 <script defer src="iron-data.js?v=0.4.0"></script>
 <script defer src="iron.js?v=0.4.0"></script>
+<script defer src="iron-store.js?v=0.5.0"></script>
+<script defer src="iron-independent.js?v=0.5.0"></script>
 <script type="module" src="cloud-auth.js?v=0.3.2"></script>
 </body>
 </html>

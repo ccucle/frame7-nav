@@ -259,13 +259,13 @@
     const effective=recurring&&scope==='occurrence'?C.occurrence(event,date):event;
     if(recurring&&!effective){toast('이 날짜의 일정이 없습니다.',true);return;}
     const [hour,minute]=start.split(':').map(Number),endMinute=Math.min(1439,hour*60+minute+60);
-    const item=effective?C.clone(effective):{id:uid(),date,start,end:`${z(Math.floor(endMinute/60))}:${z(endMinute%60)}`,type:type||'strength',title:'',repeat:'none',repeatUntil:null,completed:false,detail:initialDetail||{},isSample:false};
+    const item=effective?C.clone(effective):{id:uid(),date,start,end:`${z(Math.floor(endMinute/60))}:${z(endMinute%60)}`,type:type||'cardio',title:'',repeat:'none',repeatUntil:null,completed:false,detail:initialDetail||{},isSample:false};
     let currentType=item.type;
     if(currentType==='strength')item.detail=W.normalize(item.detail,item.completed);
     const titleLabel=recurring?(scope==='series'?'반복 기본 계획 수정':'이 날짜 기록 수정'):(edit?'일정 수정':'새 일정 등록');
     const repeatNote=recurring?'이 날짜 기록은 다른 날짜와 별도로 저장됩니다. 반복 기본 계획을 수정해도 이미 저장된 날짜별 기록은 유지됩니다.':'';
     const completionLabel=()=>currentType==='strength'?'모든 세트 완료':currentType==='meal'?'식사 완료':currentType==='weight'?'측정 완료':'운동 완료';
-    const controls=`${recurring?`<div class="repeat-scope">${selectField('적용 범위','f-scope',[['occurrence','이 날짜만'],['series','반복 기본 계획']],scope)}<p>${esc(repeatNote)}</p></div>`:''}<div class="type-choices" id="type-choices">${Object.entries(TYPES).map(([key,t])=>`<button class="type-choice ${key===currentType?'active':''}" style="${styl(key)}" data-pick="${key}" ${recurring?'disabled':''}><b>${t.emoji}</b>${t.name}</button>`).join('')}</div><div class="fields"><div class="field full"><label for="f-title">일정 제목</label><input id="f-title" value="${esc(item.title)}" placeholder="예: 상체 운동" maxlength="160"></div>${field(recurring?(scope==='series'?'반복 시작일':'기록 날짜'):'날짜','f-date','date',recurring&&scope==='series'?event.date:date,recurring?'disabled':'required')}${selectField('반복 일정','f-repeat',[['none','반복 안 함'],['daily','매일'],['weekly','매주 같은 요일']],item.repeat,recurring?'disabled':'')}${field('시작 시간','f-start','time',item.start,'required')}${field('종료 시간','f-end','time',item.end,'required')}<div id="until-field" class="field full ${item.repeat==='none'?'hide':''}"><label for="f-until">반복 종료일 · 선택</label><input id="f-until" type="date" value="${esc(event?.repeatUntil||'')}" ${recurring&&scope==='occurrence'?'disabled':''}></div></div><div class="separator"></div><div id="dynamic-details"></div><div class="separator"></div><label class="checkline ${recurring&&scope==='series'?'hide':''}"><input type="checkbox" id="f-completed" ${item.completed?'checked':''}><span id="completion-label">${completionLabel()}</span></label>${recurring&&scope==='series'?'<p class="helper">반복 기본 계획은 아직 기록하지 않은 날짜에 적용됩니다. 실제 수행·섭취·측정은 “이 날짜만”에서 기록하세요.</p>':''}`;
+    const controls=`${recurring?`<div class="repeat-scope">${selectField('적용 범위','f-scope',[['occurrence','이 날짜만'],['series','반복 기본 계획']],scope)}<p>${esc(repeatNote)}</p></div>`:''}<div class="type-choices" id="type-choices">${Object.entries(TYPES).filter(([key])=>key!=='strength'||edit).map(([key,t])=>`<button class="type-choice ${key===currentType?'active':''}" style="${styl(key)}" data-pick="${key}" ${recurring?'disabled':''}><b>${t.emoji}</b>${t.name}</button>`).join('')}</div><div class="fields"><div class="field full"><label for="f-title">일정 제목</label><input id="f-title" value="${esc(item.title)}" placeholder="예: 상체 운동" maxlength="160"></div>${field(recurring?(scope==='series'?'반복 시작일':'기록 날짜'):'날짜','f-date','date',recurring&&scope==='series'?event.date:date,recurring?'disabled':'required')}${selectField('반복 일정','f-repeat',[['none','반복 안 함'],['daily','매일'],['weekly','매주 같은 요일']],item.repeat,recurring?'disabled':'')}${field('시작 시간','f-start','time',item.start,'required')}${field('종료 시간','f-end','time',item.end,'required')}<div id="until-field" class="field full ${item.repeat==='none'?'hide':''}"><label for="f-until">반복 종료일 · 선택</label><input id="f-until" type="date" value="${esc(event?.repeatUntil||'')}" ${recurring&&scope==='occurrence'?'disabled':''}></div></div><div class="separator"></div><div id="dynamic-details"></div><div class="separator"></div><label class="checkline ${recurring&&scope==='series'?'hide':''}"><input type="checkbox" id="f-completed" ${item.completed?'checked':''}><span id="completion-label">${completionLabel()}</span></label>${recurring&&scope==='series'?'<p class="helper">반복 기본 계획은 아직 기록하지 않은 날짜에 적용됩니다. 실제 수행·섭취·측정은 “이 날짜만”에서 기록하세요.</p>':''}`;
     modal(titleLabel,controls,`<div>${edit?`<button class="danger" id="delete-event">${recurring?(scope==='series'?'반복 전체 삭제':'이 날짜 삭제'):'일정 삭제'}</button>`:''}</div><div class="mini-buttons"><button class="btn btn-outline" id="cancel-event">취소</button><button class="btn btn-primary" id="save-event">${edit?'변경 저장':'일정 등록'}</button></div>`,recurring?repeatNote:'',currentType==='strength');
     mountDetails(currentType,item.detail,date,recurring?scope:'single');
     modalDirty=false;
@@ -441,14 +441,11 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
   window.FormdayBridge = Object.freeze({
     getState: () => C.clone(data),
     getToday: () => today,
-    openStrength: (name, date) => {
-      const cleanName = String(name || '').trim().slice(0,80);
-      const initialDetail = cleanName
-        ? {exercises:[{id:uid(),name:cleanName,sets:Array.from({length:3},()=>({
-            id:uid(),weight:0,reps:10,rpe:null,done:false,warmup:false
-          })),notes:''}],notes:''}
-        : null;
-      openEvent({date:C.validDate(date)?date:today,type:'strength',initialDetail});
+    getSelectedDay: () => selected,
+    openStrength: (name) => {
+      const cleanName=String(name||'').trim().slice(0,80);
+      if(window.FormdayIndependent)window.FormdayIndependent.open('start',cleanName?{exercise:cleanName}:undefined);
+      else toast('웨이트 독립 시스템을 불러오지 못했습니다. 다시 접속해 주세요.',true);
     },
     editStrength: (id,date) => {
       const event = data.events.find(x=>x.id===id && x.type==='strength');

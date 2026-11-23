@@ -59,7 +59,7 @@
           '<div class="fdb-steps"><strong>아이폰에서 iCloud Drive에 저장</strong><ol><li><b>공유해서 저장</b> 선택</li><li>공유 메뉴에서 <b>파일에 저장</b> 선택</li><li><b>iCloud Drive</b>를 저장 위치로 선택</li><li>파일 앱에서 백업 파일 확인</li></ol><p>공유가 지원되지 않으면 다운로드한 파일을 파일 앱에서 iCloud Drive나 Google Drive로 옮길 수 있습니다.</p></div>',
           '<div class="fdb-actions"><button type="button" data-fdb-share class="fdb-primary">공유해서 저장</button><button type="button" data-fdb-download class="fdb-secondary">백업 파일 다운로드</button><button type="button" data-fdb-restore class="fdb-secondary">백업 파일로 복원</button></div>',
           '<p data-fdb-status class="fdb-status" role="status" aria-live="polite"></p>',
-          '<p class="fdb-warning">이 파일에는 개인 건강 기록이 포함되고 파일 자체는 암호화되지 않습니다. 공개 링크로 공유하지 마세요. <b>자동 백업이나 실시간 기기 동기화 기능이 아닙니다.</b> 파일 앱에서 실제 저장 여부를 확인해야 합니다.</p></div>'
+          '<p class="fdb-warning">이 파일은 기존 캘린더·식단·체중 기록을 보관합니다. <b>독립 IRON MODE의 루틴과 운동 세션은 별도 저장소이며 IRON MODE 화면에서 별도로 JSON 내보내기가 필요합니다.</b> 개인 건강 기록 파일은 암호화되지 않으므로 공개 공유를 피하세요. 자동 백업이나 실시간 동기화는 아닙니다.</p></div>'
         ].join('');
         doc.body.appendChild(dialog);
         q('[data-fdb-close]').onclick=()=>dialog.close();

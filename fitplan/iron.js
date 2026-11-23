@@ -38,6 +38,7 @@
     });
   }
   function setScreen(name){
+    if(name==='session'&&root.FormdayIndependent){root.FormdayIndependent.open('start');return;}
     if(!['home','session','library','analysis','calendar'].includes(name))return;
     screen=name;render();
     document.querySelector('#main-content')?.scrollIntoView({block:'start',behavior:'smooth'});
