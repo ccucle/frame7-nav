@@ -1,10 +1,17 @@
 {
   "name": "formday-connect-reader",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Read-only source adapter, not a deployed MCP plugin",
+  "description": "Verified-owner read-only FORMDAY MCP server source, OAuth integration pending",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.0.0"
   }
 }
