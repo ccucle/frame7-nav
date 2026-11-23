@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="meals.css?v=0.3.0">
 <link rel="stylesheet" href="backup.css?v=0.3.1">
 <link rel="stylesheet" href="cloud-auth.css?v=0.5.2">
+<link rel="stylesheet" href="cloud-sync.css?v=0.6.0">
 <link rel="stylesheet" href="iron.css?v=0.4.0">
 <link rel="stylesheet" href="iron-independent.css?v=0.5.0">
 <link rel="icon" href="data:,">
@@ -41,12 +42,12 @@
     <div class="side-caption">MINI CALENDAR</div>
     <div class="mini-head"><span id="mini-title"></span><div><button class="btn btn-quiet btn-small" id="mini-prev" aria-label="이전 달">‹</button><button class="btn btn-quiet btn-small" id="mini-next" aria-label="다음 달">›</button></div></div>
     <div class="mini-cal" id="mini-cal"></div>
-    <div class="side-foot">● 개인 기록은 현재 브라우저에 저장됩니다.<br>Google 로그인과 Firebase 기록 동기화는 별개입니다. 무료 백업을 이용해 보관하세요.</div>
+    <div class="side-foot">● 개인 기록은 현재 브라우저에 저장됩니다.<br>Google 계정 동기화는 사용자 연결 확인 후 시작됩니다. 동기화 전 두 저장소를 별도로 백업하세요.</div>
   </aside>
   <main class="main" id="main-content">
     <div class="toprow">
-      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.5.2</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
-      <div class="header-actions"><button class="btn btn-outline" id="fd-account-btn" type="button" disabled title="계정 로그인 준비 중">👤 Google 로그인</button><button class="btn btn-outline" id="cloud-backup">☁ 무료 백업</button><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-outline meal-quick" id="new-meal">＋ 식단 기록</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
+      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.6.0</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
+      <div class="header-actions"><button class="btn btn-outline" id="fd-account-btn" type="button" disabled title="계정 로그인 준비 중">👤 Google 로그인</button><button class="btn btn-outline" id="fd-sync-open" type="button">☁ 기기 동기화</button><button class="btn btn-outline" id="cloud-backup">↓ 무료 백업</button><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-outline meal-quick" id="new-meal">＋ 식단 기록</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
     </div>
     <div id="storage-status" class="storage-status" role="status"></div>
     <div id="demo-banner" class="demo-banner hide"><span>✳ 현재 표시된 운동·식단·체중은 <b>체험용 샘플</b>입니다. 실제 개인 기록이 아닙니다.</span><button id="clear-demo">샘플 지우기</button></div>
@@ -109,6 +110,24 @@
     <p class="fd-account-warning" id="fd-account-warning">Google 로그인은 계정 인증 기능입니다. 운동 기록 자동 동기화는 아직 연결되지 않았습니다. 기존 웹앱을 삭제하지 마세요.</p>
   </div>
 </dialog>
+<dialog class="fd-sync-dialog" id="fd-sync-dialog" aria-labelledby="fd-sync-title">
+ <div class="fd-sync-top"><div><span class="fd-sync-kicker">FORMDAY / CLOUD SYNC</span><h2 id="fd-sync-title">Google 계정 기기 동기화</h2>
+ <p>아이폰과 PC에서 같은 Google 계정으로 기록을 공유합니다. 기존 기록을 자동으로 덮어쓰지 않습니다.</p></div>
+ <button type="button" id="fd-sync-close" aria-label="동기화 창 닫기">×</button></div>
+ <div class="fd-sync-body">
+  <p id="fd-sync-status" class="fd-sync-status" role="status" aria-live="polite">Google 계정과 데이터 연결 상태를 확인하는 중입니다.</p>
+  <div id="fd-sync-panel"></div>
+  <section class="fd-sync-faq"><h3>첫 연결 방법</h3>
+  <ol><li>아이폰의 기존 기록을 <b>JSON 백업</b>합니다(캘린더와 IRON MODE 각각).</li>
+  <li>이 아이폰에서 <b>이 기기 기록 최초 업로드</b>를 실행합니다.</li>
+  <li>다른 기기에서 같은 Google 계정으로 로그인하고 <b>클라우드 기록 불러오기</b>를 선택합니다.</li>
+  <li>이후 정상 연결된 기기에서는 변경 사항이 자동으로 반영됩니다.</li></ol>
+  <p>현재 Firestore 보안 규칙이 읽기·쓰기를 모두 막고 있으면 먼저 소유자 전용 규칙을 적용해야 합니다. <a href="https://console.firebase.google.com/project/healthy-df79f/firestore/rules" target="_blank" rel="noopener noreferrer">Firebase Firestore 규칙 열기</a></p>
+  <p>다른 기기에 저장된 별도의 기록이 있다면 자동으로 합쳐지지 않습니다. 삭제 전 백업하세요. 동기화 오류가 나더라도 기존 로컬 기록은 유지합니다.</p>
+  <p>Cloud Firestore는 무료 사용량 한도가 있으며, 이를 초과하면 동기화가 일시 중단될 수 있습니다. 유료 요금제 전환은 하지 않습니다.</p>
+  </section>
+ </div>
+</dialog>
 <div id="modal-root"></div><div id="toast-root" role="status" aria-live="polite"></div>
 <script defer src="data.js?v=0.3.0"></script>
 <script defer src="workouts.js?v=0.3.0"></script>
@@ -121,6 +140,8 @@
 <script defer src="iron.js?v=0.4.0"></script>
 <script defer src="iron-store.js?v=0.5.0"></script>
 <script defer src="iron-independent.js?v=0.5.0"></script>
+<script defer src="sync-policy.js?v=0.6.0"></script>
 <script type="module" src="cloud-auth.js?v=0.5.2"></script>
+<script type="module" src="cloud-sync.js?v=0.6.0"></script>
 </body>
 </html>

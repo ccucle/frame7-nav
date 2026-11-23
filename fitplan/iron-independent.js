@@ -37,6 +37,7 @@
     if(blocked||revisionConflict){setMessage(blocked||'다른 탭에서 데이터가 변경되었습니다. 먼저 기록을 다시 불러와 주세요.',true);render();return false;}
     try{
       state=store.save(result.next,state.revision);
+      root.dispatchEvent(new CustomEvent('formday:iron-changed'));
       if(success)setMessage(success,false);
       render();
       return true;
@@ -325,6 +326,7 @@
       const result=M.setValue(state,session.id,exid,setid,vals);
       const saved=store.save(result.next,state.revision);
       state=saved;
+      root.dispatchEvent(new CustomEvent('formday:iron-changed'));
       setMessage('세트 기록을 저장했습니다.');
       if(vals.done&&!wasDone){
         timerSecs=previous?.restSec??90;
@@ -535,7 +537,16 @@
     }
   });
   root.setInterval(()=>{clockTick=Date.now();paintTimer();},1000);
-  root.FormdayIndependent=Object.freeze({open,renderCalendar,getSnapshot:()=>state?M.copy(state):null});
+  root.FormdayIndependent=Object.freeze({open,renderCalendar,getSnapshot:()=>state?M.copy(state):null,
+    canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current(),
+    cloudReload:()=>{
+      if(blocked||revisionConflict||draft||programDraft||current())return false;
+      const latest=store.load();
+      if(latest.error){blocked=latest.error;setMessage(blocked,true);render();return false;}
+      state=latest.data;setMessage('다른 기기의 최신 웨이트 기록을 반영했습니다.');
+      focusedSession=null;renderCalendar();render();return true;
+    }
+  });
   // Main IRON dashboard is still the landing page; independence is user-initiated.
   renderCalendar();
 })(typeof window!=='undefined'?window:globalThis);

@@ -440,6 +440,8 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
   // Existing records are never migrated or uploaded by this bridge.
   window.FormdayBridge = Object.freeze({
     getState: () => C.clone(data),
+    canCloudApply: () => !blockedLoad && !externalChange && !modalDirty && modalController===null,
+    cloudReload: () => {if(!blockedLoad && !externalChange && !modalDirty && modalController===null){loadLatest();return true;}return false;},
     getToday: () => today,
     getSelectedDay: () => selected,
     openStrength: (name) => {
