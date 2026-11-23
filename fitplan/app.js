@@ -164,8 +164,8 @@
     $('.app').inert=true;$('.mobile-nav').inert=true;
     $('#modal-close').onclick=()=>closeModal();
     $('#overlay').onclick=e=>{if(e.target.id==='overlay')closeModal();};
-    $('#modal-root').oninput=()=>{modalDirty=true;};
-    $('#modal-root').onchange=()=>{modalDirty=true;};
+    $('#modal-root').oninput=e=>{if(e.target?.id!=='f-scope')modalDirty=true;};
+    $('#modal-root').onchange=e=>{if(e.target?.id!=='f-scope')modalDirty=true;};
     $('#modal-close').focus();
   }
   function formError(error) {

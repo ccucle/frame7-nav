@@ -22,9 +22,11 @@
 .workout-progress small{font-size:11px;font-weight:500;color:#6d9181}.workout-progress p{font-size:10px;color:#789988;margin:0;line-height:1.6}
 .rightbar>.footer-menu{flex-wrap:wrap}.agenda-name,.agenda-desc{overflow-wrap:anywhere}.checkbox-btn{width:26px;height:26px;margin-top:0}
 .time-view-wrap.daymode .time-scroll{min-width:0}.week-top button.wt{background:#fff;border-radius:0}
-.modal{display:flex;flex-direction:column;overflow:hidden;max-height:calc(100dvh - 36px)}
-.modal-head,.modal-actions,.modal-note{flex-shrink:0}.modal-head{padding-top:17px;padding-bottom:15px}
-.modal-body{overflow-y:auto;overscroll-behavior:contain;min-height:0}.modal-actions{background:white;border-top:1px solid #e9efeb;padding-top:13px;padding-bottom:15px}
+/* Keep focus/scrollIntoView inside the dialog body; outer layers must not be scroll containers. */
+.modal-overlay{height:100vh;height:100dvh;min-height:0;overflow:clip;overscroll-behavior:none;contain:paint}
+.modal{display:flex;flex-direction:column;min-height:0;min-width:0;overflow:clip;contain:paint;max-height:calc(100dvh - 36px)}
+.modal-head,.modal-actions,.modal-note{flex:0 0 auto}.modal-head{padding-top:17px;padding-bottom:15px}
+.modal-body{flex:1 1 auto;overflow:auto;overscroll-behavior:contain;min-height:0;min-width:0;scroll-padding-block:12px}.modal-actions{background:white;border-top:1px solid #e9efeb;padding-top:13px;padding-bottom:15px}
 .modal-note{padding:0 25px 12px;margin:0;font-size:11px;color:#7d9189}
 .form-error{padding:11px 13px;border:1px solid #eccdc4;background:#fff2ed;border-radius:10px;font-size:12px;line-height:1.6;color:#9a4332;overflow-wrap:anywhere}
 .toast-error{background:#7f4131}.repeat-scope{padding:13px;border:1px solid #ddeae3;border-radius:11px;background:#f6faf7;margin:0 0 17px}
