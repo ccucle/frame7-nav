@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="app.css?v=0.3.0">
 <link rel="stylesheet" href="workouts.css?v=0.3.0">
 <link rel="stylesheet" href="meals.css?v=0.3.0">
+<link rel="stylesheet" href="backup.css?v=0.3.1">
 <link rel="icon" href="data:,">
 </head>
 <body>
@@ -31,8 +32,8 @@
   </aside>
   <main class="main" id="main-content">
     <div class="toprow">
-      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.3.0</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
-      <div class="header-actions"><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-outline meal-quick" id="new-meal">＋ 식단 기록</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
+      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.3.1</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
+      <div class="header-actions"><button class="btn btn-outline" id="cloud-backup">☁ 무료 백업</button><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-outline meal-quick" id="new-meal">＋ 식단 기록</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
     </div>
     <div id="storage-status" class="storage-status" role="status"></div>
     <div id="demo-banner" class="demo-banner hide"><span>✳ 현재 표시된 운동·식단·체중은 <b>체험용 샘플</b>입니다. 실제 개인 기록이 아닙니다.</span><button id="clear-demo">샘플 지우기</button></div>
@@ -73,5 +74,6 @@
 <script defer src="core.js?v=0.3.0"></script>
 <script defer src="meals.js?v=0.3.0"></script>
 <script defer src="app.js?v=0.3.0"></script>
+<script defer src="backup.js?v=0.3.1"></script>
 </body>
 </html>
