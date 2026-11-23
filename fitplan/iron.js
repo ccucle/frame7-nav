@@ -242,7 +242,7 @@
     const target=e.target.closest('[data-fd-route],[data-fd-action],[data-fd-group],[data-fd-equip],[data-fd-exercise],[data-fd-pick-workout],[data-fd-next-exercise],[data-fd-prev-exercise],[data-fd-save-set],[data-fd-timer],[data-fd-time],#fd-lib-more');
     if(target)onClick(e);
     else if(e.target.closest('[data-go]')||e.target.closest('[data-mobile="calendar"]')||e.target.closest('.mini-cal [data-mini]')) {
-      if(screen!=='calendar'){screen='calendar';render();}
+      if(screen!=='calendar'||document.body.dataset.fdScreen==='independent'){screen='calendar';render();}
     }
   });
   node.addEventListener('input',e=>{
