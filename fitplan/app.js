@@ -69,7 +69,7 @@
       const saved = persistence.save(next, data.revision || '', options?.recovery ? {expectedRaw:corruptRaw} : undefined);
       data = saved; undoState = options?.recovery ? null : before;
       blockedLoad = ''; externalChange = false; corruptRaw = null;
-      render(); if (message) toast(message); return true;
+      render(); window.dispatchEvent(new CustomEvent('formday:changed')); if (message) toast(message); return true;
     } catch (error) {
       if (error.code === 'STORAGE_CONFLICT') externalChange = true;
       showStorageState(error.message || '저장하지 못했습니다. 입력 내용은 이 창에 유지됩니다.', true);
@@ -253,13 +253,13 @@
     }
   }
 
-  function openEvent({event=null,date=selected,start='07:00',type=null,scope='occurrence'}={}) {
+  function openEvent({event=null,date=selected,start='07:00',type=null,scope='occurrence',initialDetail=null}={}) {
     if(blockedLoad){toast('먼저 기록 백업을 복원해 주세요.',true);return;}
     const edit=!!event,recurring=edit&&event.repeat!=='none';
     const effective=recurring&&scope==='occurrence'?C.occurrence(event,date):event;
     if(recurring&&!effective){toast('이 날짜의 일정이 없습니다.',true);return;}
     const [hour,minute]=start.split(':').map(Number),endMinute=Math.min(1439,hour*60+minute+60);
-    const item=effective?C.clone(effective):{id:uid(),date,start,end:`${z(Math.floor(endMinute/60))}:${z(endMinute%60)}`,type:type||'strength',title:'',repeat:'none',repeatUntil:null,completed:false,detail:{},isSample:false};
+    const item=effective?C.clone(effective):{id:uid(),date,start,end:`${z(Math.floor(endMinute/60))}:${z(endMinute%60)}`,type:type||'strength',title:'',repeat:'none',repeatUntil:null,completed:false,detail:initialDetail||{},isSample:false};
     let currentType=item.type;
     if(currentType==='strength')item.detail=W.normalize(item.detail,item.completed);
     const titleLabel=recurring?(scope==='series'?'반복 기본 계획 수정':'이 날짜 기록 수정'):(edit?'일정 수정':'새 일정 등록');
@@ -434,5 +434,55 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
     window.addEventListener('focus',refreshToday);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshToday();});
   }
+
+  // Lightweight integration boundary for FORMDAY IRON MODE.
+  // All writes continue through the original validated, revision-checked commit().
+  // Existing records are never migrated or uploaded by this bridge.
+  window.FormdayBridge = Object.freeze({
+    getState: () => C.clone(data),
+    getToday: () => today,
+    openStrength: (name, date) => {
+      const cleanName = String(name || '').trim().slice(0,80);
+      const initialDetail = cleanName
+        ? {exercises:[{id:uid(),name:cleanName,sets:Array.from({length:3},()=>({
+            id:uid(),weight:0,reps:10,rpe:null,done:false,warmup:false
+          })),notes:''}],notes:''}
+        : null;
+      openEvent({date:C.validDate(date)?date:today,type:'strength',initialDetail});
+    },
+    editStrength: (id,date) => {
+      const event = data.events.find(x=>x.id===id && x.type==='strength');
+      if(!event)return false;
+      openEvent({event,date:C.validDate(date)?date:event.date});
+      return true;
+    },
+    saveSet: ({eventId,date,exerciseId,setId,weight,reps,rpe,done}) => {
+      if(blockedLoad)return false;
+      const event = data.events.find(x=>x.id===eventId && x.type==='strength');
+      if(!event || !C.validDate(date))return false;
+      const actual=C.occurrence(event,date);
+      if(!actual)return false;
+      try {
+        const detail=W.normalize(actual.detail,actual.completed);
+        const ex=detail.exercises.find(x=>x.id===exerciseId);
+        const set=ex?.sets.find(x=>x.id===setId);
+        if(!set)throw new Error('수정할 세트를 찾지 못했습니다. 기록을 새로 불러오세요.');
+        const kg=Number(weight),count=Number(reps);
+        const effort=rpe==null||rpe===''?null:Number(rpe);
+        if(!Number.isFinite(kg)||kg<0||kg>2000||!Number.isInteger(count)||count<1||count>1000||
+           (effort!==null&&(!Number.isFinite(effort)||effort<1||effort>10))||typeof done!=='boolean')
+          throw new Error('중량·횟수·RPE 입력값을 확인해 주세요.');
+        set.weight=kg;set.reps=count;set.rpe=effort;set.done=done;
+        W.validate(detail);
+        const summary=W.summary(detail);
+        const updated={...actual,detail,completed:summary.setCount>0&&summary.completedSets===summary.setCount,isSample:false};
+        const options=event.repeat==='none'?{scope:'single'}:{scope:'occurrence',occurrenceDate:date};
+        return commit(C.upsert(data,updated,options),done?'운동 세트를 저장했습니다.':'세트 변경을 저장했습니다.');
+      } catch(error) {
+        toast(error.message||'세트를 저장하지 못했습니다.',true);
+        return false;
+      }
+    }
+  });
   attach();render();
 })();
