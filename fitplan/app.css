@@ -53,3 +53,11 @@
 }
 @media(max-width:380px){.header-actions .btn-outline{display:inline-flex}.header-actions{width:100%}.header-actions .btn{flex:1}.calendar-toolbar{padding:12px 9px}.modal-actions{padding:9px 10px}.mini-buttons{gap:6px}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+
+/* v0.3 nutrition provenance and incomplete nutrient totals. */
+.header-actions{flex-wrap:wrap}.meal-quick{color:#925820;background:#fff9ef;border-color:#ecdcc4}
+.nutrition-caption{font-size:11px;color:#859493}.calories-header{gap:8px;flex-wrap:wrap}.kcal-amount{font-size:20px}
+.unsat-total{display:flex;justify-content:space-between;gap:10px;color:#6f8580;font-size:11px;margin-top:14px;line-height:1.6}
+.nutrition .missing-info,.nutrition .legacy-info{border-top:1px solid #e4eae5;padding-top:9px;line-height:1.75}
+.nutrition .legacy-info{color:#947348}.macro-caption{gap:8px;flex-wrap:wrap}.macro-caption>span:last-child{margin-left:auto}
+@media(max-width:730px){.header-actions{width:100%}.header-actions .btn{flex:1;min-height:44px}.nutrition .helper{font-size:11px}.stat-number{white-space:normal;overflow-wrap:anywhere}}

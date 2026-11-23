@@ -1,0 +1,1160 @@
+{
+  "manifestVersion": 1,
+  "source": "USDA FoodData Central · SR Legacy",
+  "sourceUrl": "https://fdc.nal.usda.gov/download-datasets/",
+  "datasetDate": "2018-04",
+  "fdcPublicationDate": "2019-04-01",
+  "checkedAt": "2026-11-23",
+  "archive": {
+    "url": "https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_sr_legacy_food_csv_2018-04.zip",
+    "filename": "FoodData_Central_sr_legacy_food_csv_2018-04.zip",
+    "bytes": 6074592,
+    "sha256": "b80817294b8850530aaedf2e515c02593b1824f763a0ff356e5c2081643e6fd0",
+    "downloadVerified": "Official public download returned HTTP 200. No API key is used.",
+    "storage": "Raw archive is a scratch build input and is not part of the deployed static site."
+  },
+  "license": {
+    "id": "CC0-1.0",
+    "url": "https://creativecommons.org/publicdomain/zero/1.0/",
+    "officialStatementUrl": "https://fdc.nal.usda.gov/",
+    "attribution": "U.S. Department of Agriculture, Agricultural Research Service, Beltsville Human Nutrition Research Center. FoodData Central. Accessed 2026-11-23. https://fdc.nal.usda.gov/"
+  },
+  "sourceDocuments": [
+    {
+      "title": "FoodData Central Download Datasets",
+      "url": "https://fdc.nal.usda.gov/download-datasets/",
+      "supports": "Official SR Legacy CSV archive URL; final April 2018 release."
+    },
+    {
+      "title": "SR Legacy Documentation and User Guide, April 2018, slightly revised July 2018",
+      "url": "https://www.ars.usda.gov/ARSUserFiles/80400535/DATA/SR-Legacy/SR-Legacy_Doc.pdf",
+      "supports": "7793 foods; missing nutrient is not zero; nutrient amounts per 100 g edible portion."
+    },
+    {
+      "title": "FoodData Central Download Field Descriptions",
+      "url": "https://fdc.nal.usda.gov/docs/Download_Field_Descriptions_Oct2020.pdf",
+      "supports": "food_nutrient.amount uses per-100g units from nutrient.csv; relational field meanings."
+    },
+    {
+      "title": "FoodData Central About Us",
+      "url": "https://fdc.nal.usda.gov/about-us/",
+      "supports": "SR Legacy is a historical final release containing analyses, imputations, and published literature; it is not a current branded-food catalogue."
+    },
+    {
+      "title": "USDA FoodData Central licensing",
+      "url": "https://fdc.nal.usda.gov/",
+      "supports": "Public domain, CC0 1.0, source attribution requested."
+    }
+  ],
+  "fieldContract": {
+    "id": "usda-sr- followed by official FDC ID; stable catalogue key.",
+    "fdcId": "Official integer fdc_id from food.csv.",
+    "ndbNumber": "NDB_number exactly as distributed in sr_legacy_food.csv, kept as a string.",
+    "nameEn": "Unchanged official English food description.",
+    "nameKo": "Reviewed service translation for exactly 80 selected rows; null otherwise. Not an official USDA Korean translation.",
+    "aliases": "Korean search keywords only; not a guarantee of product equivalence. The full English description and preparation qualifiers remain authoritative.",
+    "category": "Unchanged official food_category.csv description.",
+    "per100g": "Amount per 100 g edible portion. kcal is KCAL; protein, carbs, fat, mono, poly, unsat are grams.",
+    "sourceUrl": "Verified official download page. The archive URL, FDC ID and NDB number identify the source row. Old record-detail URL patterns were not used because they returned 404 during verification.",
+    "unsatStatus": "calculated, missing, or source-inconsistent; null unsat must remain unknown during downstream aggregation.",
+    "checkedAt": "Date the source archive and mapping were checked, not the laboratory measurement date."
+  },
+  "nutrientMapping": {
+    "kcal": {
+      "fdcNutrientId": 1008,
+      "legacyNutrientNumber": "208",
+      "name": "Energy",
+      "unit": "KCAL"
+    },
+    "protein": {
+      "fdcNutrientId": 1003,
+      "legacyNutrientNumber": "203",
+      "name": "Protein",
+      "unit": "G"
+    },
+    "carbs": {
+      "fdcNutrientId": 1005,
+      "legacyNutrientNumber": "205",
+      "name": "Carbohydrate, by difference",
+      "unit": "G"
+    },
+    "fat": {
+      "fdcNutrientId": 1004,
+      "legacyNutrientNumber": "204",
+      "name": "Total lipid (fat)",
+      "unit": "G"
+    },
+    "mono": {
+      "fdcNutrientId": 1292,
+      "legacyNutrientNumber": "645",
+      "name": "Fatty acids, total monounsaturated",
+      "unit": "G"
+    },
+    "poly": {
+      "fdcNutrientId": 1293,
+      "legacyNutrientNumber": "646",
+      "name": "Fatty acids, total polyunsaturated",
+      "unit": "G"
+    }
+  },
+  "processingPolicy": {
+    "scope": "Include all 7793 food rows from this specific SR Legacy archive. This is not every food, a current Korean food database, or a diet recommendation list.",
+    "calories": "Use Energy KCAL nutrient 1008 directly. Do not substitute Energy kJ 1062 or recompute calories from 4/4/9.",
+    "macronutrients": "Preserve each reported source value. Do not interpolate, fill from another food, clamp, or replace missing values with zero.",
+    "unsaturatedFat": "Calculate mono + poly with Decimal only when both are present and the sum is no more than total fat + 0.1 g per 100 g. The 0.1 g threshold is an application consistency policy, not a USDA claim.",
+    "roundingDifferences": "29 source rows have 0 < mono+poly-fat <= 0.1 g. Preserve their source sum exactly without clamping.",
+    "sourceInconsistencies": "5 source rows exceed total fat by >0.1 g. Preserve fat/mono/poly; set derived unsat to null with unsatStatus source-inconsistent. Full original row IDs, derivation/source codes and differences appear in validationResults.",
+    "missing": "518 rows lack mono or poly, making unsat unknown. Together with 5 inconsistent rows, 523 rows have unsat null.",
+    "translation": "Join every curated translation by exact FDC ID and exact English description. Preserve raw/cooked, skin, salt, enrichment, milkfat and preparation distinctions. Broad aliases never replace these descriptions.",
+    "productLabels": "Generic USDA foods are not substituted for a specific packaged product label; users may record products separately.",
+    "portion": "100 g is a calculation basis, not a recommended serving."
+  },
+  "reproduction": {
+    "build": "python fitplan-dev/build-catalog.py --archive /path/to/FoodData_Central_sr_legacy_food_csv_2018-04.zip",
+    "check": "python fitplan-dev/build-catalog.py --check --archive /path/to/FoodData_Central_sr_legacy_food_csv_2018-04.zip",
+    "download": "python fitplan-dev/build-catalog.py --download",
+    "dependencies": "Python standard library only; no API key or runtime network request required by the published catalogue.",
+    "inputs": [
+      "Official pinned source archive",
+      "This manifest, including exact reviewed Korean mappings"
+    ],
+    "outputs": [
+      "fitplan/food-catalog.json",
+      "This manifest validationResults"
+    ]
+  },
+  "curatedKorean": {
+    "171077": {
+      "nameEn": "Chicken, broiler or fryers, breast, skinless, boneless, meat only, raw",
+      "nameKo": "닭가슴살(육계, 껍질·뼈 제거, 살코기, 생것)",
+      "aliases": [
+        "닭가슴살",
+        "생닭",
+        "닭"
+      ]
+    },
+    "171477": {
+      "nameEn": "Chicken, broilers or fryers, breast, meat only, cooked, roasted",
+      "nameKo": "닭가슴살(육계, 살코기만, 구운 것)",
+      "aliases": [
+        "닭가슴살",
+        "구운 닭",
+        "닭"
+      ]
+    },
+    "171287": {
+      "nameEn": "Egg, whole, raw, fresh",
+      "nameKo": "달걀 전란(신선한 생것)",
+      "aliases": [
+        "달걀",
+        "계란",
+        "전란"
+      ]
+    },
+    "173424": {
+      "nameEn": "Egg, whole, cooked, hard-boiled",
+      "nameKo": "달걀 전란(완숙으로 삶은 것)",
+      "aliases": [
+        "달걀",
+        "계란",
+        "삶은 달걀",
+        "삶은 계란"
+      ]
+    },
+    "172183": {
+      "nameEn": "Egg, white, raw, fresh",
+      "nameKo": "달걀 흰자(신선한 생것)",
+      "aliases": [
+        "달걀 흰자",
+        "계란 흰자",
+        "흰자"
+      ]
+    },
+    "172475": {
+      "nameEn": "Tofu, raw, firm, prepared with calcium sulfate",
+      "nameKo": "단단한 두부(생것, 황산칼슘 응고)",
+      "aliases": [
+        "두부",
+        "단단한 두부"
+      ]
+    },
+    "172449": {
+      "nameEn": "Tofu, soft, prepared with calcium sulfate and magnesium chloride (nigari)",
+      "nameKo": "부드러운 두부(황산칼슘·염화마그네슘 응고)",
+      "aliases": [
+        "두부",
+        "부드러운 두부"
+      ]
+    },
+    "175167": {
+      "nameEn": "Fish, salmon, Atlantic, farmed, raw",
+      "nameKo": "대서양 연어(양식, 생것)",
+      "aliases": [
+        "연어",
+        "양식 연어",
+        "생연어"
+      ]
+    },
+    "175168": {
+      "nameEn": "Fish, salmon, Atlantic, farmed, cooked, dry heat",
+      "nameKo": "대서양 연어(양식, 건열 조리)",
+      "aliases": [
+        "연어",
+        "구운 연어",
+        "양식 연어"
+      ]
+    },
+    "171986": {
+      "nameEn": "Fish, tuna, light, canned in water, without salt, drained solids",
+      "nameKo": "라이트 참치 통조림(물 담금, 소금 무첨가, 액체 제거)",
+      "aliases": [
+        "참치",
+        "참치 통조림",
+        "물참치"
+      ]
+    },
+    "172421": {
+      "nameEn": "Lentils, mature seeds, cooked, boiled, without salt",
+      "nameKo": "렌틸콩(성숙콩, 삶음, 소금 무첨가)",
+      "aliases": [
+        "렌틸콩",
+        "렌즈콩"
+      ]
+    },
+    "173757": {
+      "nameEn": "Chickpeas (garbanzo beans, bengal gram), mature seeds, cooked, boiled, without salt",
+      "nameKo": "병아리콩(성숙콩, 삶음, 소금 무첨가)",
+      "aliases": [
+        "병아리콩",
+        "가르반조콩"
+      ]
+    },
+    "173735": {
+      "nameEn": "Beans, black, mature seeds, cooked, boiled, without salt",
+      "nameKo": "블랙빈(성숙콩, 삶음, 소금 무첨가)",
+      "aliases": [
+        "블랙빈",
+        "검정강낭콩"
+      ]
+    },
+    "168411": {
+      "nameEn": "Edamame, frozen, prepared",
+      "nameKo": "에다마메(냉동 제품, 조리한 것)",
+      "aliases": [
+        "에다마메",
+        "풋콩"
+      ]
+    },
+    "175194": {
+      "nameEn": "Beans, kidney, red, mature seeds, cooked, boiled, without salt",
+      "nameKo": "붉은 강낭콩(성숙콩, 삶음, 소금 무첨가)",
+      "aliases": [
+        "붉은 강낭콩",
+        "레드키드니빈",
+        "강낭콩"
+      ]
+    },
+    "169703": {
+      "nameEn": "Rice, brown, long-grain, raw (Includes foods for USDA's Food Distribution Program)",
+      "nameKo": "현미(장립종, 생것)",
+      "aliases": [
+        "현미",
+        "현미쌀"
+      ]
+    },
+    "169704": {
+      "nameEn": "Rice, brown, long-grain, cooked (Includes foods for USDA's Food Distribution Program)",
+      "nameKo": "현미(장립종, 조리한 것)",
+      "aliases": [
+        "현미",
+        "현미밥"
+      ]
+    },
+    "168931": {
+      "nameEn": "Rice, white, short-grain, raw, unenriched",
+      "nameKo": "백미(단립종, 생것, 영양강화 안 함)",
+      "aliases": [
+        "백미",
+        "흰쌀",
+        "쌀"
+      ]
+    },
+    "168932": {
+      "nameEn": "Rice, white, short-grain, cooked, unenriched",
+      "nameKo": "백미(단립종, 조리한 것, 영양강화 안 함)",
+      "aliases": [
+        "백미밥",
+        "흰쌀밥",
+        "쌀밥",
+        "밥"
+      ]
+    },
+    "168874": {
+      "nameEn": "Quinoa, uncooked",
+      "nameKo": "퀴노아(조리 전)",
+      "aliases": [
+        "퀴노아"
+      ]
+    },
+    "168917": {
+      "nameEn": "Quinoa, cooked",
+      "nameKo": "퀴노아(조리한 것)",
+      "aliases": [
+        "퀴노아"
+      ]
+    },
+    "173904": {
+      "nameEn": "Cereals, oats, regular and quick, not fortified, dry",
+      "nameKo": "귀리 시리얼(일반·퀵 타입, 영양강화 안 함, 건조)",
+      "aliases": [
+        "오트밀",
+        "귀리 시리얼",
+        "귀리"
+      ]
+    },
+    "173905": {
+      "nameEn": "Cereals, oats, regular and quick, unenriched, cooked with water (includes boiling and microwaving), without salt",
+      "nameKo": "귀리 시리얼(일반·퀵 타입, 영양강화 안 함, 물로 조리, 소금 무첨가)",
+      "aliases": [
+        "오트밀",
+        "귀리죽",
+        "귀리"
+      ]
+    },
+    "172688": {
+      "nameEn": "Bread, whole-wheat, commercially prepared",
+      "nameKo": "통밀빵(시판 제품)",
+      "aliases": [
+        "통밀빵",
+        "빵"
+      ]
+    },
+    "170379": {
+      "nameEn": "Broccoli, raw",
+      "nameKo": "브로콜리(생것)",
+      "aliases": [
+        "브로콜리"
+      ]
+    },
+    "169967": {
+      "nameEn": "Broccoli, cooked, boiled, drained, without salt",
+      "nameKo": "브로콜리(삶음, 물기 제거, 소금 무첨가)",
+      "aliases": [
+        "브로콜리",
+        "삶은 브로콜리"
+      ]
+    },
+    "169975": {
+      "nameEn": "Cabbage, raw",
+      "nameKo": "양배추(생것)",
+      "aliases": [
+        "양배추"
+      ]
+    },
+    "168462": {
+      "nameEn": "Spinach, raw",
+      "nameKo": "시금치(생것)",
+      "aliases": [
+        "시금치"
+      ]
+    },
+    "168463": {
+      "nameEn": "Spinach, cooked, boiled, drained, without salt",
+      "nameKo": "시금치(삶음, 물기 제거, 소금 무첨가)",
+      "aliases": [
+        "시금치",
+        "삶은 시금치"
+      ]
+    },
+    "170393": {
+      "nameEn": "Carrots, raw",
+      "nameKo": "당근(생것)",
+      "aliases": [
+        "당근"
+      ]
+    },
+    "170394": {
+      "nameEn": "Carrots, cooked, boiled, drained, without salt",
+      "nameKo": "당근(삶음, 물기 제거, 소금 무첨가)",
+      "aliases": [
+        "당근",
+        "삶은 당근"
+      ]
+    },
+    "168409": {
+      "nameEn": "Cucumber, with peel, raw",
+      "nameKo": "오이(껍질 포함, 생것)",
+      "aliases": [
+        "오이"
+      ]
+    },
+    "170457": {
+      "nameEn": "Tomatoes, red, ripe, raw, year round average",
+      "nameKo": "붉게 익은 토마토(생것, 연중 평균)",
+      "aliases": [
+        "토마토"
+      ]
+    },
+    "169247": {
+      "nameEn": "Lettuce, cos or romaine, raw",
+      "nameKo": "로메인상추(생것)",
+      "aliases": [
+        "로메인",
+        "로메인상추",
+        "상추"
+      ]
+    },
+    "169248": {
+      "nameEn": "Lettuce, iceberg (includes crisphead types), raw",
+      "nameKo": "아이스버그 양상추(결구형 포함, 생것)",
+      "aliases": [
+        "양상추",
+        "아이스버그"
+      ]
+    },
+    "170000": {
+      "nameEn": "Onions, raw",
+      "nameKo": "양파(생것)",
+      "aliases": [
+        "양파"
+      ]
+    },
+    "170108": {
+      "nameEn": "Peppers, sweet, red, raw",
+      "nameKo": "빨간 단고추(생것)",
+      "aliases": [
+        "빨간 파프리카",
+        "홍파프리카",
+        "빨간 피망"
+      ]
+    },
+    "170427": {
+      "nameEn": "Peppers, sweet, green, raw",
+      "nameKo": "초록 단고추(생것)",
+      "aliases": [
+        "피망",
+        "초록 피망",
+        "초록 파프리카"
+      ]
+    },
+    "169251": {
+      "nameEn": "Mushrooms, white, raw",
+      "nameKo": "흰 양송이버섯(생것)",
+      "aliases": [
+        "양송이버섯",
+        "양송이"
+      ]
+    },
+    "168482": {
+      "nameEn": "Sweet potato, raw, unprepared (Includes foods for USDA's Food Distribution Program)",
+      "nameKo": "고구마(생것, 조리 전)",
+      "aliases": [
+        "고구마",
+        "생고구마"
+      ]
+    },
+    "168484": {
+      "nameEn": "Sweet potato, cooked, boiled, without skin",
+      "nameKo": "고구마(삶음, 껍질 제외)",
+      "aliases": [
+        "고구마",
+        "삶은 고구마"
+      ]
+    },
+    "170026": {
+      "nameEn": "Potatoes, flesh and skin, raw",
+      "nameKo": "감자(껍질과 속 포함, 생것)",
+      "aliases": [
+        "감자",
+        "생감자"
+      ]
+    },
+    "170438": {
+      "nameEn": "Potatoes, boiled, cooked in skin, flesh, without salt",
+      "nameKo": "감자 속(껍질째 삶은 뒤 껍질 제외, 소금 무첨가)",
+      "aliases": [
+        "감자",
+        "삶은 감자"
+      ]
+    },
+    "168389": {
+      "nameEn": "Asparagus, raw",
+      "nameKo": "아스파라거스(생것)",
+      "aliases": [
+        "아스파라거스"
+      ]
+    },
+    "169986": {
+      "nameEn": "Cauliflower, raw",
+      "nameKo": "콜리플라워(생것)",
+      "aliases": [
+        "콜리플라워",
+        "컬리플라워"
+      ]
+    },
+    "169228": {
+      "nameEn": "Eggplant, raw",
+      "nameKo": "가지(생것)",
+      "aliases": [
+        "가지"
+      ]
+    },
+    "169291": {
+      "nameEn": "Squash, summer, zucchini, includes skin, raw",
+      "nameKo": "주키니호박(껍질 포함, 생것)",
+      "aliases": [
+        "주키니",
+        "쥬키니",
+        "주키니호박"
+      ]
+    },
+    "169999": {
+      "nameEn": "Corn, sweet, yellow, cooked, boiled, drained, without salt",
+      "nameKo": "노란 단옥수수(삶음, 물기 제거, 소금 무첨가)",
+      "aliases": [
+        "옥수수",
+        "단옥수수",
+        "삶은 옥수수"
+      ]
+    },
+    "169961": {
+      "nameEn": "Beans, snap, green, raw",
+      "nameKo": "그린빈(풋강낭콩, 생것)",
+      "aliases": [
+        "그린빈",
+        "풋강낭콩"
+      ]
+    },
+    "169145": {
+      "nameEn": "Beets, raw",
+      "nameKo": "비트(생것)",
+      "aliases": [
+        "비트"
+      ]
+    },
+    "169230": {
+      "nameEn": "Garlic, raw",
+      "nameKo": "마늘(생것)",
+      "aliases": [
+        "마늘"
+      ]
+    },
+    "173944": {
+      "nameEn": "Bananas, raw",
+      "nameKo": "바나나(생것)",
+      "aliases": [
+        "바나나"
+      ]
+    },
+    "171688": {
+      "nameEn": "Apples, raw, with skin (Includes foods for USDA's Food Distribution Program)",
+      "nameKo": "사과(껍질 포함, 생것)",
+      "aliases": [
+        "사과"
+      ]
+    },
+    "169097": {
+      "nameEn": "Oranges, raw, all commercial varieties",
+      "nameKo": "오렌지(생것, 시판 품종 전체)",
+      "aliases": [
+        "오렌지"
+      ]
+    },
+    "174683": {
+      "nameEn": "Grapes, red or green (European type, such as Thompson seedless), raw",
+      "nameKo": "적색·녹색 포도(유럽계 품종, 생것)",
+      "aliases": [
+        "포도",
+        "청포도",
+        "적포도"
+      ]
+    },
+    "167762": {
+      "nameEn": "Strawberries, raw",
+      "nameKo": "딸기(생것)",
+      "aliases": [
+        "딸기"
+      ]
+    },
+    "171711": {
+      "nameEn": "Blueberries, raw",
+      "nameKo": "블루베리(생것)",
+      "aliases": [
+        "블루베리"
+      ]
+    },
+    "167755": {
+      "nameEn": "Raspberries, raw",
+      "nameKo": "라즈베리(생것)",
+      "aliases": [
+        "라즈베리"
+      ]
+    },
+    "171705": {
+      "nameEn": "Avocados, raw, all commercial varieties",
+      "nameKo": "아보카도(생것, 시판 품종 전체)",
+      "aliases": [
+        "아보카도"
+      ]
+    },
+    "168153": {
+      "nameEn": "Kiwifruit, green, raw",
+      "nameKo": "그린키위(생것)",
+      "aliases": [
+        "키위",
+        "그린키위"
+      ]
+    },
+    "169124": {
+      "nameEn": "Pineapple, raw, all varieties",
+      "nameKo": "파인애플(생것, 전체 품종)",
+      "aliases": [
+        "파인애플"
+      ]
+    },
+    "167765": {
+      "nameEn": "Watermelon, raw",
+      "nameKo": "수박(생것)",
+      "aliases": [
+        "수박"
+      ]
+    },
+    "171719": {
+      "nameEn": "Cherries, sweet, raw",
+      "nameKo": "스위트 체리(생것)",
+      "aliases": [
+        "체리",
+        "스위트 체리"
+      ]
+    },
+    "174673": {
+      "nameEn": "Grapefruit, raw, pink and red, all areas",
+      "nameKo": "핑크·레드 자몽(생것, 전체 산지)",
+      "aliases": [
+        "자몽",
+        "레드자몽"
+      ]
+    },
+    "169092": {
+      "nameEn": "Melons, cantaloupe, raw",
+      "nameKo": "칸탈루프 멜론(생것)",
+      "aliases": [
+        "칸탈루프",
+        "칸탈루프 멜론",
+        "멜론"
+      ]
+    },
+    "170567": {
+      "nameEn": "Nuts, almonds",
+      "nameKo": "아몬드",
+      "aliases": [
+        "아몬드"
+      ]
+    },
+    "170187": {
+      "nameEn": "Nuts, walnuts, english",
+      "nameKo": "잉글리시 호두",
+      "aliases": [
+        "호두",
+        "잉글리시 호두"
+      ]
+    },
+    "172430": {
+      "nameEn": "Peanuts, all types, raw",
+      "nameKo": "땅콩(전체 유형, 생것)",
+      "aliases": [
+        "땅콩",
+        "생땅콩"
+      ]
+    },
+    "170162": {
+      "nameEn": "Nuts, cashew nuts, raw",
+      "nameKo": "캐슈넛(생것)",
+      "aliases": [
+        "캐슈넛"
+      ]
+    },
+    "170554": {
+      "nameEn": "Seeds, chia seeds, dried",
+      "nameKo": "치아씨드(건조)",
+      "aliases": [
+        "치아씨드",
+        "치아시드"
+      ]
+    },
+    "169414": {
+      "nameEn": "Seeds, flaxseed",
+      "nameKo": "아마씨",
+      "aliases": [
+        "아마씨",
+        "플랙시드"
+      ]
+    },
+    "171413": {
+      "nameEn": "Oil, olive, salad or cooking",
+      "nameKo": "올리브유(샐러드·조리용)",
+      "aliases": [
+        "올리브유",
+        "올리브오일"
+      ]
+    },
+    "172336": {
+      "nameEn": "Oil, canola",
+      "nameKo": "카놀라유",
+      "aliases": [
+        "카놀라유",
+        "카놀라오일"
+      ]
+    },
+    "172217": {
+      "nameEn": "Milk, whole, 3.25% milkfat, without added vitamin A and vitamin D",
+      "nameKo": "전지우유(유지방 3.25%, 비타민 A·D 무첨가)",
+      "aliases": [
+        "우유",
+        "전지우유"
+      ]
+    },
+    "170872": {
+      "nameEn": "Milk, lowfat, fluid, 1% milkfat, with added vitamin A and vitamin D",
+      "nameKo": "저지방우유(유지방 1%, 비타민 A·D 첨가)",
+      "aliases": [
+        "우유",
+        "저지방우유"
+      ]
+    },
+    "173432": {
+      "nameEn": "Milk, nonfat, fluid, without added vitamin A and vitamin D (fat free or skim)",
+      "nameKo": "무지방우유(비타민 A·D 무첨가)",
+      "aliases": [
+        "우유",
+        "무지방우유",
+        "탈지우유"
+      ]
+    },
+    "170894": {
+      "nameEn": "Yogurt, Greek, plain, nonfat (Includes foods for USDA's Food Distribution Program)",
+      "nameKo": "그릭요거트(플레인, 무지방)",
+      "aliases": [
+        "그릭요거트",
+        "무지방 그릭요거트",
+        "요거트"
+      ]
+    },
+    "171304": {
+      "nameEn": "Yogurt, Greek, plain, whole milk",
+      "nameKo": "그릭요거트(플레인, 전지우유)",
+      "aliases": [
+        "그릭요거트",
+        "플레인 그릭요거트",
+        "요거트"
+      ]
+    },
+    "173417": {
+      "nameEn": "Cheese, cottage, lowfat, 1% milkfat",
+      "nameKo": "코티지치즈(저지방, 유지방 1%)",
+      "aliases": [
+        "코티지치즈",
+        "코티지 치즈"
+      ]
+    },
+    "168177": {
+      "nameEn": "Pears, asian, raw",
+      "nameKo": "아시아배(생것)",
+      "aliases": [
+        "배",
+        "아시아배"
+      ]
+    }
+  },
+  "validationResults": {
+    "foodCount": 7793,
+    "sourceFoodNutrientRows": 644125,
+    "curatedKoreanCount": 80,
+    "englishOnlyCount": 7713,
+    "missingBySourceNutrient": {
+      "kcal": 0,
+      "protein": 0,
+      "carbs": 0,
+      "fat": 0,
+      "mono": 516,
+      "poly": 514
+    },
+    "unsatStatuses": {
+      "calculated": 7270,
+      "missing": 518,
+      "source-inconsistent": 5
+    },
+    "unsatUnconfirmedCount": 523,
+    "maximaPer100g": {
+      "kcal": 902,
+      "protein": 88.32,
+      "carbs": 100,
+      "fat": 100,
+      "mono": 83.689,
+      "poly": 74.623
+    },
+    "sourceInconsistencies": [
+      {
+        "fdcId": 168246,
+        "ndbNumber": "10052",
+        "nameEn": "Pork, fresh, loin, sirloin (chops or roasts), bone-in, separable lean and fat, raw",
+        "sourceUrl": "https://fdc.nal.usda.gov/download-datasets/",
+        "monoPlusPoly": 9.131,
+        "excessOverTotalFat": 0.171,
+        "handling": "Original mono/poly/fat retained. Derived unsat is null; not zero and not clamped.",
+        "sourceNutrients": {
+          "fat": {
+            "fdcNutrientId": 1004,
+            "sourceAmount": "8.96",
+            "foodNutrientRowId": 1342128,
+            "derivationId": "54",
+            "derivationCode": "PAK",
+            "derivationDescription": "Based on physical composition; Derived from analytical data; Known physical composition",
+            "sourceCode": "1",
+            "sourceDescription": "Analytical or derived from analytical"
+          },
+          "mono": {
+            "fdcNutrientId": 1292,
+            "sourceAmount": "6.922",
+            "foodNutrientRowId": 1342206,
+            "derivationId": "49",
+            "derivationCode": "NC",
+            "derivationDescription": "Calculated",
+            "sourceCode": "4",
+            "sourceDescription": "Calculated or imputed"
+          },
+          "poly": {
+            "fdcNutrientId": 1293,
+            "sourceAmount": "2.209",
+            "foodNutrientRowId": 1342207,
+            "derivationId": "49",
+            "derivationCode": "NC",
+            "derivationDescription": "Calculated",
+            "sourceCode": "4",
+            "sourceDescription": "Calculated or imputed"
+          }
+        }
+      },
+      {
+        "fdcId": 168314,
+        "ndbNumber": "10224",
+        "nameEn": "Pork, fresh, loin, top loin (roasts), boneless, separable lean and fat, raw",
+        "sourceUrl": "https://fdc.nal.usda.gov/download-datasets/",
+        "monoPlusPoly": 8.468,
+        "excessOverTotalFat": 0.138,
+        "handling": "Original mono/poly/fat retained. Derived unsat is null; not zero and not clamped.",
+        "sourceNutrients": {
+          "fat": {
+            "fdcNutrientId": 1004,
+            "sourceAmount": "8.33",
+            "foodNutrientRowId": 1348658,
+            "derivationId": "54",
+            "derivationCode": "PAK",
+            "derivationDescription": "Based on physical composition; Derived from analytical data; Known physical composition",
+            "sourceCode": "1",
+            "sourceDescription": "Analytical or derived from analytical"
+          },
+          "mono": {
+            "fdcNutrientId": 1292,
+            "sourceAmount": "6.481",
+            "foodNutrientRowId": 1348641,
+            "derivationId": "49",
+            "derivationCode": "NC",
+            "derivationDescription": "Calculated",
+            "sourceCode": "4",
+            "sourceDescription": "Calculated or imputed"
+          },
+          "poly": {
+            "fdcNutrientId": 1293,
+            "sourceAmount": "1.987",
+            "foodNutrientRowId": 1348642,
+            "derivationId": "49",
+            "derivationCode": "NC",
+            "derivationDescription": "Calculated",
+            "sourceCode": "4",
+            "sourceDescription": "Calculated or imputed"
+          }
+        }
+      },
+      {
+        "fdcId": 169191,
+        "ndbNumber": "10974",
+        "nameEn": "Pork, ground, 72% lean / 28% fat, cooked, crumbles",
+        "sourceUrl": "https://fdc.nal.usda.gov/download-datasets/",
+        "monoPlusPoly": 37.94,
+        "excessOverTotalFat": 5.01,
+        "handling": "Original mono/poly/fat retained. Derived unsat is null; not zero and not clamped.",
+        "sourceNutrients": {
+          "fat": {
+            "fdcNutrientId": 1004,
+            "sourceAmount": "32.93",
+            "foodNutrientRowId": 1422308,
+            "derivationId": "3",
+            "derivationCode": "AR",
+            "derivationDescription": "Analytical data; derived by linear regression",
+            "sourceCode": "1",
+            "sourceDescription": "Analytical or derived from analytical"
+          },
+          "mono": {
+            "fdcNutrientId": 1292,
+            "sourceAmount": "29.613",
+            "foodNutrientRowId": 1422306,
+            "derivationId": "49",
+            "derivationCode": "NC",
+            "derivationDescription": "Calculated",
+            "sourceCode": "4",
+            "sourceDescription": "Calculated or imputed"
+          },
+          "poly": {
+            "fdcNutrientId": 1293,
+            "sourceAmount": "8.327",
+            "foodNutrientRowId": 1422307,
+            "derivationId": "49",
+            "derivationCode": "NC",
+            "derivationDescription": "Calculated",
+            "sourceCode": "4",
+            "sourceDescription": "Calculated or imputed"
+          }
+        }
+      },
+      {
+        "fdcId": 170603,
+        "ndbNumber": "13349",
+        "nameEn": "Beef, chuck, under blade pot roast or steak, boneless, separable lean only, trimmed to 0\" fat, select, raw",
+        "sourceUrl": "https://fdc.nal.usda.gov/download-datasets/",
+        "monoPlusPoly": 6.483,
+        "excessOverTotalFat": 1.073,
+        "handling": "Original mono/poly/fat retained. Derived unsat is null; not zero and not clamped.",
+        "sourceNutrients": {
+          "fat": {
+            "fdcNutrientId": 1004,
+            "sourceAmount": "5.41",
+            "foodNutrientRowId": 1537017,
+            "derivationId": "3",
+            "derivationCode": "AR",
+            "derivationDescription": "Analytical data; derived by linear regression",
+            "sourceCode": "1",
+            "sourceDescription": "Analytical or derived from analytical"
+          },
+          "mono": {
+            "fdcNutrientId": 1292,
+            "sourceAmount": "5.868",
+            "foodNutrientRowId": 1537061,
+            "derivationId": "49",
+            "derivationCode": "NC",
+            "derivationDescription": "Calculated",
+            "sourceCode": "4",
+            "sourceDescription": "Calculated or imputed"
+          },
+          "poly": {
+            "fdcNutrientId": 1293,
+            "sourceAmount": "0.615",
+            "foodNutrientRowId": 1537062,
+            "derivationId": "49",
+            "derivationCode": "NC",
+            "derivationDescription": "Calculated",
+            "sourceCode": "4",
+            "sourceDescription": "Calculated or imputed"
+          }
+        }
+      },
+      {
+        "fdcId": 174513,
+        "ndbNumber": "5708",
+        "nameEn": "Turkey, retail parts, breast, meat only, with added solution, raw",
+        "sourceUrl": "https://fdc.nal.usda.gov/download-datasets/",
+        "monoPlusPoly": 6.613,
+        "excessOverTotalFat": 4.083,
+        "handling": "Original mono/poly/fat retained. Derived unsat is null; not zero and not clamped.",
+        "sourceNutrients": {
+          "fat": {
+            "fdcNutrientId": 1004,
+            "sourceAmount": "2.53",
+            "foodNutrientRowId": 1864978,
+            "derivationId": "1",
+            "derivationCode": "A",
+            "derivationDescription": "Analytical",
+            "sourceCode": "1",
+            "sourceDescription": "Analytical or derived from analytical"
+          },
+          "mono": {
+            "fdcNutrientId": 1292,
+            "sourceAmount": "3.71",
+            "foodNutrientRowId": 1865075,
+            "derivationId": "49",
+            "derivationCode": "NC",
+            "derivationDescription": "Calculated",
+            "sourceCode": "4",
+            "sourceDescription": "Calculated or imputed"
+          },
+          "poly": {
+            "fdcNutrientId": 1293,
+            "sourceAmount": "2.903",
+            "foodNutrientRowId": 1865076,
+            "derivationId": "49",
+            "derivationCode": "NC",
+            "derivationDescription": "Calculated",
+            "sourceCode": "4",
+            "sourceDescription": "Calculated or imputed"
+          }
+        }
+      }
+    ],
+    "retainedRoundingDifferences": [
+      {
+        "fdcId": 168216,
+        "excessOverTotalFat": 0.011
+      },
+      {
+        "fdcId": 169044,
+        "excessOverTotalFat": 0.02
+      },
+      {
+        "fdcId": 169118,
+        "excessOverTotalFat": 0.038
+      },
+      {
+        "fdcId": 169385,
+        "excessOverTotalFat": 0.037
+      },
+      {
+        "fdcId": 171889,
+        "excessOverTotalFat": 0.002
+      },
+      {
+        "fdcId": 171894,
+        "excessOverTotalFat": 0.001
+      },
+      {
+        "fdcId": 171895,
+        "excessOverTotalFat": 0.002
+      },
+      {
+        "fdcId": 171896,
+        "excessOverTotalFat": 0.002
+      },
+      {
+        "fdcId": 171899,
+        "excessOverTotalFat": 0.002
+      },
+      {
+        "fdcId": 171900,
+        "excessOverTotalFat": 0.002
+      },
+      {
+        "fdcId": 171901,
+        "excessOverTotalFat": 0.002
+      },
+      {
+        "fdcId": 173227,
+        "excessOverTotalFat": 0.005
+      },
+      {
+        "fdcId": 173232,
+        "excessOverTotalFat": 0.006
+      },
+      {
+        "fdcId": 173519,
+        "excessOverTotalFat": 0.017
+      },
+      {
+        "fdcId": 173741,
+        "excessOverTotalFat": 0.045
+      },
+      {
+        "fdcId": 173746,
+        "excessOverTotalFat": 0.012
+      },
+      {
+        "fdcId": 174130,
+        "excessOverTotalFat": 0.002
+      },
+      {
+        "fdcId": 174132,
+        "excessOverTotalFat": 0.002
+      },
+      {
+        "fdcId": 174134,
+        "excessOverTotalFat": 0.001
+      },
+      {
+        "fdcId": 174136,
+        "excessOverTotalFat": 0.002
+      },
+      {
+        "fdcId": 174147,
+        "excessOverTotalFat": 0.002
+      },
+      {
+        "fdcId": 174151,
+        "excessOverTotalFat": 0.005
+      },
+      {
+        "fdcId": 174152,
+        "excessOverTotalFat": 0.009
+      },
+      {
+        "fdcId": 174153,
+        "excessOverTotalFat": 0.003
+      },
+      {
+        "fdcId": 174155,
+        "excessOverTotalFat": 0.005
+      },
+      {
+        "fdcId": 174156,
+        "excessOverTotalFat": 0.006
+      },
+      {
+        "fdcId": 174871,
+        "excessOverTotalFat": 0.005
+      },
+      {
+        "fdcId": 175100,
+        "excessOverTotalFat": 0.007
+      },
+      {
+        "fdcId": 175101,
+        "excessOverTotalFat": 0.002
+      }
+    ],
+    "categoryCounts": {
+      "American Indian/Alaska Native Foods": 165,
+      "Baby Foods": 345,
+      "Baked Products": 517,
+      "Beef Products": 954,
+      "Beverages": 366,
+      "Breakfast Cereals": 195,
+      "Cereal Grains and Pasta": 181,
+      "Dairy and Egg Products": 291,
+      "Fast Foods": 312,
+      "Fats and Oils": 216,
+      "Finfish and Shellfish Products": 264,
+      "Fruits and Fruit Juices": 355,
+      "Lamb, Veal, and Game Products": 464,
+      "Legumes and Legume Products": 290,
+      "Meals, Entrees, and Side Dishes": 81,
+      "Nut and Seed Products": 137,
+      "Pork Products": 336,
+      "Poultry Products": 383,
+      "Restaurant Foods": 109,
+      "Sausages and Luncheon Meats": 167,
+      "Snacks": 176,
+      "Soups, Sauces, and Gravies": 254,
+      "Spices and Herbs": 63,
+      "Sweets": 358,
+      "Vegetables and Vegetable Products": 814
+    },
+    "checks": [
+      "Official archive SHA256 and byte length match pinned manifest.",
+      "All 7793 distinct FDC IDs join exactly to SR Legacy IDs.",
+      "Energy uses nutrient 1008 in KCAL; kJ nutrient 1062 is not substituted.",
+      "Every Korean display label joins by exact FDC ID AND unchanged English description.",
+      "All required calorie/macronutrient values exist, are finite, nonnegative and within bounds.",
+      "No missing nutrient is replaced with zero or inferred from another food.",
+      "Unsaturated fat is decimal mono+poly only where both exist and pass the stated consistency policy."
+    ],
+    "catalogBytes": 2892496,
+    "catalogSha256": "36706dde737b918b507cbbb6faed44d54e401a4e005b2bc3ed47d048b4921b18"
+  }
+}

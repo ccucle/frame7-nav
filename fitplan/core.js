@@ -1,13 +1,15 @@
-/* FORMDAY v2: validated records, occurrence snapshots and transactional local storage. */
+/* FORMDAY v3: food snapshots, validated records and transactional local storage. */
 (function (root, factory) {
   'use strict';
-  const api = factory();
+  const nutrition = typeof module === 'object' && module.exports ? require('./nutrition.js') : root.FormdayNutrition;
+  const api = factory(nutrition);
   if (typeof module === 'object' && module.exports) module.exports = api;
   root.FormdayCore = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (N) {
   'use strict';
 
-  const VERSION = 2;
+  if (!N || typeof N.normalizeMeal !== 'function') throw new Error('식품 계산 모듈을 불러오지 못했습니다.');
+  const VERSION = 3;
   const STORE = 'formday_calendar_proto_v1';
   const defaults = Object.freeze({ protein: 150, carbs: 200, fat: 50 });
   const TYPES = ['strength', 'cardio', 'meal', 'weight'];
@@ -137,11 +139,7 @@
       if (!['가벼움', '보통', '높음'].includes(intensity)) fail('유산소 강도가 올바르지 않습니다.');
       return { cardio: textValue(detail.cardio, '유산소 종목', 80, false), minutes: numberValue(detail.minutes, '운동 시간', 0, 1440, false), distance: numberValue(detail.distance, '거리', 0, 10000, false), intensity };
     }
-    if (type === 'meal') {
-      const grams = numberValue(detail.grams, '섭취 중량', 0, 20000, false);
-      if (grams === 0) fail('섭취 중량은 0g보다 커야 합니다.');
-      return { food: textValue(detail.food, '식품 이름', 200, false), grams };
-    }
+    if (type === 'meal') return N.normalizeMeal(detail);
     if (type === 'weight') {
       let weight = detail.weight;
       if (weight === undefined || weight === null) {
@@ -232,8 +230,8 @@
   function normalizeState(raw) {
     if (!plain(raw)) fail('FORMDAY 기록 파일이 아닙니다.');
     if (raw.app !== undefined && raw.app !== 'formday') fail('FORMDAY 기록 파일이 아닙니다.');
-    if (raw.version !== undefined && ![1, 2].includes(raw.version)) fail('지원하지 않는 백업 버전입니다.');
-    if (raw.schemaVersion !== undefined && ![1, 2].includes(raw.schemaVersion)) fail('지원하지 않는 기록 버전입니다.');
+    if (raw.version !== undefined && ![1, 2, 3].includes(raw.version)) fail('지원하지 않는 백업 버전입니다.');
+    if (raw.schemaVersion !== undefined && ![1, 2, 3].includes(raw.schemaVersion)) fail('지원하지 않는 기록 버전입니다.');
     if (!Array.isArray(raw.events) || raw.events.length > 5000) fail('일정은 최대 5,000개까지 지원합니다.');
     if (!plain(raw.settings)) fail('영양 목표 형식이 올바르지 않습니다.');
     const settings = {};
@@ -249,7 +247,8 @@
       ids.add(event.id);
       return event;
     });
-    return { schemaVersion: VERSION, revision, events, settings, demo: booleanValue(raw.demo, '샘플 모드', false) };
+    const collections = N.normalizeCollections(raw);
+    return { schemaVersion: VERSION, revision, events, settings, demo: booleanValue(raw.demo, '샘플 모드', false), ...collections };
   }
 
   function occurs(event, day) {

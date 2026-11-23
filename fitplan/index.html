@@ -7,8 +7,9 @@
 <title>FORMDAY · 운동 & 식단 캘린더</title>
 <meta name="description" content="웨이트 세트 기록, 식단과 체중을 하나의 캘린더에서 관리하는 FORMDAY.">
 <meta name="robots" content="noindex, nofollow">
-<link rel="stylesheet" href="app.css?v=0.2.1">
-<link rel="stylesheet" href="workouts.css?v=0.2.1">
+<link rel="stylesheet" href="app.css?v=0.3.0">
+<link rel="stylesheet" href="workouts.css?v=0.3.0">
+<link rel="stylesheet" href="meals.css?v=0.3.0">
 <link rel="icon" href="data:,">
 </head>
 <body>
@@ -30,8 +31,8 @@
   </aside>
   <main class="main" id="main-content">
     <div class="toprow">
-      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.2.1</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
-      <div class="header-actions"><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
+      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.3.0</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
+      <div class="header-actions"><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-outline meal-quick" id="new-meal">＋ 식단 기록</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
     </div>
     <div id="storage-status" class="storage-status" role="status"></div>
     <div id="demo-banner" class="demo-banner hide"><span>✳ 현재 표시된 운동·식단·체중은 <b>체험용 샘플</b>입니다. 실제 개인 기록이 아닙니다.</span><button id="clear-demo">샘플 지우기</button></div>
@@ -47,7 +48,7 @@
           <div class="calendar-nav"><span class="date-heading" id="date-heading">2026년 11월</span><button class="circle-button" id="prev" aria-label="이전 기간">‹</button><button class="circle-button" id="next" aria-label="다음 기간">›</button><button class="btn btn-outline btn-small" id="today">오늘</button></div>
           <div class="segmented" role="group" aria-label="캘린더 보기"><button data-view="month" class="active">월</button><button data-view="week">주</button><button data-view="day">일</button></div>
         </div>
-        <div class="calendar-controls"><div class="filters" id="filters"></div><label class="search-label"><span class="sr-only">일정 검색</span><input type="search" id="calendar-search" placeholder="일정 · 운동 검색" autocomplete="off" maxlength="100"></label></div>
+        <div class="calendar-controls"><div class="filters" id="filters"></div><label class="search-label"><span class="sr-only">일정 검색</span><input type="search" id="calendar-search" placeholder="일정 · 운동 · 음식 검색" autocomplete="off" maxlength="100"></label></div>
       </div>
       <div id="calendar"></div>
       <div class="calendar-foot"><span>날짜 선택 · 빈칸 두 번 클릭 → 일정 추가</span><span>일정은 수정·반복·완료 처리할 수 있습니다.</span></div>
@@ -60,15 +61,17 @@
     <div><div class="section-head">웨이트 진행 <small>완료한 세트 기준</small></div><div id="workout-progress" class="workout-progress"></div></div>
     <div><div class="section-head">하루 영양 리포트 <small>식단 기록 기준</small></div><div id="nutrition" class="nutrition"></div></div>
     <div><div class="section-head">체중 트렌드 <small>최근 7회 기록</small></div><div class="weight-box" id="weight-trend"></div></div>
-    <p class="right-helper">※ 식품 영양성분은 초기 샘플 데이터에 기반한 계산 예시입니다. 실제 서비스에서는 검증된 식품 DB와 제품 표시사항을 연결합니다.</p>
+    <p class="right-helper" id="nutrition-source-note">식품마다 출처와 기준량을 확인하세요. 식사 완료로 표시한 기록만 하루 섭취량에 합산합니다.</p>
     <div class="footer-menu"><button class="btn btn-outline btn-small" id="export-btn">↓ 기록 내보내기</button><button class="btn btn-outline btn-small" id="import-btn">↑ 기록 가져오기</button><button class="btn btn-outline btn-small" id="undo-btn" disabled>↶ 마지막 변경 되돌리기</button><button class="btn btn-outline btn-small" id="ai-btn">✳ AI 코치 구성</button><input type="file" id="import-file" accept="application/json,.json" class="hide"></div>
   </aside>
 </div>
 <div class="mobile-nav"><button data-mobile="calendar" class="active"><b>▦</b>캘린더</button><button data-mobile="add"><b>⊕</b>일정 등록</button><button data-mobile="detail"><b>◫</b>하루 기록</button></div>
 <div id="modal-root"></div><div id="toast-root" role="status" aria-live="polite"></div>
-<script defer src="data.js?v=0.2.1"></script>
-<script defer src="workouts.js?v=0.2.1"></script>
-<script defer src="core.js?v=0.2.1"></script>
-<script defer src="app.js?v=0.2.1"></script>
+<script defer src="data.js?v=0.3.0"></script>
+<script defer src="workouts.js?v=0.3.0"></script>
+<script defer src="nutrition.js?v=0.3.0"></script>
+<script defer src="core.js?v=0.3.0"></script>
+<script defer src="meals.js?v=0.3.0"></script>
+<script defer src="app.js?v=0.3.0"></script>
 </body>
 </html>

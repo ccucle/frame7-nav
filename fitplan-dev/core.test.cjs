@@ -15,7 +15,7 @@ function memory(initial) {
 test('legacy workout becomes distinct sets with identical values and completion', () => {
   const s = stateOf(legacy({ completed: true }));
   const d = s.events[0].detail;
-  assert.equal(s.schemaVersion, 2);
+  assert.equal(s.schemaVersion, C.VERSION);
   assert.equal(d.exercises[0].sets.length, 3);
   assert.equal(new Set(d.exercises[0].sets.map(x => x.id)).size, 3);
   assert.ok(d.exercises[0].sets.every(x => x.done && x.weight === 60 && x.reps === 10));
@@ -107,7 +107,7 @@ test('malformed imports are rejected without mutating the supplied original', ()
   for (const change of [{ id: 'x" onclick="alert(1)' }, { date: '2026-99-99' }, { type: 'constructor' }, { start: undefined }, { end: '06:00' }, { title: null }, { detail: { exercise: '운동', sets: 1.5, weight: 10, reps: 10 } }]) {
     assert.throws(() => stateOf(legacy(change)));
   }
-  assert.throws(() => C.normalizeState({ ...valid, version: 3 }));
+  assert.throws(() => C.normalizeState({ ...valid, version: 4 }));
   assert.throws(() => C.normalizeState({ ...valid, events: [...valid.events, valid.events[0]] }));
   const duplicatedSets = C.clone(valid);
   duplicatedSets.events[0].detail.exercises[0].sets[1].id = duplicatedSets.events[0].detail.exercises[0].sets[0].id;

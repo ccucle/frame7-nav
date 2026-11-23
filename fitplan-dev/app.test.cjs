@@ -1,6 +1,6 @@
 'use strict';
 
-// Integration smoke tests for the four real browser scripts. This intentionally
+// Integration smoke tests for the real browser scripts. This intentionally
 // small DOM adapter covers startup, settings and backup handlers. It is not a
 // browser layout engine and does not replace the deployed UI checks.
 const assert = require('node:assert/strict');
@@ -9,9 +9,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const C = require('../fitplan/core.js');
+const N = require('../fitplan/nutrition.js');
 const directory = path.join(__dirname, '../fitplan');
 const html = fs.readFileSync(path.join(directory, 'index.html'), 'utf8');
-const scripts = ['data.js', 'workouts.js', 'core.js', 'app.js'].map((name) => [name, fs.readFileSync(path.join(directory, name), 'utf8')]);
+const scripts = ['data.js', 'workouts.js', 'nutrition.js', 'core.js', 'meals.js', 'app.js'].map((name) => [name, fs.readFileSync(path.join(directory, name), 'utf8')]);
 const decode = (s = '') => s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 class ClassList {
   constructor(value = '') { this.items = new Set(value.split(/\s+/).filter(Boolean)); }
@@ -81,24 +82,32 @@ class DocumentStub {
 }
 function boot(raw, options = {}) {
   const document = new DocumentStub(); document.body.innerHTML = html;
-  const map = new Map(raw === undefined ? [] : [[C.STORE, raw]]), writes = [], confirmations = [], windowListeners = new Map();
+  const map = new Map(raw === undefined ? [] : [[C.STORE, raw]]), writes = [], confirmations = [], downloads = [], windowListeners = new Map();
   let failWrites = false, unique = 0;
   const storage = {
     getItem: (key) => map.get(key) ?? null,
     setItem(key, value) { if (failWrites && key === C.STORE) throw new Error('QuotaExceededError'); writes.push([key, value]); map.set(key, value); }
   };
   class FixedDate extends Date { constructor(...args) { super(...(args.length ? args : ['2026-11-23T12:00:00Z'])); } static now() { return Date.parse('2026-11-23T12:00:00Z'); } }
+  class TestURL extends URL {
+    static createObjectURL(blob) { downloads.push(blob); return 'blob:test'; }
+    static revokeObjectURL() {}
+  }
   const context = vm.createContext({ document, Date: FixedDate, console, localStorage: storage,
     crypto: { randomUUID: () => 'test-' + ++unique },
     setTimeout: () => ++unique, clearTimeout() {}, setInterval: () => ++unique, clearInterval() {}, requestAnimationFrame: (fn) => fn(),
     confirm(message) { confirmations.push(message); return options.confirm !== false; },
     addEventListener(type, listener) { windowListeners.set(type, listener); },
-    Blob, URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} }
+    Blob, URL: TestURL, AbortController,
+    fetch: options.fetch || (async () => { throw new Error('Test fetch unavailable'); })
   });
   context.window = context;
   if (options.storageDenied) Object.defineProperty(context, 'localStorage', { get() { throw new Error('SecurityError'); } });
-  for (const [name, code] of scripts) vm.runInContext(code, context, { filename: name });
-  return { document, context, map, writes, storage, confirmations, windowListeners,
+  for (const [name, code] of scripts) {
+    if (name === 'app.js' && options.mealMount) context.FormdayMeals = { mount: options.mealMount };
+    vm.runInContext(code, context, { filename: name });
+  }
+  return { document, context, map, writes, storage, confirmations, downloads, windowListeners,
     get: (id) => document.querySelector('#' + id),
     failWrites(value = true) { failWrites = value; },
     async importText(text) {
@@ -111,7 +120,7 @@ function boot(raw, options = {}) {
 const legacyEvent = (overrides = {}) => ({ id: 'legacy-workout', date: '2026-11-23', start: '07:00', end: '08:00', type: 'strength', title: '기존 벤치 기록', repeat: 'none', completed: true, detail: { exercise: '벤치프레스', sets: 3, weight: 60, reps: 10, notes: '이전 메모' }, ...overrides });
 const legacyState = () => ({ events: [legacyEvent()], settings: { protein: 150, carbs: 200, fat: 50 } });
 
-test('empty storage starts the real four scripts, renders the calendar and labels samples without auto-saving', () => {
+test('empty storage starts the real scripts, renders the calendar and labels samples without auto-saving', () => {
   const app = boot();
   assert.equal(app.get('date-heading').textContent, '2026년 11월');
   assert.equal((app.get('calendar').innerHTML.match(/class="month-cell /g) || []).length, 42);
@@ -215,4 +224,153 @@ test('declining a valid import keeps current data unchanged', async () => {
   assert.equal(app.confirmations.length, 1); assert.equal(app.writes.length, 0);
   assert.equal(app.map.get(C.STORE), raw);
   assert.match(app.get('calendar').innerHTML, /기존 벤치 기록/);
+});
+
+const food = (changes = {}) => N.validateFood({
+  id: 'user-food', name: '사용자 제품', nameEn: '', brand: '', category: '', basisAmount: 100, basisUnit: 'g',
+  nutrients: { kcal: 100, protein: 10, carbs: 20, fat: 1, unsat: 0.5 },
+  source: { kind: 'user', url: 'https://example.com/product-label' }, ...changes
+});
+const mealEvent = (detail, changes = {}) => legacyEvent({ id: 'meal1', type: 'meal', title: '식사', detail, start: '12:00', end: '12:30', ...changes });
+const mealDetail = (source, amount = 100) => ({ items: [{ id: 'item1', food: source, amount }], notes: '' });
+const stateWith = (...events) => C.normalizeState({ events, settings: { ...C.defaults } });
+const dummyMealController = () => ({ read() { throw new Error('음식을 추가해 주세요.'); }, draft() { return { items: [], notes: '' }; }, destroy() {} });
+
+test('v2 legacy meals preserve the 365.5 kcal total and visibly identify legacy nutrition values', () => {
+  const old = { version: 2, schemaVersion: 2, events: [
+    mealEvent({ food: '그릭요거트(무지방)', grams: 200 }, { id: 'yogurt', start: '08:00', end: '08:30' }),
+    mealEvent({ food: '닭가슴살(조리)', grams: 150 }, { id: 'chicken' })
+  ], settings: { ...C.defaults } };
+  const raw = JSON.stringify(old), app = boot(raw);
+  assert.match(app.get('stat-kcal').innerHTML, /^365\.5 /);
+  assert.match(app.get('stat-protein').innerHTML, /^66\.9 /);
+  assert.match(app.get('nutrition').innerHTML, /기존 샘플 영양정보 2개 포함/);
+  assert.equal(app.map.get(C.STORE), raw);
+  assert.equal(app.writes.length, 0);
+});
+
+test('v3 daily nutrition sums the foods in completed meals and excludes planned meals', () => {
+  const a = food();
+  const b = food({ id: 'label45', basisAmount: 45, nutrients: { kcal: 90, protein: 4, carbs: 12, fat: 2, unsat: 1 } });
+  const multiple = { items: [{ id: 'a', food: a, amount: 150 }, { id: 'b', food: b, amount: 22.5 }], notes: '두 음식' };
+  const state = stateWith(mealEvent(multiple), mealEvent(mealDetail(a, 1000), { id: 'planned', completed: false, start: '19:00', end: '19:30' }));
+  const app = boot(JSON.stringify(state));
+  assert.match(app.get('stat-kcal').innerHTML, /^195 /);
+  assert.match(app.get('stat-protein').innerHTML, /^17 /);
+  assert.match(app.get('agenda').innerHTML, /외 1가지/);
+  assert.equal(app.get('agenda-count').textContent, '1/2 완료');
+  assert.doesNotMatch(app.get('nutrition').innerHTML, /legacy-info|missing-info/);
+  const plannedOnly = boot(JSON.stringify(stateWith(mealEvent(multiple, { completed: false }))));
+  assert.match(plannedOnly.get('stat-kcal').innerHTML, /^0 /);
+  assert.match(plannedOnly.get('stat-protein').innerHTML, /^0 /);
+});
+
+test('all missing unsaturated-fat values render as unknown rather than zero grams', () => {
+  const unknown = food({ nutrients: { kcal: 100, protein: 10, carbs: 20, fat: 1, unsat: null } });
+  const app = boot(JSON.stringify(stateWith(mealEvent(mealDetail(unknown)))));
+  assert.match(app.get('stat-kcal').innerHTML, /^100 /);
+  assert.match(app.get('nutrition').innerHTML, /class="unsat-total"[\s\S]*?<strong>미확인<\/strong>/);
+  assert.match(app.get('nutrition').innerHTML, /불포화지방 1개 식품/);
+  assert.doesNotMatch(app.get('nutrition').innerHTML, /class="unsat-total"[\s\S]*?<strong>0g<\/strong>/);
+});
+
+test('partially known meal totals display a partial-sum marker and the missing nutrient counts', () => {
+  const unknown = N.normalizeMeal({ food: '아직 영양정보가 없는 기존 음식', grams: 150 }).items[0];
+  const detail = { items: [{ id: 'known', food: food(), amount: 100 }, { ...unknown, id: 'missing' }], notes: '' };
+  const app = boot(JSON.stringify(stateWith(mealEvent(detail))));
+  assert.match(app.get('stat-kcal').innerHTML, /^100 \+ /);
+  assert.match(app.get('stat-protein').innerHTML, /^10 \+ /);
+  assert.match(app.get('nutrition').innerHTML, /칼로리 1개 식품/);
+  assert.match(app.get('nutrition').innerHTML, /부분 합계/);
+  assert.match(app.get('nutrition').innerHTML, /미확인 값을 0으로 간주하지 않습니다/);
+  assert.match(app.get('stat-protein-note').textContent, /미확인 식품 1개/);
+});
+
+test('v3 import and export keep product snapshots, saved products and favorites together', async () => {
+  const product = food();
+  let imported = N.upsertCustomFood(stateWith(mealEvent(mealDetail(product, 175))), product);
+  imported = N.toggleFavorite(imported, product.id);
+  imported = N.toggleFavorite(imported, 'usda-sr-171477');
+  const app = boot(JSON.stringify(legacyState()));
+  await app.importText(JSON.stringify({ app: 'formday', version: 3, ...imported }));
+  const saved = JSON.parse(app.map.get(C.STORE));
+  assert.equal(saved.customFoods.length, 1);
+  assert.equal(saved.customFoods[0].id, product.id);
+  assert.deepEqual(saved.favoriteFoodIds, [product.id, 'usda-sr-171477']);
+  assert.deepEqual(saved.events[0].detail, imported.events[0].detail);
+  assert.match(app.confirmations[0], /내 식품 1개/);
+  assert.match(app.get('stat-kcal').innerHTML, /^175 /);
+  app.get('export-btn').click();
+  const exported = JSON.parse(await app.downloads.at(-1).text());
+  assert.equal(exported.app, 'formday');
+  assert.equal(exported.version, 3);
+  assert.deepEqual(exported.customFoods, saved.customFoods);
+  assert.deepEqual(exported.favoriteFoodIds, saved.favoriteFoodIds);
+  assert.deepEqual(exported.events, saved.events);
+});
+
+test('failed product, delete and favorite callbacks leave both stored and in-memory records unchanged', async () => {
+  const originalFood = food();
+  let initial = N.upsertCustomFood(stateWith(mealEvent(mealDetail(originalFood))), originalFood);
+  initial = N.toggleFavorite(initial, originalFood.id);
+  const raw = JSON.stringify(initial);
+  let callbacks;
+  const app = boot(raw, { mealMount(container, detail, options) { callbacks = options; return dummyMealController(); } });
+  app.get('new-meal').click();
+  assert.ok(callbacks);
+  const added = food({ id: 'new-product', name: '저장할 새 제품' });
+  app.failWrites();
+  assert.equal(callbacks.onSaveFood(added), null);
+  assert.equal(callbacks.onDeleteFood(originalFood.id), false);
+  assert.equal(callbacks.onToggleFavorite('usda-sr-171477'), false);
+  assert.equal(app.map.get(C.STORE), raw);
+  assert.match(app.get('stat-kcal').innerHTML, /^100 /);
+  assert.equal(app.get('storage-status').classList.contains('storage-error'), true);
+  assert.ok(app.get('save-event'));
+  app.get('export-btn').click();
+  const exported = JSON.parse(await app.downloads.at(-1).text());
+  assert.deepEqual(exported.customFoods, initial.customFoods);
+  assert.deepEqual(exported.favoriteFoodIds, initial.favoriteFoodIds);
+  assert.deepEqual(exported.events, initial.events);
+  app.failWrites(false);
+  const savedFood = callbacks.onSaveFood(added);
+  assert.equal(savedFood.id, added.id);
+  assert.equal(JSON.parse(app.map.get(C.STORE)).customFoods.length, 2);
+  assert.match(app.get('stat-kcal').innerHTML, /^100 /);
+});
+
+test('catalog fetch errors are retryable and successful catalog responses are cached', async () => {
+  let callbacks, requests = 0;
+  const catalog = { meta: { source: 'USDA FoodData Central · SR Legacy' }, foods: [{ id: 'example' }] };
+  const app = boot(JSON.stringify(stateWith()), {
+    mealMount(container, detail, options) { callbacks = options; return dummyMealController(); },
+    async fetch(url, options) {
+      assert.match(url, /^food-catalog\.json/);
+      assert.ok(options.signal instanceof AbortSignal);
+      requests++;
+      return requests === 1 ? { ok: false } : { ok: true, json: async () => catalog };
+    }
+  });
+  app.get('new-meal').click();
+  await assert.rejects(callbacks.loadCatalog(), /불러오지 못했습니다/);
+  assert.equal(await callbacks.loadCatalog(), catalog);
+  assert.equal(await callbacks.loadCatalog(), catalog);
+  assert.equal(requests, 2);
+  assert.equal(app.writes.length, 0);
+});
+
+test('switching away from an empty meal captures its draft without invoking save validation', () => {
+  let draftCalls = 0, readCalls = 0;
+  const app = boot(JSON.stringify(stateWith()), { mealMount() { return {
+    draft() { draftCalls++; return { items: [], notes: '' }; },
+    read() { readCalls++; throw new Error('식사에 음식을 추가해 주세요.'); },
+    destroy() {}
+  }; } });
+  app.get('new-meal').click();
+  const cardioButton = app.document.querySelectorAll('[data-pick]').find(button => button.dataset.pick === 'cardio');
+  cardioButton.click();
+  assert.equal(draftCalls, 1);
+  assert.equal(readCalls, 0);
+  assert.ok(app.get('f-cardio'));
+  assert.equal(app.get('form-error').classList.contains('hide'), true);
 });

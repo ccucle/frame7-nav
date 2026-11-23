@@ -1,7 +1,7 @@
 (function () {
   'use strict';
-  const C = globalThis.FormdayCore, W = globalThis.FormdayWorkouts;
-  const { TYPES, DAYS, FOOD, FOOD_MAP } = globalThis.FormdayData;
+  const C = globalThis.FormdayCore, W = globalThis.FormdayWorkouts, N = globalThis.FormdayNutrition, M = globalThis.FormdayMeals;
+  const { TYPES, DAYS } = globalThis.FormdayData;
   const $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s));
   const z = n => String(n).padStart(2, '0'), iso = C.iso, dateOf = C.dateOf, moveDay = C.shiftDate, uid = C.uid;
   const defaults = C.defaults || { protein: 150, carbs: 200, fat: 50 };
@@ -18,6 +18,35 @@
   let data = loaded.data || C.normalizeState({events: blockedLoad ? [] : buildSample(), settings: {...defaults}, demo: !blockedLoad});
   let view = 'month', cursor = dateOf(today), selected = today, visibleTypes = new Set(Object.keys(TYPES)), searchTerm = '';
   let externalChange = false;
+  let catalogPromise = null;
+
+  function loadCatalog() {
+    if (!catalogPromise) {
+      catalogPromise = (async () => {
+        const controller = new AbortController(), timeout = setTimeout(()=>controller.abort(),20000);
+        try {
+          const response = await fetch('food-catalog.json?v=0.3.0',{signal:controller.signal});
+          if(!response.ok) throw new Error('식품 목록을 불러오지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
+          const catalog = await response.json();
+          if(!catalog.meta || !Array.isArray(catalog.foods) || !catalog.foods.length) throw new Error('식품 목록 형식을 확인할 수 없습니다.');
+          return catalog;
+        } finally {clearTimeout(timeout);}
+      })().catch(error=>{catalogPromise=null;throw new Error(error.name==='AbortError'?'식품 목록 연결 시간이 초과되었습니다. 내 식품과 기존 기록은 계속 사용할 수 있습니다.':error.message);});
+    }
+    return catalogPromise;
+  }
+
+  function saveCustomFood(food) {
+    const validated = N.validateFood(food);
+    if(!commit(N.upsertCustomFood(data,validated),'내 식품에 저장했습니다. 기존 식단 기록의 영양성분은 유지됩니다.'))return null;
+    return C.clone(data.customFoods.find(x=>x.id===validated.id));
+  }
+  function deleteCustomFood(id) {
+    return commit(N.removeCustomFood(data,id),'내 식품에서 삭제했습니다. 이미 기록한 식단은 유지됩니다.');
+  }
+  function toggleFavoriteFood(id) {
+    return commit(N.toggleFavorite(data,id),'즐겨찾기를 저장했습니다.');
+  }
 
   function buildSample() {
     const monday = moveDay(today, -((now.getDay() + 6) % 7));
@@ -63,26 +92,39 @@
     blockedLoad='';corruptRaw=null;externalChange=false; undoState=null; closeModal(true); render(); toast('최신 기록을 불러왔습니다.');
   }
   function getDay(day,filtered=true) {
-    return C.dayEvents(data,day).filter(e=>!filtered || (visibleTypes.has(e.type) && (!searchTerm || `${e.title} ${details(e)} ${(e.detail.exercises||[]).map(x=>x.name).join(' ')} ${e.detail.food||''}`.toLocaleLowerCase().includes(searchTerm)))).map(event=>({event,date:day}));
+    return C.dayEvents(data,day).filter(e=>!filtered || (visibleTypes.has(e.type) && (!searchTerm || `${e.title} ${details(e)} ${(e.detail.exercises||[]).map(x=>x.name).join(' ')} ${(e.detail.items||[]).map(x=>[x.food.name,x.food.nameEn,x.food.brand].join(' ')).join(' ')}`.toLocaleLowerCase().includes(searchTerm)))).map(event=>({event,date:day}));
   }
   const isDone = event => !!event.completed;
   const getWeightRecords = until => C.weightRecords(data,until);
   function nutritionFor(day) {
-    const totals={kcal:0,protein:0,carbs:0,fat:0,unsat:0,unknown:0};
+    const totals={kcal:0,protein:0,carbs:0,fat:0,unsat:0,itemCount:0,legacyCount:0,missing:{kcal:0,protein:0,carbs:0,fat:0,unsat:0}};
     for (const {event} of getDay(day,false)) {
       if (event.type!=='meal' || !event.completed) continue;
-      const food=FOOD_MAP.get(event.detail.food);
-      if (!food) { totals.unknown++; continue; }
-      const ratio=event.detail.grams/100;
-      for(const key of ['kcal','protein','carbs','fat','unsat']) totals[key]+=food[key]*ratio;
+      const values=N.calculateMeal(event.detail);
+      for(const key of ['kcal','protein','carbs','fat','unsat']) {totals[key]+=values[key];totals.missing[key]+=values.missing[key];}
+      totals.itemCount+=values.itemCount;totals.legacyCount+=values.legacyCount;
     }
     return totals;
+  }
+  function nutrientText(totals,key) {
+    if(totals.itemCount && totals.missing[key]===totals.itemCount)return '미확인';
+    return fmt(totals[key],1)+(totals.missing[key]?' +':'');
+  }
+  function renderNutrition() {
+    const n=nutritionFor(selected),g=data.settings,kgoal=g.protein*4+g.carbs*4+g.fat*9;
+    const labels={kcal:'칼로리',protein:'단백질',carbs:'탄수화물',fat:'총 지방',unsat:'불포화지방'};
+    const macro=(key,color)=>`<div class="macro-row"><div class="macro-caption"><span>${labels[key]}</span><span>${nutrientText(n,key)} / ${fmt(g[key])}g</span></div><div class="macro-track"><div class="macro-fill" style="width:${Math.min(100,n[key]/Math.max(g[key],.001)*100)}%;background:${color}"></div></div></div>`;
+    $('#nutrition').innerHTML=`<div class="calories-header"><span class="nutrition-caption">섭취한 칼로리</span><span class="kcal-amount">${nutrientText(n,'kcal')} <small>/ ${fmt(kgoal)}kcal</small></span></div><div class="progress-track"><div class="progress-fill" style="width:${Math.min(100,n.kcal/kgoal*100)}%"></div></div>${macro('protein','#23836a')}${macro('carbs','#d38944')}${macro('fat','#3877c9')}<div class="unsat-total"><span>그중 불포화지방</span><strong>${nutrientText(n,'unsat')}${n.itemCount&&n.missing.unsat===n.itemCount?'':'g'}</strong></div>`;
+    const missing=Object.keys(labels).filter(key=>n.missing[key]);
+    if(missing.length)$('#nutrition').insertAdjacentHTML('beforeend',`<p class="helper missing-info">${missing.map(key=>labels[key]+' '+n.missing[key]+'개 식품').join(' · ')} 미확인.<br>+ 표시는 확인된 값만 더한 부분 합계입니다. 미확인 값을 0으로 간주하지 않습니다.</p>`);
+    if(n.legacyCount)$('#nutrition').insertAdjacentHTML('beforeend',`<p class="helper legacy-info">기존 샘플 영양정보 ${n.legacyCount}개 포함 · 저장 당시 수치를 유지합니다.</p>`);
+    $('#nutrition-source-note').textContent='식사 완료 기록만 합산합니다. 식품별 공식 DB·제품 직접 입력·기존 샘플 출처와 기준량을 편집창에서 확인하세요. 불포화지방은 총 지방에 포함됩니다.';
   }
   function details(event) {
     const d=event.detail;
     if(event.type==='strength') return W.describe(d);
     if(event.type==='cardio') return `${d.cardio} · ${d.minutes}분${d.distance?' · '+d.distance+'km':''} · ${d.intensity||'보통'}`;
-    if(event.type==='meal') {const food=FOOD_MAP.get(d.food); return food?`${fmt(food.kcal*d.grams/100,1)}kcal · ${d.grams}g`:`${d.food} · 영양 정보 없음`;}
+    if(event.type==='meal') return N.describeMeal(d);
     return d.weight==null?'측정 전':`${fmt(d.weight,1)}kg${d.bodyfat==null?'':' · 체지방 '+fmt(d.bodyfat,1)+'%'}`;
   }
   function dayLabel(day) {const d=dateOf(day);return `${d.getMonth()+1}월 ${d.getDate()}일 (${DAYS[d.getDay()]})`;}
@@ -97,10 +139,10 @@
     const events=getDay(selected,false).map(x=>x.event),workouts=events.filter(e=>['strength','cardio'].includes(e.type));
     const n=nutritionFor(selected),g=data.settings,weights=getWeightRecords(selected);
     $('#stat-workout').textContent=`${workouts.filter(e=>e.completed).length} / ${workouts.length}`;
-    $('#stat-kcal').innerHTML=`${fmt(n.kcal,1)} <small>kcal</small>`;
-    $('#stat-kcal-note').textContent=`목표 ${fmt(g.protein*4+g.carbs*4+g.fat*9)} kcal · 완료 식단${n.unknown?' · 정보 누락 있음':''}`;
-    $('#stat-protein').innerHTML=`${fmt(n.protein,1)} <small>g</small>`;
-    $('#stat-protein-note').textContent=g.protein>0?`목표 ${g.protein}g 중 ${Math.round(n.protein/g.protein*100)}%`:'단백질 목표가 0g으로 설정되어 있습니다';
+    $('#stat-kcal').innerHTML=`${nutrientText(n,'kcal')} <small>kcal</small>`;
+    $('#stat-kcal-note').textContent=`목표 ${fmt(g.protein*4+g.carbs*4+g.fat*9)} kcal · 완료 식단${n.missing.kcal?' · 일부 미확인':''}`;
+    $('#stat-protein').innerHTML=`${nutrientText(n,'protein')} <small>g</small>`;
+    $('#stat-protein-note').textContent=n.missing.protein?`단백질 미확인 식품 ${n.missing.protein}개 · 입력된 값만 합산`:(g.protein>0?`목표 ${g.protein}g 중 ${Math.round(n.protein/g.protein*100)}%`:'단백질 목표가 0g으로 설정되어 있습니다');
     $('#stat-weight').innerHTML=weights.length?`${fmt(weights.at(-1).detail.weight,1)} <small>kg</small>`:'—';
     $('#stat-weight-note').textContent=weights.length?`${weights.at(-1).date} ${weights.at(-1).start} 측정`:'완료한 측정 기록이 없습니다';
     const strength=events.filter(e=>e.type==='strength').map(e=>W.summary(e.detail));
@@ -164,8 +206,9 @@
     $('.app').inert=true;$('.mobile-nav').inert=true;
     $('#modal-close').onclick=()=>closeModal();
     $('#overlay').onclick=e=>{if(e.target.id==='overlay')closeModal();};
-    $('#modal-root').oninput=e=>{if(e.target?.id!=='f-scope')modalDirty=true;};
-    $('#modal-root').onchange=e=>{if(e.target?.id!=='f-scope')modalDirty=true;};
+    const trackInput=e=>{if(e.target?.id!=='f-scope'&&!e.target?.closest?.('[data-meal-ui-only]'))modalDirty=true;};
+    $('#modal-root').oninput=trackInput;
+    $('#modal-root').onchange=trackInput;
     $('#modal-close').focus();
   }
   function formError(error) {
@@ -181,20 +224,21 @@
   function detailMarkup(type,d={}) {
     if(type==='strength')return '<div id="workout-editor"></div>';
     if(type==='cardio')return `<div class="fields">${selectField('유산소 종목','f-cardio',Array.from(new Set([d.cardio,'러닝','걷기','자전거','실내 사이클','계단오르기','로잉','수영','트레드밀 인터벌','하이킹'])).filter(Boolean).map(x=>[x,x]),d.cardio||'러닝')}${field('운동 시간 (분)','f-minutes','number',d.minutes??30,'min="0" max="1440" step="1" inputmode="decimal"')}${field('거리 (km)','f-distance','number',d.distance??0,'min="0" max="10000" step="0.1" inputmode="decimal"')}${selectField('운동 강도','f-intensity',['가벼움','보통','높음'].map(x=>[x,x]),d.intensity||'보통')}</div>`;
-    if(type==='meal')return `<div class="fields"><div class="field full"><label for="f-food-search">식품 검색</label><input type="search" id="f-food-search" placeholder="식품명 검색" autocomplete="off"><label for="f-food">식품 선택</label><select id="f-food" size="5">${d.food&&!FOOD_MAP.has(d.food)?`<option value="${esc(d.food)}" selected>${esc(d.food)} · 영양 정보 없음</option>`:''}${FOOD.map(f=>`<option value="${esc(f[1])}" ${f[1]===d.food?'selected':''}>${esc(f[0])} · ${esc(f[1])}</option>`).join('')}</select></div>${field('섭취 중량 (g)','f-grams','number',d.grams??100,'min="0.1" max="20000" step="0.1" inputmode="decimal"')}<div class="field"><label>영양소 미리보기</label><div class="hint-box" id="meal-preview"></div></div></div><p class="helper">샘플 영양성분입니다. 같은 식품도 제품과 조리법에 따라 다릅니다. 식사 완료로 체크한 항목만 하루 섭취량에 합산합니다.</p>`;
+    if(type==='meal')return '<div id="meal-editor"></div>';
     return `<div class="fields">${field('체중 (kg)','f-bodyweight','number',d.weight??'','min="1" max="500" step="0.1" inputmode="decimal" placeholder="측정 후 입력"')}${field('체지방률 (%) · 선택','f-bodyfat','number',d.bodyfat??'','min="0" max="100" step="0.1" inputmode="decimal"')}</div><p class="helper">측정 완료로 체크한 기록만 그래프에 반영됩니다. 반복 계획에는 매번 새로 측정한 값을 입력하세요.</p>`;
   }
   function readDetail(type) {
     const v=id=>$('#'+id).value,n=id=>v(id).trim()===''?NaN:Number(v(id));
     if(type==='strength')return modalController.read();
     if(type==='cardio')return {cardio:v('f-cardio'),minutes:n('f-minutes'),distance:n('f-distance'),intensity:v('f-intensity')};
-    if(type==='meal')return {food:v('f-food'),grams:n('f-grams')};
+    if(type==='meal')return modalController.read();
     return {weight:v('f-bodyweight')===''?null:n('f-bodyweight'),bodyfat:v('f-bodyfat')===''?null:n('f-bodyfat')};
   }
   function mountDetails(type,detail,eventDate,scope) {
     modalController?.destroy();modalController=null;
     $('#dynamic-details').innerHTML=detailMarkup(type,detail);
     $('.modal').classList.toggle('modal-workout',type==='strength');
+    $('.modal').classList.toggle('modal-meal',type==='meal');
     if(type==='strength'){
       modalController=W.mount($('#workout-editor'),W.normalize(detail),{history:C.history(data,'strength',eventDate),planOnly:scope==='series',onChange(draft,sum){
         modalDirty=true;
@@ -202,13 +246,7 @@
       }});
       if(scope==='series')$('#workout-editor').classList.add('plan-editor');
     }
-    if(type==='meal'){
-      const select=$('#f-food'),grams=$('#f-grams'),search=$('#f-food-search');
-      if(!select.value && select.options.length)select.selectedIndex=0;
-      function update(){const f=FOOD_MAP.get(select.value),ratio=Number(grams.value)/100;$('#meal-preview').textContent=f&&Number.isFinite(ratio)&&ratio>=0?`${fmt(f.kcal*ratio,1)} kcal · 단백질 ${fmt(f.protein*ratio,1)}g · 탄수화물 ${fmt(f.carbs*ratio,1)}g · 지방 ${fmt(f.fat*ratio,1)}g (그중 불포화 ${fmt(f.unsat*ratio,1)}g)`:'선택한 식품의 영양 정보가 없습니다.';}
-      search.oninput=()=>{const q=search.value.trim().toLowerCase(),current=select.value;let items=FOOD.filter(f=>f[0].includes(q)||f[1].toLowerCase().includes(q));select.innerHTML=items.map(f=>`<option value="${esc(f[1])}">${esc(f[0])} · ${esc(f[1])}</option>`).join('');if(items.some(f=>f[1]===current))select.value=current;else if(items.length)select.selectedIndex=0;update();};
-      select.onchange=update;grams.oninput=update;update();
-    }
+    if(type==='meal')modalController=M.mount($('#meal-editor'),detail,{loadCatalog,customFoods:C.clone(data.customFoods),favoriteFoodIds:[...data.favoriteFoodIds],onSaveFood:saveCustomFood,onDeleteFood:deleteCustomFood,onToggleFavorite:toggleFavoriteFood,onChange(){modalDirty=true;}});
     if(type==='weight'&&scope==='series'){
       $('#f-bodyweight').disabled=true;$('#f-bodyfat').disabled=true;
       $('#dynamic-details .helper').textContent='이 화면에서는 반복 측정 일정을 설정합니다. 체중과 체지방률은 적용 범위를 “이 날짜만”으로 선택한 뒤 입력하세요.';
@@ -234,7 +272,7 @@
     const drafts={[currentType]:item.detail};
     $$('[data-pick]').forEach(button=>button.onclick=()=>{
       if(button.dataset.pick===currentType)return;
-      try{drafts[currentType]=readDetail(currentType);}catch(error){formError(error);return;}
+      try{drafts[currentType]=modalController?.draft?modalController.draft():readDetail(currentType);}catch(error){formError(error);return;}
       currentType=button.dataset.pick;
       $$('[data-pick]').forEach(b=>b.classList.toggle('active',b===button));
       mountDetails(currentType,drafts[currentType]||{},date,'single');
@@ -259,7 +297,8 @@
         const startValue=$('#f-start').value,endValue=$('#f-end').value;
         if(!C.validDate(dateValue))throw new Error('올바른 날짜를 입력해 주세요.');
         if(!C.validTime(startValue)||!C.validTime(endValue)||endValue<=startValue)throw new Error('종료 시간은 같은 날짜의 시작 시간보다 늦어야 합니다.');
-        const title=$('#f-title').value.trim()||({strength:'웨이트 트레이닝',cardio:'유산소 운동',meal:detail.food,weight:'체중 측정'}[currentType]);
+        const mealName=detail.items?.length?(detail.items[0].food.name+(detail.items.length>1?` 외 ${detail.items.length-1}가지`:'')):'식단 기록';
+        const title=$('#f-title').value.trim()||({strength:'웨이트 트레이닝',cardio:'유산소 운동',meal:mealName.slice(0,160),weight:'체중 측정'}[currentType]);
         const completed=currentType==='strength'?(()=>{const s=W.summary(detail);return s.setCount>0&&s.completedSets===s.setCount;})():$('#f-completed').checked;
         const update={...item,id:edit?event.id:item.id,type:currentType,date:dateValue,start:startValue,end:endValue,title,repeat:recurring?event.repeat:$('#f-repeat').value,repeatUntil:$('#f-until').value||null,completed,detail,isSample:false};
         const next=C.upsert(data,update,{occurrenceDate:recurring?date:null,scope:recurring?scope:'single'});
@@ -276,9 +315,7 @@ function renderMini(){const d=dateOf(iso(cursor)),y=d.getFullYear(),m=d.getMonth
 function renderMonth(){const y=cursor.getFullYear(),m=cursor.getMonth();const first=new Date(y,m,1),start=new Date(y,m,1-first.getDay());let html='<div class="week-labels">'+DAYS.map(s=>`<span class="week-label">${s}요일</span>`).join('')+'</div><div class="month-grid">';for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const ds=iso(d),events=getDay(ds);html+=`<div class="month-cell ${d.getMonth()!==m?'other':''} ${ds===selected?'selected':''}" data-date="${ds}" title="${dayLabel(ds)}"><div class="cell-top"><button class="day-num ${ds===today?'today':''}" data-day="${ds}" aria-label="${dayLabel(ds)} 상세보기">${d.getDate()}</button><button class="cell-add" data-add="${ds}" aria-label="일정 추가">＋</button></div>`;for(const {event:e} of events.slice(0,3)){html+=`<button draggable="${e.repeat==='none'}" class="month-event ${isDone(e,ds)?'done':''}" style="${styl(e.type)}" data-edit="${e.id}" data-occdate="${ds}" title="${esc(e.title)} — 클릭하여 수정 · 드래그하여 이동"><span class="event-time">${e.start}</span><span class="event-text">${esc(e.title)}</span></button>`}if(events.length>3)html+=`<button class="more-events" data-day="${ds}">+ ${events.length-3}개 더 보기</button>`;html+='</div>'}return html+'</div>'}
 
 function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right-badge').textContent=selected===today?'TODAY':selected.slice(5).replace('-','.');$('#right-date').textContent=dayLabel(selected);$('#right-sub').textContent=`${d.getFullYear()}년 · ${l.length}개 일정 등록`;$('#agenda-count').textContent=`${l.filter(({event,date})=>isDone(event,date)).length}/${l.length} 완료`;$('#agenda').innerHTML=l.length?l.map(({event:e,date})=>`<div class="agenda-item"><span class="agenda-time">${e.start}</span><div class="agenda-card ${isDone(e,date)?'done':''}" style="${styl(e.type)}"><button class="checkbox-btn ${isDone(e,date)?'checked':''}" data-toggle="${e.id}" data-occdate="${date}" aria-label="완료 전환">${isDone(e,date)?'✓':''}</button><button style="text-align:left;background:transparent;color:inherit;padding:0;flex:1;min-width:0" data-edit="${e.id}" data-occdate="${date}"><span class="agenda-name">${TYPES[e.type].emoji} ${esc(e.title)} ${e.repeat!=='none'?'↻':''}</span><span class="agenda-desc">${esc(details(e))}</span></button></div></div>`).join(''):'<div class="empty-note">등록된 일정이 없습니다.<br>운동이나 식단 계획을 추가해보세요.</div>';
-  const n=nutritionFor(selected),g=data.settings,kgoal=g.protein*4+g.carbs*4+g.fat*9;let macro=(name,val,goal,col)=>`<div class="macro-row"><div class="macro-caption"><span>${name}</span><span>${fmt(val,1)} / ${fmt(goal)}g</span></div><div class="macro-track"><div class="macro-fill" style="width:${Math.min(100,val/Math.max(goal,.001)*100)}%;background:${col}"></div></div></div>`;
-  $('#nutrition').innerHTML=`<div class="calories-header"><span style="font-size:11px;color:#859493">섭취한 칼로리</span><span class="kcal-amount">${fmt(n.kcal)} <small>/ ${fmt(kgoal)}kcal</small></span></div><div class="progress-track"><div class="progress-fill" style="width:${Math.min(100,n.kcal/kgoal*100)}%"></div></div>${macro('단백질',n.protein,g.protein,'#23836a')}${macro('탄수화물',n.carbs,g.carbs,'#d38944')}${macro('총 지방',n.fat,g.fat,'#3877c9')}<div style="display:flex;justify-content:space-between;color:#83938f;font-size:10px;margin-top:13px"><span>그중 불포화지방</span><strong>${fmt(n.unsat,1)}g</strong></div>`;
-  if(n.unknown)$('#nutrition').insertAdjacentHTML('beforeend', '<p class="helper missing-info">영양 정보가 없는 식단 '+n.unknown+'개가 합계에서 제외되었습니다.</p>');
+  renderNutrition();
   const w=getWeightRecords(selected).slice(-7);if(!w.length){$('#weight-trend').innerHTML='<div class="empty-note">아직 체중 기록이 없습니다.</div>';return}const latest=w[w.length-1],diff=w.length>1?latest.detail.weight-w[0].detail.weight:0;let values=w.map(x=>Number(x.detail.weight)),min=Math.min(...values)-.5,max=Math.max(...values)+.5,pts=values.map((v,i)=>`${15+(i/Math.max(1,values.length-1))*230},${46-((v-min)/(max-min))*38}`).join(' ');$('#weight-trend').innerHTML=`<div class="weight-sub">${latest.date} 기준</div><div class="weight-val">${fmt(latest.detail.weight,1)} <small style="font-weight:500;font-size:12px;color:#9aabaa">kg</small> <span style="font-size:10px;color:${diff<=0?'#21816a':'#bd7045'}">${w.length>1?(diff>0?'+':'')+fmt(diff,1)+'kg':''}</span></div><svg class="sparkline" viewBox="0 0 260 54" role="img" aria-label="최근 체중 변화 그래프"><polyline points="${pts}" fill="none" stroke="#2c9874" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>${values.map((v,i)=>`<circle cx="${15+(i/Math.max(1,values.length-1))*230}" cy="${46-((v-min)/(max-min))*38}" r="3" fill="#2c9874"/>`).join('')}</svg>`;
 }
 
@@ -309,7 +346,7 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
     try {
       if(file.size>16000000)throw new Error('백업 파일은 16MB 이하만 지원합니다.');
       const next=C.normalizeState(JSON.parse(await file.text()));
-      if(!confirm(`검증된 백업의 일정 ${next.events.length}개와 목표를 가져올까요? 현재 기록을 대체하며, 이전 원본은 이 브라우저에 한 번 더 보관합니다.`))return;
+      if(!confirm(`백업의 일정 ${next.events.length}개, 내 식품 ${next.customFoods.length}개와 목표를 가져올까요? 현재 기록을 대체하며, 이전 원본은 이 브라우저에 한 번 더 보관합니다.`))return;
       commit(next,'백업 기록을 복원했습니다.',{recovery:!!blockedLoad});
     }catch(error){toast('백업을 가져오지 않았습니다. '+(error.message||'파일 형식을 확인해 주세요.'),true);}
     finally{$('#import-file').value='';}
@@ -346,7 +383,7 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
         else (ds.mobile==='detail'?$('.rightbar'):$('#calendar-card')).scrollIntoView({block:'start',behavior:'smooth'});
       }
     });
-    $('#new-event').onclick=()=>openEvent();$('#prev').onclick=()=>navigate(-1);$('#next').onclick=()=>navigate(1);
+    $('#new-event').onclick=()=>openEvent();$('#new-meal').onclick=()=>openEvent({type:'meal'});$('#prev').onclick=()=>navigate(-1);$('#next').onclick=()=>navigate(1);
     $('#today').onclick=()=>{refreshToday();chooseDay(today);};
     $('#mini-prev').onclick=()=>{cursor=new Date(cursor.getFullYear(),cursor.getMonth()-1,1);render();};
     $('#mini-next').onclick=()=>{cursor=new Date(cursor.getFullYear(),cursor.getMonth()+1,1);render();};
