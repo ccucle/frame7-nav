@@ -1,0 +1,21 @@
+.fd-account-dialog{border:0;border-radius:16px;padding:0;width:min(470px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;background:#fff;color:#284637;font-family:inherit;box-shadow:0 24px 75px #14281f55}
+.fd-account-dialog::backdrop{background:#11251b9c}
+.fd-account-head{padding:20px 21px 13px;display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border-bottom:1px solid #e0ebe3}
+.fd-account-head h2{font-size:19px;letter-spacing:-.3px;margin:4px 0}
+.fd-account-head p{color:#829286;font-size:11px;line-height:1.7;margin:0}
+.fd-account-close{min-width:44px;min-height:44px;border:1px solid #d9e6de;border-radius:9px;background:#fff;color:#768a7b;font-size:20px}
+.fd-account-body{padding:19px 21px}
+.fd-account-state{border:1px solid #d7e6da;background:#edf8f1;border-radius:10px;padding:14px;font-size:12px}
+.fd-account-state strong{font-size:11px;color:#53755f;display:block;margin-bottom:6px}
+.fd-account-state span{word-break:break-word;font-weight:750;color:#235f44}
+.fd-account-controls{display:flex;gap:8px;margin:13px 0}
+.fd-account-controls button{border-radius:9px;padding:11px 15px;font-size:13px;font-weight:750;min-height:44px}
+.fd-account-login{background:#237553;color:#fff;flex:1}
+.fd-account-logout{background:#f4faf6;color:#327454;border:1px solid #cfe3d5;flex:1}
+.fd-account-controls button[hidden]{display:none}
+.fd-account-controls button:disabled{opacity:.55}
+.fd-account-status{font-size:11px;line-height:1.7;color:#267554;margin:10px 0}
+.fd-account-status[data-error=true]{color:#a85140}
+.fd-account-warning{font-size:11px;line-height:1.8;border-top:1px solid #e8ede8;padding-top:13px;color:#896f5a}
+.fd-account-dialog button:focus-visible{outline:3px solid #95caaa;outline-offset:2px}
+@media(max-width:480px){.fd-account-head{padding:16px}.fd-account-body{padding:16px}}
