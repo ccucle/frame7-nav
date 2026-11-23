@@ -11,7 +11,7 @@
 <link rel="stylesheet" href="workouts.css?v=0.3.0">
 <link rel="stylesheet" href="meals.css?v=0.3.0">
 <link rel="stylesheet" href="backup.css?v=0.3.1">
-<link rel="stylesheet" href="cloud-auth.css?v=0.5.1">
+<link rel="stylesheet" href="cloud-auth.css?v=0.5.2">
 <link rel="stylesheet" href="iron.css?v=0.4.0">
 <link rel="stylesheet" href="iron-independent.css?v=0.5.0">
 <link rel="icon" href="data:,">
@@ -45,8 +45,8 @@
   </aside>
   <main class="main" id="main-content">
     <div class="toprow">
-      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.5.1</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
-      <div class="header-actions"><button class="btn btn-outline" id="fd-account-btn" type="button" disabled title="계정 로그인 준비 중">👤 계정 로그인</button><button class="btn btn-outline" id="cloud-backup">☁ 무료 백업</button><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-outline meal-quick" id="new-meal">＋ 식단 기록</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
+      <div><div class="crumb">MY TRAINING WORKSPACE <span class="version-tag">v0.5.2</span></div><h1 class="page-title">나의 건강 캘린더 <span style="color:var(--accent)">✳</span></h1><p class="page-sub">운동, 식단, 체중을 하루의 흐름 안에서 관리하세요.</p></div>
+      <div class="header-actions"><button class="btn btn-outline" id="fd-account-btn" type="button" disabled title="계정 로그인 준비 중">👤 Google 로그인</button><button class="btn btn-outline" id="cloud-backup">☁ 무료 백업</button><button class="btn btn-outline" id="settings-btn">⚙ 목표 설정</button><button class="btn btn-outline meal-quick" id="new-meal">＋ 식단 기록</button><button class="btn btn-primary" id="new-event">＋ 새 일정</button></div>
     </div>
     <div id="storage-status" class="storage-status" role="status"></div>
     <div id="demo-banner" class="demo-banner hide"><span>✳ 현재 표시된 운동·식단·체중은 <b>체험용 샘플</b>입니다. 실제 개인 기록이 아닙니다.</span><button id="clear-demo">샘플 지우기</button></div>
@@ -91,39 +91,22 @@
 </div>
 <dialog class="fd-account-dialog" id="fd-account-dialog" aria-labelledby="fd-account-title">
   <header class="fd-account-head">
-    <div><h2 id="fd-account-title">FORMDAY · 계정 로그인</h2>
-    <p>Firebase 계정 확인 기능입니다. 기록 자동 동기화는 아직 연결되지 않았습니다.</p></div>
+    <div><h2 id="fd-account-title">FORMDAY · Google 로그인</h2>
+    <p>기존 Google 계정으로 로그인합니다. 별도의 FORMDAY 비밀번호나 신규 가입은 필요하지 않습니다.</p></div>
     <button class="fd-account-close" id="fd-account-close" type="button" aria-label="로그인 창 닫기">×</button>
   </header>
   <div class="fd-account-body">
     <div class="fd-account-state"><strong>현재 계정 상태</strong><span id="fd-account-label">확인 중입니다</span></div>
     <div class="fd-account-pwa-note" id="fd-standalone-notice" hidden>
-      아이폰 홈 화면에 추가한 웹앱에서는 Google 팝업이 완료되지 않을 수 있습니다. 아래 이메일·비밀번호 로그인을 사용하세요. 처음 사용한다면 Firebase에서 이메일/비밀번호 제공업체를 활성화해야 합니다.
+      홈 화면 웹앱에서도 Google 팝업 로그인을 직접 시도할 수 있도록 변경했습니다.
+      아이폰 환경에 따라 인증 창이 차단될 수 있으므로 실제 동작을 확인해 주세요.
     </div>
     <div class="fd-account-controls">
-      <button type="button" class="fd-account-login" id="fd-login">Google 계정으로 로그인 (Safari)</button>
-      <button type="button" class="fd-account-logout" id="fd-logout" hidden>계정 로그아웃</button>
+      <button type="button" class="fd-account-login" id="fd-login">Google 계정으로 계속하기</button>
+      <button type="button" class="fd-account-logout" id="fd-logout" hidden>Google 계정 로그아웃</button>
     </div>
-    <section class="fd-account-email" id="fd-email-form">
-      <h3>이메일·비밀번호 로그인</h3>
-      <p id="fd-email-help">홈 화면 웹앱에서도 계정으로 로그인할 수 있습니다. 기존 Google 사용자라면 별도 신규 가입 대신 Google 계정에 이메일 로그인을 연결하세요.</p>
-      <label class="fd-account-field" for="fd-auth-email">이메일 주소
-        <input type="email" id="fd-auth-email" inputmode="email" autocomplete="email" maxlength="254" placeholder="example@gmail.com">
-      </label>
-      <label class="fd-account-field" for="fd-auth-password">비밀번호
-        <input type="password" id="fd-auth-password" autocomplete="current-password" minlength="6" maxlength="128" placeholder="6자 이상">
-      </label>
-      <label class="fd-account-field" for="fd-auth-confirm">비밀번호 확인 (신규 가입·계정 연결 시)
-        <input type="password" id="fd-auth-confirm" autocomplete="new-password" minlength="6" maxlength="128" placeholder="가입·연결할 때만 입력">
-      </label>
-      <div class="fd-account-email-actions">
-        <button type="button" id="fd-email-login">이메일 로그인</button>
-        <button type="button" id="fd-email-register">새 이메일 계정 가입</button>
-        <button type="button" id="fd-email-link" hidden>현재 Google 계정에 이메일 로그인 연결</button>
-      </div>
-    </section>
     <p class="fd-account-status" id="fd-account-status" role="status" aria-live="polite">Firebase 연결을 확인하는 중입니다.</p>
-    <p class="fd-account-warning" id="fd-account-warning">기존 운동·식단·체중과 IRON MODE 기록은 이 브라우저에만 저장됩니다. 로그인만으로는 클라우드에 기록이 전송되거나 계정별로 분리되지 않습니다. 공용 기기에서는 사용하지 마세요.</p>
+    <p class="fd-account-warning" id="fd-account-warning">Google 로그인은 계정 인증 기능입니다. 운동 기록 자동 동기화는 아직 연결되지 않았습니다. 기존 웹앱을 삭제하지 마세요.</p>
   </div>
 </dialog>
 <div id="modal-root"></div><div id="toast-root" role="status" aria-live="polite"></div>
@@ -138,6 +121,6 @@
 <script defer src="iron.js?v=0.4.0"></script>
 <script defer src="iron-store.js?v=0.5.0"></script>
 <script defer src="iron-independent.js?v=0.5.0"></script>
-<script type="module" src="cloud-auth.js?v=0.5.1"></script>
+<script type="module" src="cloud-auth.js?v=0.5.2"></script>
 </body>
 </html>
