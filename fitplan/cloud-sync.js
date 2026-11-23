@@ -24,14 +24,19 @@ const entry=kind=>slots[kind],slots={
   calendar:{unsubscribe:null,remote:null,ready:false,working:false,issues:'',status:'로그인 필요',timer:null},
   iron:{unsubscribe:null,remote:null,ready:false,working:false,issues:'',status:'로그인 필요',timer:null}
 };
-let auth=null,db=null,account=null;
+let auth=null,db=null,account=null,accountGeneration=0;
 let stopped=false;
 const safe=t=>String(t??'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','"':'&quot;',"'":'&#39;'}[x]));
 function show(message,problem=false){
   const n=document.getElementById('fd-sync-status');
   if(n){n.textContent=message;n.dataset.error=problem?'true':'false';}
 }
-function metadataKey(kind){return PREFIX+account.uid+':'+kind;}
+function metadataKey(kind,uid=account.uid){return PREFIX+uid+':'+kind;}
+function accountContext(){return {uid:account?.uid||null,generation:accountGeneration};}
+function isCurrent(context){return context.generation===accountGeneration&&context.uid===(account?.uid||null);}
+function requireCurrent(context){
+  if(!context.uid||!isCurrent(context))throw Error('계정 연결이 변경되어 이전 동기화 작업을 중단했습니다.');
+}
 function ownerKey(kind){return PREFIX+'owner:'+kind;}
 function ownerConflict(kind){
  const prev=localStorage.getItem(ownerKey(kind));
@@ -47,11 +52,13 @@ function readMeta(kind){
       typeof m.localRevision==='string'?m:null;
   }catch(e){throw Error('동기화 연결 기록을 읽을 수 없습니다. 저장 공간 상태를 확인해 주세요.');}
 }
-function saveMeta(kind,remoteRevision,localRevision){
+function saveMeta(kind,remoteRevision,localRevision,context){
+  requireCurrent(context);
   const obj={version:1,remoteRevision,localRevision,updatedAt:new Date().toISOString()};
-  localStorage.setItem(metadataKey(kind),JSON.stringify(obj));
-  localStorage.setItem(ownerKey(kind),account.uid);
-  if(localStorage.getItem(metadataKey(kind))!==JSON.stringify(obj)||localStorage.getItem(ownerKey(kind))!==account.uid)
+  const key=metadataKey(kind,context.uid);
+  localStorage.setItem(key,JSON.stringify(obj));
+  localStorage.setItem(ownerKey(kind),context.uid);
+  if(localStorage.getItem(key)!==JSON.stringify(obj)||localStorage.getItem(ownerKey(kind))!==context.uid)
     throw Error('동기화 상태를 기기에 저장하지 못했습니다.');
 }
 function local(kind){
@@ -141,10 +148,12 @@ async function download(kind,interactive=false){
  if(!writable()||s.working)return;
  if(ownerConflict(kind)){show('기존 로컬 기록은 다른 Google 계정에 연결돼 있습니다. 원래 계정으로 로그인하거나 백업 후 계정을 분리해야 합니다.',true);return;}
  if(!readyToApply(kind)){show('현재 운동이나 입력창을 편집 중입니다. 먼저 기록을 저장·종료하고 다시 시도해 주세요.',true);return;}
+ const context=accountContext();
  s.working=true;
  try{
-  const ref=doc(db,'users',account.uid,'formday_sync',kind);
+  const ref=doc(db,'users',context.uid,'formday_sync',kind);
   const result=await getDocFromServer(ref);
+  requireCurrent(context);
   if(!result.exists())throw Error('서버에 불러올 기록이 없습니다.');
   const remote=readRemote(result),obj=JSON.parse(remote.payload);
   const validated=kind==='calendar'?C.normalizeState(obj):I.normalize(obj);
@@ -160,32 +169,34 @@ async function download(kind,interactive=false){
   if(interactive&&l.hasStored){
     if(!window.confirm('이 기기의 현재 기록이 클라우드 기록으로 교체됩니다. 기존 기록은 기기에 별도 복구 사본을 만든 후 진행합니다. JSON 파일도 백업했는지 확인해 주세요. 계속할까요?'))return;
   }
+  requireCurrent(context);
   if(!readyToApply(kind))throw Error('클라우드 자료를 확인하는 동안 운동이나 입력 편집이 시작됐습니다. 기록을 보존하기 위해 적용을 중단했습니다.');
   const before=local(kind);
   if(before.revision!==l.revision)throw Error('기기 기록이 전송 중 변경되어 불러오기를 중단했습니다.');
   // Preserve old bytes independently from store_previous backup; abort if quota is full.
   if(before.raw!==null&&(interactive||!meta)){
     // Preserve first pre-import copy once. No unbounded backup keys on every sync.
-    const backupKey=keys[kind]+'_cloud_preexisting_'+account.uid;
+    const backupKey=keys[kind]+'_cloud_preexisting_'+context.uid;
     if(localStorage.getItem(backupKey)===null){
       localStorage.setItem(backupKey,before.raw);
       if(localStorage.getItem(backupKey)!==before.raw)throw Error('복구 사본을 보관하지 못했습니다.');
     }
   }
   const saved=before.store.save(validated,before.revision);
-  saveMeta(kind,remote.revision,saved.revision);
+  saveMeta(kind,remote.revision,saved.revision,context);
   s.remote=remote;
   s.issues='';
   if(kind==='calendar')window.FormdayBridge?.cloudReload?.();
   else window.FormdayIndependent?.cloudReload?.();
   show(labels[kind]+' 데이터를 이 기기로 불러왔습니다. 현재 화면도 최신 기록으로 갱신했습니다.');
- }catch(e){setIssue(kind,e);show(syncError(e),true);}
- finally{s.working=false;render();}
+ }catch(e){if(isCurrent(context)){setIssue(kind,e);show(syncError(e),true);}}
+ finally{if(isCurrent(context)){s.working=false;render();}}
 }
 async function upload(kind,first=false){
  const s=entry(kind);
  if(!writable()||s.working||!s.ready)return;
  if(ownerConflict(kind)){show('이 기기의 기록은 다른 Google 계정 소유로 표시돼 자동 전송하지 않았습니다.',true);return;}
+ const context=accountContext();
  s.working=true;
  try{
   const l=local(kind),meta=readMeta(kind);
@@ -197,10 +208,14 @@ async function upload(kind,first=false){
   }else if(!meta){
     throw Error('첫 연결이 완료되지 않아 자동 업로드하지 않았습니다.');
   }
+  requireCurrent(context);
   const payload=P.safePayload(kind,l.data,C,I);
-  const ref=doc(db,'users',account.uid,'formday_sync',kind);
+  const ref=doc(db,'users',context.uid,'formday_sync',kind);
   await runTransaction(db,async transaction=>{
+   // Firestore may retry this callback after an account has changed.
+   requireCurrent(context);
    const remote=await transaction.get(ref);
+   requireCurrent(context);
    if(first){
      if(remote.exists())throw Error('다른 기기에서 이미 서버 기록을 만들었습니다. 자동으로 덮어쓰지 않습니다.');
    }else{
@@ -209,18 +224,20 @@ async function upload(kind,first=false){
    }
    transaction.set(ref,{format:1,revision:payload.revision,payload:payload.payload,updatedAt:serverTimestamp()});
   });
+  requireCurrent(context);
   const newest=local(kind);
-  saveMeta(kind,payload.revision,l.revision);
+  saveMeta(kind,payload.revision,l.revision,context);
   s.issues='';s.remote={format:1,revision:payload.revision,payload:payload.payload};
   if(newest.revision!==l.revision)schedule(kind);
   show(labels[kind]+' 기록을 Google 계정의 Firestore에 저장했습니다.');
- }catch(e){setIssue(kind,e);show(syncError(e),true);}
- finally{s.working=false;render();}
+ }catch(e){if(isCurrent(context)){setIssue(kind,e);show(syncError(e),true);}}
+ finally{if(isCurrent(context)){s.working=false;render();}}
 }
 function schedule(kind){
  const s=entry(kind);
+ const context=accountContext();
  if(s.timer!==null)clearTimeout(s.timer);
- s.timer=setTimeout(()=>{s.timer=null;evaluate(kind);},3500);
+ s.timer=setTimeout(()=>{if(!isCurrent(context))return;s.timer=null;evaluate(kind);},3500);
 }
 function evaluate(kind){
  const s=entry(kind);
@@ -253,15 +270,16 @@ function subscribe(kind){
  if(s.unsubscribe){s.unsubscribe();s.unsubscribe=null;}
  s.ready=false;s.remote=null;s.issues='';
  if(!account)return;
- const uid=account.uid;
+ const context=accountContext();
  try{
-  const ref=doc(db,'users',uid,'formday_sync',kind);
+  const ref=doc(db,'users',context.uid,'formday_sync',kind);
   s.unsubscribe=onSnapshot(ref,{includeMetadataChanges:true},
-   snap=>{if(account?.uid===uid)onRemote(kind,snap);},
-   error=>{if(account?.uid===uid)setIssue(kind,error);});
- }catch(e){setIssue(kind,e);}
+   snap=>{if(isCurrent(context))onRemote(kind,snap);},
+   error=>{if(isCurrent(context))setIssue(kind,error);});
+ }catch(e){if(isCurrent(context))setIssue(kind,e);}
 }
 function login(user){
+ accountGeneration++;
  stopSubscriptions();
  account=user||null;
  if(!user){render();show('Google 로그인을 하면 클라우드 연결이 준비됩니다.');return;}
@@ -272,14 +290,14 @@ function backup(kind){
  try{
   const l=local(kind);
   if(!l.hasStored)throw Error('다운로드할 저장 기록이 없습니다.');
-  const content=JSON.stringify({app:'FORMDAY-cloud-manual-backup',kind,exportedAt:new Date().toISOString(),data:l.data},null,2);
+  const content=JSON.stringify(P.backupPayload(kind,l.data,C,I),null,2);
   const file=new Blob([content],{type:'application/json;charset=utf-8'});
   const url=URL.createObjectURL(file);
   const a=document.createElement('a');
   a.href=url;a.download='FORMDAY-'+kind+'-'+new Date().toISOString().slice(0,10)+'.json';
   document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  show('백업 다운로드를 요청했습니다. 실제 파일이 저장됐는지 파일 앱에서 확인해 주세요.');
+  show('백업 다운로드를 요청했습니다. '+(kind==='iron'?'운동 기록의 IRON MODE 백업 가져오기':'캘린더의 기록 가져오기')+'에서 복원할 수 있습니다. 파일 앱에서 저장을 확인해 주세요.');
  }catch(e){show(syncError(e),true);}
 }
 if(btn&&dialog&&panel&&P&&C&&I){

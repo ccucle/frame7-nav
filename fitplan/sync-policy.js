@@ -46,8 +46,15 @@
   if(!slots.includes(slot))throw Error('동기화 저장소가 올바르지 않습니다.');
   const validated=slot==='calendar'?core.normalizeState(source):iron.normalize(source);
   const payload=JSON.stringify(validated);
-  if(bytes(payload)>550000)throw Error('이 기록은 무료 동기화 문서의 최대 안전 크기(550KB)를 넘었습니다. 원본은 이 기기에 유지됩니다. JSON 백업 후 분할 저장 구조로 확장해야 합니다.');
+  if(bytes(payload)>550000)throw Error('이 기록은 현재 앱의 동기화 크기 제한(550KB)을 넘었습니다. 원본은 이 기기에 유지됩니다. JSON 백업을 보관해 주세요.');
   return {payload,revision:validated.revision,format:1};
  }
- return Object.freeze({slots,decide,isUserData,docValid,safePayload,bytes});
+ function backupPayload(slot,source,core,iron,exportedAt=new Date().toISOString()){
+  if(!slots.includes(slot))throw Error('백업 저장소가 올바르지 않습니다.');
+  // Use each store's established import format. File backups are not limited
+  // by the cloud document size, and never mutate the live record or revision.
+  if(slot==='calendar')return {app:'formday',version:core.VERSION,exportedAt,...core.normalizeState(source)};
+  return {app:'formday-iron',version:iron.VERSION,exportedAt,data:iron.normalize(source)};
+ }
+ return Object.freeze({slots,decide,isUserData,docValid,safePayload,backupPayload,bytes});
 });

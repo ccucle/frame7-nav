@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = globalThis.FormdayCore, W = globalThis.FormdayWorkouts, N = globalThis.FormdayNutrition, M = globalThis.FormdayMeals;
+  const C = globalThis.FormdayCore, W = globalThis.FormdayWorkouts, N = globalThis.FormdayNutrition, M = globalThis.FormdayMeals, A = globalThis.FormdayIronData;
   const { TYPES, DAYS } = globalThis.FormdayData;
   const $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s));
   const z = n => String(n).padStart(2, '0'), iso = C.iso, dateOf = C.dateOf, moveDay = C.shiftDate, uid = C.uid;
@@ -79,7 +79,7 @@
   function showStorageState(message, error) {
     const node = $('#storage-status');
     node.classList.toggle('storage-error', !!error);
-    node.innerHTML = `<span>${esc(message || '이 브라우저에 저장됩니다 · 기기 간 동기화는 준비 중입니다.')}</span>${blockedLoad?'<button class="btn btn-small btn-outline" id="export-raw">원본 내보내기</button>':''}${externalChange?'<button class="btn btn-small btn-outline" id="reload-records">최신 기록 불러오기</button>':''}`;
+    node.innerHTML = `<span>${esc(message || '이 기기에 저장됩니다 · 기기 동기화에서 연결 상태를 확인하세요.')}</span>${blockedLoad?'<button class="btn btn-small btn-outline" id="export-raw">원본 내보내기</button>':''}${externalChange?'<button class="btn btn-small btn-outline" id="reload-records">최신 기록 불러오기</button>':''}`;
     $('#export-raw')?.addEventListener('click',()=>downloadText(corruptRaw || '', 'formday-original-backup.txt', 'text/plain'));
     $('#reload-records')?.addEventListener('click',loadLatest);
   }
@@ -89,17 +89,18 @@
     if (fresh.error) { blockedLoad=fresh.error;corruptRaw=fresh.raw;showStorageState(fresh.error,true); return; }
     if (fresh.data) data=fresh.data;
     else data=C.normalizeState({events:[],settings:{...defaults}});
-    blockedLoad='';corruptRaw=null;externalChange=false; undoState=null; closeModal(true); render(); toast('최신 기록을 불러왔습니다.');
+    blockedLoad='';corruptRaw=null;externalChange=false; undoState=null; closeModal(true); render();
+    window.dispatchEvent(new CustomEvent('formday:changed'));toast('최신 기록을 불러왔습니다.');
   }
   function getDay(day,filtered=true) {
     return C.dayEvents(data,day).filter(e=>!filtered || (visibleTypes.has(e.type) && (!searchTerm || `${e.title} ${details(e)} ${(e.detail.exercises||[]).map(x=>x.name).join(' ')} ${(e.detail.items||[]).map(x=>[x.food.name,x.food.nameEn,x.food.brand].join(' ')).join(' ')}`.toLocaleLowerCase().includes(searchTerm)))).map(event=>({event,date:day}));
   }
   const isDone = event => !!event.completed;
-  const getWeightRecords = until => C.weightRecords(data,until);
+  const getWeightRecords = until => C.weightRecords(data,until>today?today:until);
   function nutritionFor(day) {
     const totals={kcal:0,protein:0,carbs:0,fat:0,unsat:0,itemCount:0,legacyCount:0,missing:{kcal:0,protein:0,carbs:0,fat:0,unsat:0}};
     for (const {event} of getDay(day,false)) {
-      if (event.type!=='meal' || !event.completed) continue;
+      if (event.type!=='meal' || !event.completed || event.isSample || day>today) continue;
       const values=N.calculateMeal(event.detail);
       for(const key of ['kcal','protein','carbs','fat','unsat']) {totals[key]+=values[key];totals.missing[key]+=values.missing[key];}
       totals.itemCount+=values.itemCount;totals.legacyCount+=values.legacyCount;
@@ -118,7 +119,7 @@
     const missing=Object.keys(labels).filter(key=>n.missing[key]);
     if(missing.length)$('#nutrition').insertAdjacentHTML('beforeend',`<p class="helper missing-info">${missing.map(key=>labels[key]+' '+n.missing[key]+'개 식품').join(' · ')} 미확인.<br>+ 표시는 확인된 값만 더한 부분 합계입니다. 미확인 값을 0으로 간주하지 않습니다.</p>`);
     if(n.legacyCount)$('#nutrition').insertAdjacentHTML('beforeend',`<p class="helper legacy-info">기존 샘플 영양정보 ${n.legacyCount}개 포함 · 저장 당시 수치를 유지합니다.</p>`);
-    $('#nutrition-source-note').textContent='식사 완료 기록만 합산합니다. 식품별 공식 DB·제품 직접 입력·기존 샘플 출처와 기준량을 편집창에서 확인하세요. 불포화지방은 총 지방에 포함됩니다.';
+    $('#nutrition-source-note').textContent='오늘까지의 실제 식사 완료 기록만 합산하며 체험용 샘플은 제외합니다. 식품별 출처와 기준량은 편집창에서 확인하세요. 불포화지방은 총 지방에 포함됩니다.';
   }
   function details(event) {
     const d=event.detail;
@@ -136,18 +137,16 @@
   }
 
   function renderStats() {
-    const events=getDay(selected,false).map(x=>x.event),workouts=events.filter(e=>['strength','cardio'].includes(e.type));
+    const sum=A.daySummary(C,data,window.FormdayIndependent?.getSnapshot?.(),selected,new Date());
     const n=nutritionFor(selected),g=data.settings,weights=getWeightRecords(selected);
-    $('#stat-workout').textContent=`${workouts.filter(e=>e.completed).length} / ${workouts.length}`;
+    $('#stat-workout').textContent=`${sum.completedWorkouts} / ${sum.workoutCount}`;
     $('#stat-kcal').innerHTML=`${nutrientText(n,'kcal')} <small>kcal</small>`;
     $('#stat-kcal-note').textContent=`목표 ${fmt(g.protein*4+g.carbs*4+g.fat*9)} kcal · 완료 식단${n.missing.kcal?' · 일부 미확인':''}`;
     $('#stat-protein').innerHTML=`${nutrientText(n,'protein')} <small>g</small>`;
     $('#stat-protein-note').textContent=n.missing.protein?`단백질 미확인 식품 ${n.missing.protein}개 · 입력된 값만 합산`:(g.protein>0?`목표 ${g.protein}g 중 ${Math.round(n.protein/g.protein*100)}%`:'단백질 목표가 0g으로 설정되어 있습니다');
     $('#stat-weight').innerHTML=weights.length?`${fmt(weights.at(-1).detail.weight,1)} <small>kg</small>`:'—';
     $('#stat-weight-note').textContent=weights.length?`${weights.at(-1).date} ${weights.at(-1).start} 측정`:'완료한 측정 기록이 없습니다';
-    const strength=events.filter(e=>e.type==='strength').map(e=>W.summary(e.detail));
-    const sum=strength.reduce((a,b)=>({sets:a.sets+b.setCount,done:a.done+b.completedSets,volume:a.volume+b.volume}),{sets:0,done:0,volume:0});
-    $('#workout-progress').innerHTML=`<div><span>완료 세트</span><strong>${sum.done}<small> / ${sum.sets}</small></strong></div><div><span>완료 운동량</span><strong>${fmt(sum.volume,1)}<small> kg</small></strong></div><p>중량 × 횟수 합계 · 워밍업 제외</p>`;
+    $('#workout-progress').innerHTML=`<div><span>완료 본세트</span><strong>${sum.completedSets}<small> / ${sum.setCount}</small></strong></div><div><span>완료 운동량</span><strong>${fmt(sum.volume,1)}<small> kg</small></strong></div><p>실제 완료 본세트의 중량 × 횟수 · 워밍업·샘플 제외</p>`;
   }
   function timeTop(value) {const [h,m]=value.split(':').map(Number);return (h+m/60)*55;}
   function layoutIntervals(events) {
@@ -181,6 +180,7 @@
     else showStorageState();
     if(view!=='month')requestAnimationFrame(()=>{if($('#time-view'))$('#time-view').scrollTop=oldScroll??310;});
     lastCalendarKey=key;
+    window.FormdayIndependent?.renderCalendar?.();
   }
   function toast(message,error=false) {
     $('#toast-root').innerHTML=`<div class="toast ${error?'toast-error':''}">${esc(message)}</div>`;
@@ -432,6 +432,7 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
       $('#undo-btn').disabled=true;
     });
     window.addEventListener('focus',refreshToday);
+    window.addEventListener('formday:iron-changed',()=>{renderStats();window.FormdayIndependent?.renderCalendar?.();});
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshToday();});
   }
 
@@ -444,6 +445,7 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
     cloudReload: () => {if(!blockedLoad && !externalChange && !modalDirty && modalController===null){loadLatest();return true;}return false;},
     getToday: () => today,
     getSelectedDay: () => selected,
+    getVisibleTypes: () => [...visibleTypes],
     openStrength: (name) => {
       const cleanName=String(name||'').trim().slice(0,80);
       if(window.FormdayIndependent)window.FormdayIndependent.open('start',cleanName?{exercise:cleanName}:undefined);

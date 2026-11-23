@@ -93,6 +93,13 @@
     return {version:VERSION,revision,programs,routines,sessions};
   }
   function empty(){return {version:VERSION,revision:'',programs:[],routines:[],sessions:[]};}
+  function parseBackup(value){
+    must(obj(value),'IRON MODE 백업 파일이 아닙니다.');
+    const standard=value.app==='formday-iron'&&value.version===VERSION;
+    const cloud=value.app==='FORMDAY-cloud-manual-backup'&&value.kind==='iron';
+    must(standard||cloud,'IRON MODE 백업 파일이 아닙니다.');
+    return normalize(value.data);
+  }
   function createStore(storage){
     const backupKey=KEY+'_previous';
     function load(){
@@ -186,7 +193,9 @@
   function addExercise(data,sessionId,name,date=new Date()){
     return modify(data,sessionId,s=>{
       must(s.exercises.length<30,'한 세션에서 종목은 최대 30개입니다.');
-      s.exercises.push(newExercise(text(name,80)));
+      const exercise=newExercise(text(name,80));
+      exercise.sets=exercise.sets.map(set=>({...set,done:false}));
+      s.exercises.push(exercise);
     },date);
   }
   function addSet(data,sessionId,exerciseId,date=new Date()){
@@ -220,6 +229,12 @@
     }
     return result;
   }
+  function cancel(data,sessionId){
+    const next=normalize(data),session=next.sessions.find(x=>x.id===sessionId);
+    must(!!session&&UNFINISHED.includes(session.status),'취소할 진행 중 세션이 없습니다.');
+    next.sessions=next.sessions.filter(x=>x.id!==sessionId);
+    return {next,session};
+  }
   function resumeAfterReload(data,date=new Date()){
     const next=normalize(data),s=getUnfinished(next);
     if(s&&s.status==='ACTIVE'){s.status='SAVED';s.activeSince=null;s.lastSavedAt=nowIso(date);}
@@ -237,5 +252,5 @@
     }
     return {completedSets,volume:Math.round(volume*100)/100,exercises,minutes:Math.round(s.activeMs/60000)};
   }
-  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,getUnfinished,start,modify,setValue,addExercise,addSet,changeState,finish,resumeAfterReload,recordSummary});
+  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,getUnfinished,start,modify,setValue,addExercise,addSet,changeState,finish,cancel,resumeAfterReload,recordSummary});
 });

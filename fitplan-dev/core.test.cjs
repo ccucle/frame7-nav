@@ -58,6 +58,13 @@ test('weight history includes only completed real dates, sorted by date and time
   assert.throws(() => C.toggleComplete(s, 'series', '2026-11-24'), /체중 측정값/);
 });
 
+test('sample weights stay available in the calendar but do not enter measured weight history', () => {
+  const s = stateOf(weight({ id: 'sample-weight', completed: true, isSample: true }), weight({ id: 'my-weight', completed: true, detail: { weight: 79 } }));
+  assert.equal(C.dayEvents(s, '2026-11-23').length, 2);
+  assert.deepEqual(C.weightRecords(s, '2026-11-23').map(x => x.id), ['my-weight']);
+  assert.equal(s.events.find(x => x.id === 'sample-weight').isSample, true);
+});
+
 test('end-date shortening retains logged snapshots; one-day removal excludes only that day', () => {
   let s = stateOf(legacy({ date: '2026-11-16', repeat: 'weekly', doneDates: ['2026-11-23', '2026-11-30'] }));
   const template = { ...s.events[0], repeatUntil: '2026-11-23' };
