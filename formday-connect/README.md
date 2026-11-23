@@ -1,75 +1,72 @@
-# FORMDAY Connect · Read-only MCP / Google authentication integration
+# FORMDAY Connect — OAuth 2.1 + Google Firebase read-only MCP backend
 
-**Development status (2026-11-23):** source implemented and syntax-checked; **NOT deployed, NOT connected to ChatGPT, no actual Firestore personal records read or modified**.
+**Status (2026-11-23): Development source only. NOT deployed, NOT installed into ChatGPT, NOT connected to any real health records.**
 
-## User goal
+## Product requirements
+- Use existing FORMDAY Firebase Google identity to coach from ChatGPT, not from an AI chat widget embedded in the website.
+- PC and iPhone must BOTH work before the plugin may be considered ready.
+- Initially read-only; never edit historical actual workouts, meal entries, bodyweight or backups.
+- Preserve Firebase Spark free database and existing FORMDAY v0.6.0; no added charges without approval.
 
-- Run coaching **in ChatGPT**, not inside FORMDAY.
-- ChatGPT plugin should read FORMDAY cloud records on both PC and iPhone and ultimately write approved future plans.
-- Preserve the original Google Firebase account, existing records, and v0.6.0 website.
-- Extra operating charges must not be introduced without an explicit decision.
+## Current source modules
 
-## Completed source (branch only)
-
-- `src/reader.mjs`: bounded, sanitized calendar / IRON MODE snapshot views.
-- `src/tools.mjs`: 6 read-only tools with strict input schema. No model-controlled Firebase UID or path.
-- `src/firebase-rest.mjs`: **preferred** server-side Firebase ID token signature verifier and Security-Rules-aware Firestore REST reader. Verifies RS256 signatures using Google's published signing certificates and validates audience, issuer, UID, expiry and timestamps.
-- `src/mcp-gateway.mjs`: MCP server registration and HTTP gateway using official Model Context Protocol SDK v2. **Fails closed until a trusted ChatGPT OAuth verifier is installed.** Compares verified OAuth UID with verified Firebase token UID before reading data.
-- `src/firebase-adapter.mjs`: earlier Firebase Admin alternative; **not recommended for this flow**, as Admin bypasses Firestore Security Rules and requires a privileged service account. Not used by the new MCP gateway.
-- `test/reader.test.mjs`, `test/firebase-rest.test.mjs`, `test/mcp-gateway.test.mjs`: isolated synthetic-data tests for read results, token signature / expiry / project binding, strict owner document paths, and unauthorized gateway behavior.
-
-## Tools
-
-| Tool | Purpose |
+| Source | Implementation |
 | --- | --- |
-| `formday_status` | Check presence and revision of calendar and IRON documents |
-| `formday_workouts` | Read actual completed or partially completed strength workouts |
-| `formday_routines` | Read planned routine targets |
-| `formday_calendar` | Read calendar events (without inventing recurrence expansions) |
-| `formday_meals` | Read recorded food names; no unverified calorie estimates |
-| `formday_weight_history` | Read completed weight measurements |
+| `src/reader.mjs`, `src/tools.mjs` | Six bounded read-only tools over the two current Firestore snapshots |
+| `src/firebase-rest.mjs` | Verify Firebase RSA token; use USER bearer token to read original records under existing Firestore Security Rules |
+| `src/oauth-core.mjs` | OAuth authorization-code + PKCE S256, CIMD metadata verification, read scope, resource binding, one-time codes and rotating refresh token design |
+| `src/oauth-vault.mjs` | AES-256-GCM encryption of user Firebase refresh tokens using secret environment key |
+| `src/firebase-refresh.mjs` | Firebase Secure Token REST exchange for fresh user ID token |
+| `src/oauth-firestore-store.mjs` | Firestore transactional OAuth state storage in separate `formday_connect_oauth` collection (Admin SDK, server-side only) |
+| `src/oauth-http.mjs` | OAuth discovery endpoints and consent/token routes |
+| `src/oauth-consent-browser.mjs` | Explicit Google popup and read-only permission consent (no password or new Firebase account) |
+| `src/mcp-gateway.mjs`, `src/server-runtime.mjs` | Bind OAuth token to Firebase UID; allow only approved read tools |
+| `src/server-entry.mjs` | Node HTTP server and startup guard requiring real credentials and HTTPS origin |
 
-Each read uses the user's existing `users/{firebaseUid}/formday_sync/{calendar|iron}` Firestore documents. Firestore REST uses a Firebase **user** ID token so security rules are enforced. No privileged Admin service-account credentials are required for this preferred route.
+## Security properties
+- **No model input can select another user's UID or arbitrary Firestore path.**
+- The MFA/OAuth browser authorization uses the **existing Firebase Google account**, not a new password.
+- ChatGPT access tokens are opaque to the client, bound to the `https://<origin>/mcp` resource and the `formday:read` scope.
+- Google/Firebase credentials never belong in a URL, GitHub, a chat, an MCP tool response or server logs.
+- PKCE S256 and consent CSRF checks are required. Authorization codes and refresh tokens are consumed atomically in a Firestore transaction.
+- The privileged Firebase Admin SDK is used solely to hold OAuth code/grant metadata, not to read the user's health data.
+- **Admin SDK bypasses Firestore rules.** This is a significant privilege risk: credentials must remain private, server IAM must be reviewed and a compromised server may still access more than intended.
+- User record reads use Firebase USER tokens and the current Firestore rules, not Admin.
+- The token store requires a durable Firestore database; no ephemeral Render SQLite or memory storage in production.
+- Firestore TTL automated deletions are NOT enabled because they require billing; expired token records require carefully designed manual cleanup.
 
-## Next required blocker: ChatGPT OAuth 2.1
+## OAuth discovery requirements
+- `/.well-known/oauth-protected-resource`: resource and authorization server metadata.
+- `/.well-known/oauth-authorization-server`: issuer, PKCE S256, CIMD support, code and refresh grants.
+- `/oauth/authorize`: validates official ChatGPT CIMD client metadata and redirects with secure session cookies to consent page.
+- `/oauth/consent`: explicit Google sign-in and approval.
+- `/oauth/token`: exchanges a one-time PKCE code or refresh token.
+- `/mcp`: protected MCP transport, all calls read-only.
 
-ChatGPT cannot simply reuse the Firebase login session from the standalone FORMDAY web app.
+## Not yet proven / release blockers
 
-Before deploying or installing a plugin, build/configure a real OAuth 2.1 authorization server:
+1. **Critical:** OpenAI currently documents direct custom MCP connections as **web-only**. The requirement that iPhone ChatGPT must use the same plugin is NOT met; do not promise mobile support.
+2. Actual Node SDK runtime test and OAuth integration test remain unexecuted here (network installation of npm dependencies unavailable). Source parse checks and memory-mock tests are not sufficient for production.
+3. Test and implement OAuth grant revocation, Firebase refresh token rotation consistency, transactional bundle issuance on partial failures, and rate limiting.
+4. Independent security review of privileged Firestore Admin credential, server-side CSP, CSRF and OAuth grant persistence.
+5. Actual Render server deployment would consume free instance hours and can cause charges if account has payment method and bandwidth/build quota is exceeded. No web service has been created.
+6. Deployment requires a Google Firebase service account and encryption key configured **directly in a trusted Render dashboard**; never share either in ChatGPT.
+7. Add the new Render OAuth hostname to Firebase Authentication > Authorized domains. Current user account must remain unchanged.
+8. After production HTTPS testing, register custom MCP plugin in ChatGPT web if account has appropriate access and verify on iPhone before considering the feature complete.
 
-1. Expose standards-compliant protected-resource and OAuth authorization-server metadata over HTTPS.
-2. Support ChatGPT CIMD (preferred) or DCR, the exact registered redirect URI, PKCE S256, resource/audience binding, scopes and access/refresh token verification.
-3. Authenticate the user with the original Firebase Google account via a user-consent screen. Bind each OAuth grant to the **verified Firebase UID**; do not derive identity from an email string or untrusted tool argument.
-4. Handle refresh tokens and secure revocation/rotation with durable storage, cookie/CSRF protections, rate limits and audit logs that **exclude credential and health information**.
-5. Resolve a **fresh Firebase ID token** for each MCP session and verify it again server-side. Never hand this Firebase token to the model or place it in a tool argument.
-6. Add an authorization test to prove another account cannot access the owner's data.
-7. Deploy a separate secured Render (or other) backend only after OAuth/security review. Existing FORMDAY static service is unrelated and must remain unchanged.
-8. Install/test the resulting private plugin via ChatGPT on the web, then verify tool usage in the **iPhone ChatGPT app**. Do not declare PC+mobile success before the actual phone test.
-
-**Do not expose an unauthenticated/private-data MCP endpoint, export API secrets, or package a placeholder plugin.**
-
-## Cost and platform limits
-
-Render supports Free web services, but Free instances sleep after 15 idle minutes and monthly usage is shared across services. **Bandwidth and build overages can be billed if a payment method is present.** Since the user requires no added charges, creating a new web service requires confirming acceptable usage/limits before provisioning.
-
-OpenAI Help Center currently says direct custom MCP **connection setup is on ChatGPT web only**. ChatGPT mobile tool invocation of this private server remains **unverified** and is a release blocker.
-
-## Tests
-
-Node 22+ after installing project dependencies:
+## Test commands (when dependencies are available)
 
 ```bash
 cd formday-connect
-npm install
+npm install --ignore-scripts
 npm test
 ```
 
-These are synthetic, isolated tests. Source static syntax and adapter/dispatcher mock behavior have been checked; **the full SDK runtime test has not been run in this chat** because the SDK dependencies are not installed in the working runtime.
+Tests use synthetic Firebase IDs and do not access any real database.
 
-## Official references
-
+## References
 - https://developers.openai.com/plugins/build/auth
 - https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt
-- https://firebase.google.com/docs/auth/admin/verify-id-tokens
-- https://firebase.google.com/docs/firestore/use-rest-api
+- https://firebase.google.com/docs/reference/rest/auth
+- https://firebase.google.com/docs/firestore/quotas
 - https://render.com/docs/free

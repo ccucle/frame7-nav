@@ -1,17 +1,19 @@
 {
   "name": "formday-connect-reader",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
-  "description": "Verified-owner read-only FORMDAY MCP server source, OAuth integration pending",
+  "description": "FORMDAY Connect read-only MCP/OAuth backend source (not yet connected)",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "start": "node src/server-entry.mjs"
   },
   "dependencies": {
-    "@modelcontextprotocol/server": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "firebase-admin": "^14.5.1",
     "zod": "^4.0.0"
   }
 }
