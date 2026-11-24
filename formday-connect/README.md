@@ -41,11 +41,12 @@ See .env.example. The entry point requires an HTTPS origin, an OAuth encryption 
 
 ## Release blockers
 
-1. No Connect web service, isolated OAuth storage, verified IAM isolation or production secrets have been provisioned. No paid service was created. Render now verifies the live FORMDAY v0.6.1 commit `3c6cc4adf5fda21a2d205ceb0738ad06877dc43f`; preserve that live site and all Firebase data/rules/authentication settings. Never deploy this development branch's older `fitplan/` over the live site. Current account billing and overage safeguards remain unverified.
+1. No Connect web service, isolated OAuth storage, verified IAM isolation or production secrets have been provisioned. No paid service was created. During this work, another task deployed FORMDAY v0.7.0 commit `2e98ed66f6f82f7efc97a070867e78e3765bf6b5`; the final Render read confirms it is live. Preserve that latest site and all Firebase data/rules/authentication settings. Never deploy this development branch's older `fitplan/` over the live site. Current account billing and overage safeguards remain unverified.
 2. OAuth token-bundle issuance is not atomic; grant-family revocation, concurrent Firebase credential rotation, request limits and expired-secret cleanup still require implementation and failure testing. This remains development code, with writes disabled by default.
 3. Actual Google browser login, authorized domains, exact ChatGPT callback/CIMD registration, live Firestore rules and owner-account read/write smoke tests remain unverified. Selecting a new Google account can create a Firebase Auth user; first-login prevention remains unresolved.
 4. The website requires cloud download to apply remote records. Local unsynced changes may conflict; active IRON sessions can block download. No automatic site refresh was added.
 5. Direct custom MCP connections are documented as web-only, while account-available cloud plugins support mobile Chat/Work. A Sites-hosted MCP plugin is a valid candidate, but Sites sign-in does not authenticate Firebase. No FORMDAY tool is available in the inspected mobile session. See the mobile review for observed account access and the separate authentication/cost gates.
+6. Every successful write still needs a mandatory post-save server reread. The inherited commit tool currently returns saved after a commit acknowledgement. Independent test roundtrips do not establish this production guarantee, nor semantic deduplication across newly created previews.
 
 ## Main modules
 
