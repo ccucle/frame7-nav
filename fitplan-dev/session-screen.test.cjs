@@ -109,6 +109,13 @@ function ui(options={}){
   if(options.initialState){const initial=typeof options.initialState==='function'?options.initialState(root.FormdayIronStore):options.initialState;db.set(root.FormdayIronStore.KEY,JSON.stringify(root.FormdayIronStore.normalize(initial)));}
   if(options.bridge)root.FormdayBridge=typeof options.bridge==='function'?options.bridge({root,db,document}):options.bridge;
   vm.runInContext(fs.readFileSync(require.resolve('../fitplan/iron-independent.js'),'utf8'),context);
+  if(options.dashboard){
+    const dashboard=main.appendChild(new Element('div',document));dashboard.setAttribute('id','fd-iron-root');
+    root.FormdayCore=C;root.FormdayIronData=require('../fitplan/iron-data.js');
+    root.FormdayBridge={getState:()=>C.normalizeState({events:[],settings:C.defaults}),getToday:()=>C.iso(new Clock())};
+    root.FormdayProgress={render(){}};
+    vm.runInContext(fs.readFileSync(require.resolve('../fitplan/iron.js'),'utf8'),context);
+  }
   const api=root.FormdayIndependent;
   const snapshot=()=>JSON.parse(JSON.stringify(api.getSnapshot()));
   function action(name,extra={}){
@@ -203,8 +210,13 @@ test('switching between all exercises and one at a time preserves edits across n
   view.action('toggle-session-view');assert.equal(view.field(1,0,'reps').value,'7');assert.equal(active(view).exercises[1].sets[0].done,false);
 });
 test('completing the workout keeps finalized values and leaves immersive session mode',()=>{
-  const view=ui();view.start();view.edit(0,0,'kg',80);view.edit(0,0,'reps',5);view.complete(0);view.edit(0,0,'kg',82.5);view.answers.push(true,false);view.action('finish');
+  const view=ui({dashboard:true});view.start();view.edit(0,0,'kg',80);view.edit(0,0,'reps',5);view.complete(0);view.edit(0,0,'kg',82.5);view.answers.push(true,false);view.action('finish');
   assert.equal(active(view),undefined);assert.notEqual(view.document.body.dataset.fiSession,'true');const saved=view.snapshot().sessions[0];assert.equal(saved.status,'COMPLETED');assert.equal(saved.exercises[0].sets[0].weight,82.5);assert.equal(saved.exercises[0].sets[0].reps,5);
+  assert.equal(view.document.body.dataset.fdScreen,'progress');assert.ok(view.host.querySelector('#fi-history-detail'));
+  assert.equal(view.host.querySelector('.fi-hub-nav'),null);assert.equal(view.document.activeElement.id,'fi-history-detail');
+  view.action('record-detail',{id:saved.id});assert.equal(view.document.body.dataset.fdScreen,'progress');
+  const before=JSON.stringify(view.snapshot());view.root.dispatchEvent(new Event('formday:changed'));
+  assert.ok(view.host.querySelector('#fi-history-detail'));assert.equal(JSON.stringify(view.snapshot()),before);
 });
 
 test('storage conflict keeps stale inputs visible until confirmed reload, then never writes them over the newer revision',()=>{

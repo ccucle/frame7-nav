@@ -3,6 +3,7 @@
 body[data-fd-screen="independent"] #fd-iron-root,
 body:not([data-fd-screen="independent"]) #fd-ind-root{display:none}
 body[data-fd-screen="independent"] #fd-ind-root{display:block}
+body[data-fd-screen="progress"] #fd-ind-root{display:block;margin-top:30px}
 body[data-fd-screen="independent"] #fd-iron-calendar{display:none}
 body:not([data-fd-screen="calendar"]) #fd-iron-calendar{display:none}
 .fi-view{display:flex;flex-direction:column;gap:19px;padding:0 0 20px;color:#f0f2f6}
@@ -88,6 +89,11 @@ body:not([data-fd-screen="calendar"]) #fd-iron-calendar{display:none}
 .fi-history-ex{border-bottom:1px solid #353d48;padding:13px 0}
 .fi-history-ex b{display:block;font-size:13px;margin-bottom:6px}
 .fi-history-ex small{display:block;color:#bbc4cd;font-size:11px;line-height:1.65}
+.fi-history-view,.fi-history-view #fi-history-detail{scroll-margin-top:20px}
+.fi-history-view:focus,.fi-history-view #fi-history-detail:focus{outline:none}
+.fi-history-heading{margin-bottom:0}
+.fi-history-heading h2{font-size:24px;margin:5px 0 0;letter-spacing:-.6px}
+.fi-history-card b,.fi-history-card small,#fi-history-detail-title{overflow-wrap:anywhere}
 .fi-session-control{margin:0}
 .fi-session-control .fi-btn{min-height:48px}
 .fi-session-ex{padding:17px}

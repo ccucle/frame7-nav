@@ -1,4 +1,4 @@
-/* Workout, routines, programs and history share one training workspace. */
+/* Workout, routines, programs and the exercise library share one training workspace. */
 .fi-hub-nav {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

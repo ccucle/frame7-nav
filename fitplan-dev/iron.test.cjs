@@ -393,7 +393,9 @@ test('routine selection opens routines and exercise-library start forwards the s
   const app=bootDashboard(snapshot);
   app.press('data-fd-action','choose-routine');
   assert.equal(app.workoutOpens[0].page,'routines');
-  app.navigate('library');app.press('data-fd-action','add-exercise');
+  app.navigate('library');
+  assert.equal(app.indNav.attrs['aria-current'],'page');
+  app.press('data-fd-action','add-exercise');
   assert.equal(app.workoutOpens[1].page,'start');
   assert.equal(app.workoutOpens[1].options.exercise,'벤치프레스');
   assert.equal(app.legacyStarts.length,0);
