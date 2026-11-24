@@ -46,3 +46,11 @@ PC에서 한 Windows 사용자로 연결된 아바타는 공통 엔진을 공유
 도감 배포 시 `engine.lua`의 헤더와 `M.version`을 함께 올린다. `python work/package_skin.py unlock-release`와 `python work/package_skin.py unlock-kit`로 빌드하고, 기존 발행 계정에서 채널 `avatar-unlocks/v1`을 지정해 서명한다. 버전 Lua, 피드, 연결 키트를 함께 배포한다. 서명된 Lua가 도감 데이터·그림과 기존 도감 미터를 구동하는 코드를 전달한다. 새 아바타는 최신 키트를 한 번 연결한 뒤 같은 도감 업데이트를 받는다.
 
 포켓몬 도트는 하트골드·소울실버 이미지 자료를 사용했다. 포켓몬 및 커비는 각 권리자의 캐릭터다. [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver)
+
+## 포켓몬 걷기와 동행
+
+포켓몬 탭에서 보유한 종의 카드를 열고 **꺼내기**를 누르면 도감이 닫히고 그 포켓몬이 아바타 곁에 나타난다. 같은 카드의 **돌려보내기**로 동행을 끝낸다. 실제 화면상의 가로 이동 거리에 맞춰 네 프레임을 순환하고, 방향 전환에는 반대쪽 그림을 사용하며 멈추면 대기 프레임을 표시한다. 동행 선택은 아바타·프로필별로 저장한다.
+
+전국도감 번호순으로 이상해씨·파이리·꼬부기·식스테일·고라파덕·야돈·코일·이브이·피츄의 좌우 걷기 그림이 들어 있다. 뿔둥이의 현재 지급 조건은 Lv.2의 이상해씨·파이리·꼬부기다. 새로 제작하는 종은 정지 카드와 걷기 그림을 각각 확인한다. 도감 카드는 Pokémon Database의 하트골드·소울실버 일반색 앞모습을 기준으로 하고, 걷기는 같은 게임의 필드 동행 그림을 쓴다. [카드 기준](https://pokemondb.net/sprites) · [필드 동행 도트 출처](https://github.com/teobz/pkmn-hgss-animated-overworld-sprites/tree/5295a3bc935aabb56b2958bede509e6f36f77dfe)
+
+걷기 그림은 `walk-atlas.png`에 32×32 픽셀 네 프레임을 가로로 배치하고 종마다 왼쪽·오른쪽 두 줄을 쓴다. `walk-rows.json`에는 같은 순서로 고유 ID를 적는다. 호스트의 `UnlockAvatarMeter`(기본값 `Avatar`)로 실제 위치와 크기를 읽는다. 도감이 닫힌 동안 첫 카드 그림 미터와 검색 타이머를 동행에 사용하므로 기존에 설치된 아바타도 도감 업데이트에서 새 모션을 받는다.
