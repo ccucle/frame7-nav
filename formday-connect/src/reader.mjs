@@ -14,8 +14,8 @@ function day(v){
  guard(Number.isFinite(d.getTime())&&d.toISOString().slice(0,10)===v,"존재하지 않는 날짜입니다.");
  return v;
 }
-function timeRange(a={}){
- const today=new Date().toISOString().slice(0,10);
+function timeRange(a={},now=Date.now()){
+ const today=new Date(now+9*3600000).toISOString().slice(0,10);
  const start=new Date(Date.parse(today+"T00:00:00Z")-13*86400000).toISOString().slice(0,10);
  const from=day(a.from||start),to=day(a.to||today);
  const days=(Date.parse(to+"T00:00:00Z")-Date.parse(from+"T00:00:00Z"))/86400000;
@@ -64,6 +64,7 @@ function workout(s){
 }
 function calendarEvent(e){
  return {id:safe(e.id,100),date:day(e.date),type:safe(e.type,20),
+  start:safe(e.start,5),end:safe(e.end,5),
   title:safe(e.title,300),completed:e.completed===true,
   repeat:safe(e.repeat,16),sample:e.isSample===true,
   hasOccurrenceOverrides:isObject(e.occurrences)&&Object.keys(e.occurrences).length>0};
@@ -71,15 +72,20 @@ function calendarEvent(e){
 function mealEvent(e){
  const items=array(e.detail?.items).slice(0,50).map(i=>({
   name:safe(i?.food?.name||i?.name,100),
-  grams:typeof i?.grams==="number"?i.grams:null,
-  quantity:typeof i?.quantity==="number"?i.quantity:null
+  grams:typeof i?.grams==="number"?i.grams:i?.food?.basisUnit==='g'&&typeof i.amount==='number'?i.amount:null,
+  quantity:typeof i?.quantity==="number"?i.quantity:null,
+  amount:typeof i?.amount==='number'?i.amount:null,unit:safe(i?.food?.basisUnit,10),
+  nutritionBasisAmount:typeof i?.food?.basisAmount==='number'?i.food.basisAmount:null,
+  nutrientsPerBasis:Object.fromEntries(['kcal','protein','carbs','fat','unsat'].map(k=>[k,
+   typeof i?.food?.nutrients?.[k]==='number'?i.food.nutrients[k]:null])),
+  source:{kind:safe(i?.food?.source?.kind,20),label:safe(i?.food?.source?.label,250)}
  }));
- return {...calendarEvent(e),items};
+ return {...calendarEvent(e),items,notes:safe(e.detail?.notes,2000)};
 }
 function weightEvent(e){return {id:safe(e.id,100),date:day(e.date),
  kilograms:typeof e.detail?.weight==="number"?e.detail.weight:null,
  bodyFatPercent:typeof e.detail?.bodyfat==="number"?e.detail.bodyfat:null};}
-export function createReader({verifiedUid,loadDocument}){
+export function createReader({verifiedUid,loadDocument,clock=()=>Date.now()}){
  guard(typeof verifiedUid==="string"&&UID.test(verifiedUid),"인증된 사용자 ID가 없습니다.");
  guard(typeof loadDocument==="function","클라우드 조회 연결이 없습니다.");
  const get=async name=>{
@@ -96,15 +102,20 @@ export function createReader({verifiedUid,loadDocument}){
     sessionCount:i.data?.sessions?.length||0,routineCount:i.data?.routines?.length||0}};
   },
   async workouts(args={}){
-   const r=timeRange(args),s=await get("iron");
+   const r=timeRange(args,clock()),s=await get("iron");
    const rows=selected(s.data?.sessions,r.from,r.to).filter(x=>args.includeUnfinished===true||
      x.status==="COMPLETED"||x.status==="PARTIAL");
    return {revision:s.revision,total:rows.length,from:r.from,to:r.to,
     records:rows.slice(-r.limit).map(workout)};
   },
   async routines(args={}){
-   const r=timeRange(args),s=await get("iron"),rows=array(s.data?.routines);
-   return {revision:s.revision,total:rows.length,records:rows.slice(0,r.limit).map(x=>({
+   const r=timeRange(args,clock()),s=await get("iron"),rows=array(s.data?.routines),programs=array(s.data?.programs);
+   return {revision:s.revision,total:rows.length,programTotal:programs.length,
+    programs:programs.slice(0,r.limit).map(p=>({id:safe(p.id,100),name:safe(p.name,100),mode:safe(p.mode,10),
+     routineIds:array(p.routineIds).slice(0,14).map(x=>safe(x,100)),
+     weekdays:Object.fromEntries(Object.entries(isObject(p.weekdays)?p.weekdays:{}).filter(([k])=>/^[0-6]$/.test(k)).map(([k,v])=>[k,safe(v,100)])),
+     active:p.active===true,nextIndex:Number.isInteger(p.nextIndex)?p.nextIndex:null})),
+    records:rows.slice(0,r.limit).map(x=>({
     id:safe(x.id,100),name:safe(x.name,100),updatedAt:safe(x.updatedAt,50),
     exercises:array(x.exercises).slice(0,30).map(e=>({
      name:safe(e.name,80),targets:array(e.sets).slice(0,50).map(set=>({
@@ -114,21 +125,21 @@ export function createReader({verifiedUid,loadDocument}){
       warmup:set.warmup===true}))}))}))};
   },
   async calendar(args={}){
-   const r=timeRange(args),s=await get("calendar");
+   const r=timeRange(args,clock()),s=await get("calendar");
    const rows=selected(s.data?.events,r.from,r.to).filter(x=>args.includeSamples===true||x.isSample!==true);
    return {revision:s.revision,from:r.from,to:r.to,total:rows.length,
     records:rows.slice(-r.limit).map(calendarEvent),
     note:"반복 일정은 시작 날짜로 조회되며 발생일마다 확장하지 않았습니다."};
   },
   async meals(args={}){
-   const r=timeRange(args),s=await get("calendar");
+   const r=timeRange(args,clock()),s=await get("calendar");
    const rows=selected(s.data?.events,r.from,r.to).filter(x=>x.type==="meal"&&x.isSample!==true);
    return {revision:s.revision,from:r.from,to:r.to,total:rows.length,
     records:rows.slice(-r.limit).map(mealEvent),
     note:"미검증 영양값은 생성하지 않습니다. 영양 합계 계산은 별도 검증이 필요합니다."};
   },
   async weightHistory(args={}){
-   const r=timeRange(args),s=await get("calendar");
+   const r=timeRange(args,clock()),s=await get("calendar");
    const rows=selected(s.data?.events,r.from,r.to).filter(x=>
     x.type==="weight"&&x.completed===true&&x.isSample!==true);
    return {revision:s.revision,from:r.from,to:r.to,total:rows.length,

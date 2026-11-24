@@ -29,7 +29,7 @@ function configure(){
   origin,oauthStore:createFirestoreOAuthStore(getFirestore(firebase)),
   oauthEncryptionKey:required("FORMDAY_OAUTH_ENCRYPTION_KEY"),
   firebaseApiKey:required("FORMDAY_FIREBASE_WEB_API_KEY"),
-  consentScript
+  consentScript,enableAppend:process.env.FORMDAY_ENABLE_APPEND==='true'
  })};
 }
 const {origin,app}=configure();

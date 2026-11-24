@@ -8,10 +8,11 @@ import {createCredentialVault} from "./oauth-vault.mjs";
 import {createOAuthCore} from "./oauth-core.mjs";
 import {createOauthHttpRoutes} from "./oauth-http.mjs";
 import {createProtectedMcpHandler} from "./mcp-gateway.mjs";
+import {createPreviewCodec} from './append.mjs';
 
 export function createFormdayRuntime({
  origin,oauthStore,oauthEncryptionKey,firebaseApiKey,consentScript,
- fetchImpl=fetch,clock=()=>Date.now()
+ fetchImpl=fetch,clock=()=>Date.now(),enableAppend=false
 }={}){
  if(typeof origin!=="string"||!origin.startsWith("https://"))
   throw Error("FORMDAY OAuth HTTPS origin must be configured");
@@ -22,11 +23,12 @@ export function createFormdayRuntime({
  const refresh=createFirebaseRefresh({apiKey:firebaseApiKey,fetchImpl});
  const core=createOAuthCore({
   origin,store:oauthStore,vault,verifyFirebaseIdToken:verify,
-  refreshFirebaseToken:refresh,now:clock,fetchImpl
+  refreshFirebaseToken:refresh,now:clock,fetchImpl,enableAppend
  });
  const oauthRoutes=createOauthHttpRoutes({core,origin,consentScript});
  const mcp=createProtectedMcpHandler({
-  baseUrl:origin,fetchImpl,
+  baseUrl:origin,fetchImpl,enableAppend,clock,
+  previewCodec:enableAppend===true?createPreviewCodec(oauthEncryptionKey):null,
   authenticateRequest:async token=>core.authenticateBearer(token,origin+"/mcp"),
   verifyFirebaseToken:verify
  });

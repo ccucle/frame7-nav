@@ -86,3 +86,8 @@ test("Admin adapter reads only the exact owner-shaped paths",async()=>{
  await assert.rejects(load("users/"+uid+"/other_private/accounts"));
  await assert.rejects(load("users/../../admin/formday_sync/calendar"));
 });
+
+test('default date range follows Korea calendar day across UTC midnight',async()=>{
+ const r=createReader({verifiedUid:uid,loadDocument:async path=>map.get(path),clock:()=>Date.parse('2026-11-23T15:01:00Z')});
+ assert.equal((await r.meals()).to,'2026-11-24');
+});

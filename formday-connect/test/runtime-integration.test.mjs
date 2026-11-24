@@ -40,7 +40,7 @@ function databaseDouble(){
   }
  };
 }
-async function fixture(t){
+async function fixture(t,enableAppend=false){
  let now=Date.parse('2026-11-24T01:00:00Z');
  let refreshedUid=uid;
  const calls=[];
@@ -77,7 +77,7 @@ async function fixture(t){
   const data=kind==='calendar'?calendar:iron;
   return Response.json({fields:{format:{integerValue:'1'},revision:{stringValue:data.revision},payload:{stringValue:JSON.stringify(data)}}});
  };
- const app=createFormdayRuntime({origin,oauthStore:createFirestoreOAuthStore(databaseDouble()),
+ const app=createFormdayRuntime({origin,enableAppend,oauthStore:createFirestoreOAuthStore(databaseDouble()),
   oauthEncryptionKey:randomBytes(32).toString('base64url'),firebaseApiKey:'synthetic-public-api-key',
   consentScript:'// synthetic script; no Google browser login occurs in this test.\n'.repeat(3),fetchImpl,clock:()=>now});
  const server=createFormdayHttpServer({origin,app});
@@ -93,14 +93,15 @@ async function fixture(t){
    request.on('error',reject);request.end(body);
   });
  }
- async function login(){
+ async function login(scope='formday:read offline_access'){
   const query=new URLSearchParams({response_type:'code',client_id:client,redirect_uri:redirect,
    code_challenge_method:'S256',code_challenge:createHash('sha256').update(verifier).digest('base64url'),
-   scope:'formday:read offline_access',resource:origin+'/mcp',state:'synthetic-chatgpt-state'});
+   scope,resource:origin+'/mcp',state:'synthetic-chatgpt-state'});
   const started=await send('/oauth/authorize?'+query);assert.equal(started.status,303,started.text);
   const cookies=started.headers['set-cookie'].map(c=>c.split(';')[0]).join('; ');
   const consent=await send('/oauth/consent',{headers:{cookie:cookies}});
   assert.equal(consent.status,200);
+  if(scope.includes('formday:append'))assert.match(consent.text,/루틴 일정·프로그램·식단을 추가/);
   const csrf=/name="fd-oauth-csrf" content="([^"]+)"/.exec(consent.text)[1];
   const approved=await send('/oauth/complete',{method:'POST',headers:{origin,cookie:cookies,'content-type':'application/json'},
    body:JSON.stringify({csrf,idToken:token(),refreshToken:firebaseRefresh,approved:true})});
@@ -165,4 +166,14 @@ test('loopback HTTP rejects expired bearer, rotates refresh, rejects reuse and f
  assert.equal((await f.send('/health',{headers:{host:'untrusted.example'}})).status,403);
  assert.equal((await f.send('//untrusted.example/health')).status,403);
  assert.equal((await f.send('/oauth/token',{method:'POST',body:'x'.repeat(70000)})).status,413);
+});
+
+test('loopback OAuth append consent reaches the protected MCP runtime without upgrading read grants',async t=>{
+ const f=await fixture(t,true);
+ const read=await f.login();
+ assert.equal(rpcJson(await f.rpc(read.tokens.access_token,'tools/list')).result.tools.length,6);
+ const write=await f.login('formday:read formday:append offline_access');
+ assert.equal(write.tokens.scope,'formday:read formday:append');
+ assert.equal(rpcJson(await f.rpc(write.tokens.access_token,'tools/list')).result.tools.length,10);
+ assert.equal(rpcJson(await f.rpc(read.tokens.access_token,'tools/list')).result.tools.length,6);
 });

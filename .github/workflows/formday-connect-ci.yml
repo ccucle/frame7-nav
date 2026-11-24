@@ -5,12 +5,20 @@ on:
       - formday-connect-oauth-20261123
     paths:
       - 'formday-connect/**'
+      - 'fitplan/core.js'
+      - 'fitplan/nutrition.js'
+      - 'fitplan/iron-store.js'
+      - 'fitplan/data.js'
       - '.github/workflows/formday-connect-ci.yml'
   pull_request:
     branches:
       - formday-connect-firebase-rest-20261123
     paths:
       - 'formday-connect/**'
+      - 'fitplan/core.js'
+      - 'fitplan/nutrition.js'
+      - 'fitplan/iron-store.js'
+      - 'fitplan/data.js'
       - '.github/workflows/formday-connect-ci.yml'
   workflow_dispatch:
 permissions:

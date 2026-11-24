@@ -11,7 +11,7 @@ const response=(payload,status=200,headers={})=>new Response(JSON.stringify(payl
 const failure=(reason,status=400)=>response({error:"invalid_request",description:String(reason).slice(0,140)},status);
 const same=(a,b)=>{if(typeof a!=="string"||typeof b!=="string")return false;
  const aa=Buffer.from(a),bb=Buffer.from(b);return aa.length===bb.length&&timingSafeEqual(aa,bb);};
-function htmlConsent(csrf){
+function htmlConsent(csrf,scope){
  if(!OPAQUE.test(csrf))throw Error("Invalid consent CSRF");
  return ['<!doctype html><html lang="ko"><head><meta charset="utf-8">',
   '<meta name="viewport" content="width=device-width,initial-scale=1">',
@@ -20,8 +20,9 @@ function htmlConsent(csrf){
   '<title>FORMDAY Connect Google 승인</title>',
   '<link rel="stylesheet" href="/oauth/style.css"></head><body><main>',
   '<h1>FORMDAY Connect</h1>',
-  '<p>ChatGPT가 운동·식단·체중·캘린더 기록을 <b>읽기만</b> 하도록 승인합니다.</p>',
-  '<p>허용: 읽기·코칭 | 금지: 기록 수정·삭제</p>',
+  scope==='formday:read formday:append'?
+   '<p>ChatGPT가 운동·식단·체중·캘린더 기록을 읽고, 요청한 <b>루틴 일정·프로그램·식단을 추가</b>하도록 승인합니다.</p><p>기존 항목 수정·삭제 권한은 부여하지 않습니다.</p>':
+   '<p>ChatGPT가 운동·식단·체중·캘린더 기록을 <b>읽기만</b> 하도록 승인합니다.</p><p>허용: 읽기·코칭 | 금지: 기록 추가·수정·삭제</p>',
   '<button id="fd-oauth-approve">Google 계정으로 로그인하고 승인</button>',
   '<p id="fd-oauth-status" role="status">Google 계정을 선택해 주세요.</p>',
   '<p>기존 FORMDAY에서 사용한 Google 계정을 선택해 주세요. 다른 계정으로 처음 로그인하면 Firebase 사용자 계정이 생성될 수 있습니다.</p>',
@@ -60,7 +61,10 @@ export function createOauthHttpRoutes({core,origin,consentScript}={}){
   if(request.method==="GET"&&u.pathname==="/oauth/consent"){
    const flow=cookie(request,FLOW),csrf=cookie(request,CSRF);
    if(!OPAQUE.test(flow||"")||!OPAQUE.test(csrf||""))return failure("Authorization session expired",401);
-   return new Response(htmlConsent(csrf),{headers:{"content-type":"text/html; charset=utf-8",
+   let consent;
+   try{consent=await core.inspectConsent({requestId:flow,csrf});}
+   catch{return failure('Authorization session expired',401);}
+   return new Response(htmlConsent(csrf,consent.scope),{headers:{"content-type":"text/html; charset=utf-8",
     "cache-control":"no-store","referrer-policy":"no-referrer",
     "content-security-policy":CSP}});
   }

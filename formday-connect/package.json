@@ -1,9 +1,9 @@
 {
   "name": "formday-connect-reader",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
-  "description": "FORMDAY Connect read-only MCP/OAuth backend source (not yet connected)",
+  "description": "FORMDAY Connect scoped read and append MCP/OAuth backend (not deployed)",
   "engines": {
     "node": ">=22"
   },

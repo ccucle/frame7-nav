@@ -45,7 +45,7 @@ button?.addEventListener("click",()=>{
   const refreshToken=user.refreshToken;
   if(typeof refreshToken!=="string"||!refreshToken)
    throw Error("Firebase refresh credential unavailable");
-  explain("Google 인증 완료. FORMDAY 읽기 권한을 확인하고 있습니다.");
+  explain("Google 인증 완료. FORMDAY 요청 권한을 확인하고 있습니다.");
   const res=await fetch("/oauth/complete",{
    method:"POST",credentials:"same-origin",redirect:"error",
    headers:{"content-type":"application/json"},
@@ -56,7 +56,7 @@ button?.addEventListener("click",()=>{
   const callback=new URL(data.redirectTo);
   if(callback.protocol!=="https:"||callback.hostname!=="chatgpt.com")
    throw Error("승인된 ChatGPT 복귀 주소가 아닙니다");
-  explain("읽기 권한을 승인했습니다. ChatGPT로 돌아갑니다.");
+  explain("요청한 권한을 승인했습니다. ChatGPT로 돌아갑니다.");
   await signOut(auth);
   window.location.assign(callback.href);
  }).catch(()=>{

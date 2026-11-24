@@ -19,7 +19,7 @@ function testStore(){
  const take=(name)=>(key)=>{const v=maps[name].get(key)||null;maps[name].delete(key);return v};
  return {
   durable:true,
-  putFlow:put("flow"),takeFlow:take("flow"),
+  putFlow:put("flow"),getFlow:get("flow"),takeFlow:take("flow"),
   putCode:put("code"),getCode:get("code"),takeCode:take("code"),
   putGrant:put("grant"),getGrant:get("grant"),
   putAccess:put("access"),getAccess:get("access"),
@@ -36,10 +36,10 @@ function params(){
   resource:ORIGIN+"/mcp",scope:"formday:read",
   state:"state-of-chatgpt-long-enough"};
 }
-function fixture(){
+function fixture(enableAppend=false){
  let now=Date.now();
  const oauth=createOAuthCore({
-  origin:ORIGIN,store:testStore(),
+  origin:ORIGIN,store:testStore(),enableAppend,
   vault:createCredentialVault(randomBytes(32).toString("base64url")),
   verifyFirebaseIdToken:async value=>{
    if(!value.startsWith("firebase-id-alice-"))throw Error("not alice");
@@ -61,8 +61,8 @@ function fixture(){
  });
  return {oauth,shift:ms=>{now+=ms}};
 }
-async function authorize(oauth){
- const began=await oauth.begin(params());
+async function authorize(oauth,scope='formday:read'){
+ const began=await oauth.begin({...params(),scope});
  const result=await oauth.approve({
   requestId:began.requestId,csrf:began.csrf,
   idToken:TOKEN,refreshToken:REFRESH,approved:true
@@ -79,6 +79,28 @@ test("metadata advertises PKCE S256, CIMD and correct audience",()=>{
  assert.deepEqual(m.token_endpoint_auth_methods_supported,["none"]);
  assert.deepEqual(r.authorization_servers,[ORIGIN]);
  assert.equal(r.resource,ORIGIN+"/mcp");
+});
+test('append requires explicit feature flag and fresh scoped consent; scope survives refresh',async()=>{
+ const scope='formday:read formday:append';
+ await assert.rejects(fixture().oauth.begin({...params(),scope}));
+ const {oauth}=fixture(true),flow=await oauth.begin({...params(),scope});
+ assert.equal((await oauth.inspectConsent(flow)).scope,scope);
+ await assert.rejects(oauth.inspectConsent({...flow,csrf:'x'.repeat(43)}),/CSRF/);
+ assert.ok(oauth.metadata.scopes_supported.includes('formday:append'));
+ const code=await authorize(oauth,scope);
+ const tokens=await oauth.exchangeCode({grant_type:'authorization_code',code,client_id:CLIENT,
+  redirect_uri:CALLBACK,resource:ORIGIN+'/mcp',code_verifier:VERIFIER});
+ assert.equal(tokens.scope,scope);assert.equal((await oauth.authenticateBearer(tokens.access_token)).scope,scope);
+ const renewed=await oauth.refresh({grant_type:'refresh_token',refresh_token:tokens.refresh_token,client_id:CLIENT});
+ assert.equal(renewed.scope,scope);assert.equal((await oauth.authenticateBearer(renewed.access_token)).scope,scope);
+});
+test('enabling append never upgrades a read-only grant',async()=>{
+ const {oauth}=fixture(true),code=await authorize(oauth);
+ const tokens=await oauth.exchangeCode({grant_type:'authorization_code',code,client_id:CLIENT,
+  redirect_uri:CALLBACK,resource:ORIGIN+'/mcp',code_verifier:VERIFIER});
+ await assert.rejects(oauth.refresh({grant_type:'refresh_token',refresh_token:tokens.refresh_token,
+  client_id:CLIENT,scope:'formday:read formday:append'}),/scope mismatch/);
+ assert.equal((await oauth.authenticateBearer(tokens.access_token)).scope,'formday:read');
 });
 test("auth code -> user-bound read-only bearer -> refresh",async()=>{
  const {oauth}=fixture();const code=await authorize(oauth);

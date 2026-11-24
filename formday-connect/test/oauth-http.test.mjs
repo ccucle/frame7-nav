@@ -10,6 +10,7 @@ function fakeCore(){
   metadata:{issuer:base,code_challenge_methods_supported:["S256"]},
   protectedResource:{resource:base+"/mcp",authorization_servers:[base]},
   begin:async()=>({requestId:secret,csrf}),
+  inspectConsent:async()=>({scope:'formday:read'}),
   approve:async value=>{assert.equal(value.csrf,csrf);approved++;return {
    redirectTo:"https://chatgpt.com/connector_platform_oauth_redirect?code=TEST&state=STATE"};},
   exchangeCode:async()=>{issued++;return {access_token:"fake",token_type:"Bearer"};},
@@ -18,6 +19,15 @@ function fakeCore(){
  };
 }
 const req=(path,options={})=>new Request(base+path,options);
+test('consent wording comes from stored flow; expired flows cannot display an approval page',async()=>{
+ const core=fakeCore();core.inspectConsent=async()=>({scope:'formday:read formday:append'});
+ const handle=createOauthHttpRoutes({core,origin:base,consentScript:'a'.repeat(200)});
+ const headers={cookie:'fd_oauth_flow='+secret+'; fd_oauth_csrf='+csrf};
+ const html=await (await handle(req('/oauth/consent?scope=formday:read',{headers}))).text();
+ assert.match(html,/루틴 일정·프로그램·식단을 추가/);assert.doesNotMatch(html,/읽기만/);
+ core.inspectConsent=async()=>{throw Error('expired');};
+ assert.equal((await handle(req('/oauth/consent',{headers}))).status,401);
+});
 test("OAuth discovery metadata is readable without private records",async()=>{
  const core=fakeCore(),handle=createOauthHttpRoutes({core,origin:base,consentScript:"a".repeat(200)});
  const a=await handle(req("/.well-known/oauth-authorization-server"));

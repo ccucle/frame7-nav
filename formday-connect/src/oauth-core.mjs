@@ -6,6 +6,7 @@
 import {createHash,randomBytes,timingSafeEqual} from "node:crypto";
 
 const READ_SCOPE="formday:read";
+const APPEND_SCOPE="formday:append";
 const RESOURCE_PATH="/mcp";
 const CIMD=/^https:\/\/chatgpt\.com\/oauth\/(?:client\.json|[A-Za-z0-9_-]{1,128}\/client\.json)$/;
 const CODE_TTL=2*60*1000, FLOW_TTL=5*60*1000,ACCESS_TTL=30*60*1000;
@@ -44,7 +45,7 @@ function expectedRedirect(clientId,redirect){
   check(u.pathname==="/connector/oauth/"+callbackId,"Wrong callback for ChatGPT client");
  }
 }
-function validateAuthParams(params,origin){
+function validateAuthParams(params,origin,enableAppend){
  check(params?.response_type==="code","Authorization code flow required");
  const clientId=params?.client_id,redirect=params?.redirect_uri;
  check(str(clientId,35,250)&&CIMD.test(clientId),"Unrecognized ChatGPT CIMD client");
@@ -55,12 +56,13 @@ function validateAuthParams(params,origin){
  const resource=origin+RESOURCE_PATH;
  check(params?.resource===resource,"Incorrect protected resource");
  const scopes=String(params?.scope||"").split(/\s+/).filter(Boolean);
- check(scopes.includes(READ_SCOPE)&&scopes.length<=2&&
-  scopes.every(x=>x===READ_SCOPE||x==="offline_access")&&
+ check(scopes.includes(READ_SCOPE)&&scopes.length<=3&&
+  scopes.every(x=>x===READ_SCOPE||x==="offline_access"||enableAppend&&x===APPEND_SCOPE)&&
   new Set(scopes).size===scopes.length,"Read-only scope required");
  const state=params?.state||"";
  check(str(state,16,512),"CSRF state required");
- return {clientId,redirect,challenge:params.code_challenge,resource,scope:READ_SCOPE,state};
+ return {clientId,redirect,challenge:params.code_challenge,resource,
+  scope:scopes.includes(APPEND_SCOPE)?READ_SCOPE+' '+APPEND_SCOPE:READ_SCOPE,state};
 }
 function validateId({uid,idToken,refreshToken}){
  check(str(uid,6,128)&&/^[A-Za-z0-9_-]+$/.test(uid),"Invalid Firebase principal");
@@ -69,7 +71,7 @@ function validateId({uid,idToken,refreshToken}){
 /** Each store method must be durable across process restarts and atomic for take*. */
 function checkStore(store){
  check(store?.durable===true,"OAuth requires durable, transactional token storage");
- for(const name of ["putFlow","takeFlow","putCode","getCode","takeCode",
+ for(const name of ["putFlow","getFlow","takeFlow","putCode","getCode","takeCode",
    "putGrant","getGrant","putAccess","getAccess","putRefresh","getRefresh","takeRefresh","updateGrantCredential"]){
   check(typeof store?.[name]==="function","Durable OAuth store missing "+name);
  }
@@ -93,7 +95,7 @@ async function verifyClient(clientId,redirect,fetchImpl){
  check(methods.includes("none"),"Client does not support PKCE public token exchange");
  return true;
 }
-export function makeOauthMetadata(origin){
+export function makeOauthMetadata(origin,enableAppend=false){
  const base=validateOrigin(origin);
  return Object.freeze({
   issuer:base,authorization_endpoint:base+"/oauth/authorize",
@@ -102,18 +104,18 @@ export function makeOauthMetadata(origin){
   code_challenge_methods_supported:["S256"],
   token_endpoint_auth_methods_supported:["none"],
   client_id_metadata_document_supported:true,
-  scopes_supported:[READ_SCOPE,"offline_access"],
+  scopes_supported:[READ_SCOPE,...(enableAppend?[APPEND_SCOPE]:[]),"offline_access"],
   authorization_response_iss_parameter_supported:false
  });
 }
-export function makeProtectedResourceMetadata(origin){
+export function makeProtectedResourceMetadata(origin,enableAppend=false){
  const base=validateOrigin(origin);
  return Object.freeze({resource:base+RESOURCE_PATH,authorization_servers:[base],
-  scopes_supported:[READ_SCOPE],resource_name:"FORMDAY Connect (read-only)"});
+  scopes_supported:[READ_SCOPE,...(enableAppend?[APPEND_SCOPE]:[])],resource_name:"FORMDAY Connect"});
 }
 export function createOAuthCore({
  origin,store,vault,verifyFirebaseIdToken,refreshFirebaseToken,
- now=()=>Date.now(),fetchImpl=fetch
+ now=()=>Date.now(),fetchImpl=fetch,enableAppend=false
 }={}){
  const base=validateOrigin(origin);
  checkStore(store);
@@ -122,7 +124,7 @@ export function createOAuthCore({
  check(typeof verifyFirebaseIdToken==="function"&&
    typeof refreshFirebaseToken==="function","Firebase verification unavailable");
  async function begin(params){
-  const parsed=validateAuthParams(params,base);
+  const parsed=validateAuthParams(params,base,enableAppend===true);
   await verifyClient(parsed.clientId,parsed.redirect,fetchImpl);
   const requestId=secret(),csrf=secret();
   await store.putFlow(hash(requestId),{
@@ -130,8 +132,14 @@ export function createOAuthCore({
   });
   return {requestId,csrf,expiresAt:now()+FLOW_TTL};
  }
+ async function inspectConsent({requestId,csrf}){
+  check(OPAQUE.test(requestId||'')&&OPAQUE.test(csrf||''),'Invalid authorization session');
+  const flow=await store.getFlow(hash(requestId));
+  check(flow&&now()<flow.expiresAt&&equal(flow.csrfHash,hash(csrf)),'Authorization session expired or CSRF mismatch');
+  return {scope:flow.scope};
+ }
  async function approve({requestId,csrf,idToken,refreshToken,approved}){
-  check(approved===true,"Explicit read-only consent required");
+  check(approved===true,"Explicit consent required");
   check(OPAQUE.test(requestId||"")&&OPAQUE.test(csrf||""),
     "Invalid authorization session");
   // Atomic take; a repeated approval can never produce a second code.
@@ -165,7 +173,7 @@ export function createOAuthCore({
   await store.putAccess(hash(access),{grantId:hash(grantId),expiresAt:now()+ACCESS_TTL});
   await store.putRefresh(hash(refresh),{grantId:hash(grantId),expiresAt:now()+REFRESH_TTL});
   return {access_token:access,token_type:"Bearer",expires_in:ACCESS_TTL/1000,
-   refresh_token:refresh,scope:READ_SCOPE};
+   refresh_token:refresh,scope:grant.scope};
  }
  async function exchangeCode(params){
   check(params?.grant_type==="authorization_code","Wrong grant type");
@@ -219,7 +227,7 @@ export function createOAuthCore({
   check(access&&access.expiresAt>now(),"OAuth access token expired");
   const grant=await store.getGrant(access.grantId);
   check(grant&&grant.expiresAt>now()&&grant.resource===expectedResource&&
-    grant.scope===READ_SCOPE,"Insufficient OAuth scope or audience");
+    (grant.scope===READ_SCOPE||enableAppend===true&&grant.scope===READ_SCOPE+' '+APPEND_SCOPE),"Insufficient OAuth scope or audience");
   const previousRefresh=await vault.open(grant.credentialCiphertext);
   const current=await refreshFirebaseToken(previousRefresh);
   const verified=await verifyFirebaseIdToken(current.idToken);
@@ -227,8 +235,8 @@ export function createOAuthCore({
     "OAuth and Firebase account mismatch");
   if(current.refreshToken&&current.refreshToken!==previousRefresh)
    await store.updateGrantCredential(access.grantId,await vault.seal(current.refreshToken));
-  return {uid:grant.uid,firebaseIdToken:current.idToken,scope:READ_SCOPE};
+  return {uid:grant.uid,firebaseIdToken:current.idToken,scope:grant.scope};
  }
- return Object.freeze({begin,approve,exchangeCode,refresh,authenticateBearer,
-  metadata:makeOauthMetadata(base),protectedResource:makeProtectedResourceMetadata(base)});
+ return Object.freeze({begin,inspectConsent,approve,exchangeCode,refresh,authenticateBearer,
+  metadata:makeOauthMetadata(base,enableAppend===true),protectedResource:makeProtectedResourceMetadata(base,enableAppend===true)});
 }

@@ -3,6 +3,8 @@ import {createMcpHandler,McpServer} from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import {createDispatcher} from "./tools.mjs";
 import {createUserScopedFirestoreReader,createFirebaseVerifier} from "./firebase-rest.mjs";
+import {createUserScopedFirestoreCommitter} from './firebase-append.mjs';
+import {APPEND_SCHEMAS,APPEND_DESCRIPTIONS,createAppendDispatcher} from './append.mjs';
 
 const date=z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const limit=z.number().int().min(1).max(150).optional();
@@ -10,14 +12,14 @@ const calendarFilter={from:date.optional(),to:date.optional(),limit};
 const descriptions=Object.freeze({
  formday_status:"Check whether cloud records exist",
  formday_workouts:"Read completed and partial IRON MODE sessions",
- formday_routines:"Read planned strength routine targets",
+ formday_routines:"Read planned strength routine targets and programs",
  formday_calendar:"Read calendar events without inventing recurrence",
  formday_meals:"Read recorded food entries",
  formday_weight_history:"Read completed bodyweight measurements"
 });
-export function buildReadOnlyServer(dispatch){
+export function buildReadOnlyServer(dispatch,appendDispatch=null){
  if(typeof dispatch!=="function")throw Error("Authorized dispatcher is required");
- const server=new McpServer({name:"formday-connect",version:"0.2.0"},
+ const server=new McpServer({name:"formday-connect",version:"0.4.0"},
   {capabilities:{tools:{}}});
  const schemas={
   formday_status:{},
@@ -39,6 +41,13 @@ export function buildReadOnlyServer(dispatch){
    return {content:[{type:"text",text:JSON.stringify(result)}]};
   });
  }
+ if(appendDispatch)for(const [name,inputSchema] of Object.entries(APPEND_SCHEMAS)){
+  const commits=name==='formday_commit_append';
+  server.registerTool(name,{description:APPEND_DESCRIPTIONS[name],inputSchema,
+   annotations:{readOnlyHint:!commits,destructiveHint:false,idempotentHint:commits,openWorldHint:false},
+   _meta:{securitySchemes:[{type:'oauth2',scopes:['formday:read','formday:append']}]}},
+   async args=>({content:[{type:'text',text:JSON.stringify(await appendDispatch(name,args))}]}));
+ }
  return server;
 }
 function unauthorized(metadataUrl){
@@ -54,7 +63,8 @@ function unauthorized(metadataUrl){
  * expiry and scope), bind the verified Firebase UID and return a fresh user
  * Firebase ID token. No default fallback; fail closed.
  */
-export function createProtectedMcpHandler({authenticateRequest,baseUrl,fetchImpl=fetch,verifyFirebaseToken=null}={}){
+export function createProtectedMcpHandler({authenticateRequest,baseUrl,fetchImpl=fetch,verifyFirebaseToken=null,
+ enableAppend=false,previewCodec=null,clock=()=>Date.now()}={}){
  if(typeof authenticateRequest!=="function")
   throw Error("Verified OAuth token resolver required");
  const base=new URL(baseUrl);
@@ -72,7 +82,7 @@ export function createProtectedMcpHandler({authenticateRequest,baseUrl,fetchImpl
   let identity;
   try{identity=await authenticateRequest(authHeader.slice(7),request);}
   catch{return unauthorized(metadataUrl);}
-  if(!identity?.uid||!identity?.firebaseIdToken)
+  if(!identity?.uid||!identity?.firebaseIdToken||!['formday:read','formday:read formday:append'].includes(identity.scope))
    return unauthorized(metadataUrl);
   let verified;
   try{
@@ -83,7 +93,10 @@ export function createProtectedMcpHandler({authenticateRequest,baseUrl,fetchImpl
    principal:verified,fetchImpl
   });
   const dispatch=createDispatcher({verifiedUid:identity.uid,loadDocument:loader});
-  const mcp=createMcpHandler(()=>buildReadOnlyServer(dispatch),{
+  const appendDispatch=enableAppend===true&&previewCodec&&identity.scope==='formday:read formday:append'?
+   createAppendDispatcher({uid:identity.uid,scope:identity.scope,resource:base.origin+'/mcp',loadDocument:loader,
+    commitDocument:createUserScopedFirestoreCommitter({principal:verified,fetchImpl}),codec:previewCodec,clock}):null;
+  const mcp=createMcpHandler(()=>buildReadOnlyServer(dispatch,appendDispatch),{
    legacy:"stateless",maxRequestBodySize:65536
   });
   return mcp.fetch(request);

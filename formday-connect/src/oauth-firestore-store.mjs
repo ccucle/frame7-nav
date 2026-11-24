@@ -57,6 +57,7 @@ export function createFirestoreOAuthStore(db){
  const result={
   durable:true,
   putFlow:(k,v)=>put("flow",k,v),
+  getFlow:k=>get("flow",k),
   takeFlow:k=>take("flow",k),
   putCode:(k,v)=>put("code",k,v),
   getCode:k=>get("code",k),

@@ -96,7 +96,8 @@ function decodeFirestoreDocument(data){
  if(typeof f.revision?.stringValue!=="string"||
    typeof f.payload?.stringValue!=="string")
   fail("Firestore 기록의 필수 필드가 없습니다.");
- return {format:1,revision:f.revision.stringValue,payload:f.payload.stringValue};
+ return {format:1,revision:f.revision.stringValue,payload:f.payload.stringValue,
+  ...(typeof data.updateTime==='string'?{updateTime:data.updateTime}:{})};
 }
 /**
  * A verified principal provides its authenticated uid + Firebase bearer token.

@@ -36,7 +36,7 @@ test("MCP endpoint rejects bearer tokens that fail authorization verification",a
 });
 test("MCP endpoint checks Firebase ID token belongs to OAuth user",async()=>{
  const handle=createProtectedMcpHandler({
-  authenticateRequest:async()=>({uid:"legitimateUser99",firebaseIdToken:"some-firebase-token"}),
+  authenticateRequest:async()=>({uid:"legitimateUser99",firebaseIdToken:"some-firebase-token",scope:'formday:read'}),
   verifyFirebaseToken:async()=>({uid:"differentUser45",token:"some-firebase-token"}),
   baseUrl
  });
@@ -71,7 +71,7 @@ test("Authenticated MCP client can initialize, list six read-only tools, and cal
   baseUrl,fetchImpl,
   authenticateRequest:async token=>{
    assert.equal(token,"test-oauth-access");
-   return {uid:"unitTestUser9",firebaseIdToken};
+   return {uid:"unitTestUser9",firebaseIdToken,scope:"formday:read"};
   },
   verifyFirebaseToken:async token=>{
    assert.equal(token,firebaseIdToken);

@@ -20,7 +20,7 @@ export const READ_TOOLS=Object.freeze([
     description:"완료 또는 부분 완료된 IRON MODE 실제 운동 세션을 읽습니다. 워밍업은 운동량에 합산하지 않습니다.",
     inputSchema:params({...dateRangeProps,includeUnfinished:{type:"boolean",default:false}})},
   {name:"formday_routines",title:"훈련 루틴 목록",
-    description:"기존 IRON MODE 루틴 계획과 종목별 목표 중량·반복 횟수를 읽습니다.",
+    description:"기존 IRON MODE 루틴·프로그램과 종목별 목표 중량·반복 횟수를 읽습니다.",
     inputSchema:params({limit:dateRangeProps.limit})},
   {name:"formday_calendar",title:"캘린더 일정",
     description:"FORMDAY 일정의 원본 날짜와 상태를 조회합니다. 반복 규칙을 임의로 확장하지 않습니다.",
