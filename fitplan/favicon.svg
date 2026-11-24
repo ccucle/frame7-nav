@@ -1,4 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="FORMDAY">
-  <rect width="64" height="64" rx="17" fill="#cf3445"/>
-  <path d="M20 14h29v9H30v9h17v9H30v13H20V14z" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="FORMDAY Power">
+  <defs>
+    <linearGradient id="red" x1="0" y1="0" x2="1" y2="1" gradientUnits="objectBoundingBox">
+      <stop offset="0" stop-color="#ef1329"/>
+      <stop offset="0.54" stop-color="#b60014"/>
+      <stop offset="1" stop-color="#650008"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="12" fill="url(#red)"/>
+  <path fill="#fff" d="M20.5 12.5H58L49.5 22H26.5L11.2 30.3Z M17.4 30.8L28.1 24.8H29.5L27.8 29.7H46.8L38.4 39H24.7L22.2 46.4L8.8 55.7Z"/>
 </svg>
