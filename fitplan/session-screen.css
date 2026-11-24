@@ -108,6 +108,7 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
 .fs-sheet-handle::before { content: ''; display: block; width: 38px; height: 4px; border-radius: 4px; background: var(--fd-border-strong); }
 .fs-session .fs-sheet-handle:focus-visible { outline: none; }
 .fs-session .fs-sheet-handle:focus-visible::before { outline: 2px solid var(--fd-muted); outline-offset: 4px; }
+html[data-fd-input="pointer"] .fs-session .fs-sheet-handle:focus::before { outline: none; }
 .fs-sheet-handle:hover::before, .fs-sheet-handle:focus-visible::before { background: var(--fd-muted); }
 .fs-sheet-handle:active { cursor: grabbing; }
 .fs-top-row, .fs-metrics {
