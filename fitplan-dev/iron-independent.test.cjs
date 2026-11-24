@@ -652,3 +652,59 @@ test('cloud merge never imports active sessions or replaces an open editor',()=>
  const idle=ui();
  assert.equal(idle.api.canCloudMerge(M.start(M.empty(),{},clock).next),false);
 });
+
+test('deleting a program only removes that program and leaves routines and session snapshots intact',()=>{
+ let data=routine(M.empty(),'가슴').next;data=routine(data,'등').next;
+ const [a,b]=data.routines.map(r=>r.id);
+ const p=M.createProgram(data,'삭제 대상','cycle',[a,b]);data=p.next;
+ const keep=M.createProgram(data,'보존 대상','cycle',[b]);data=keep.next;
+ const begin=M.start(data,{routineId:a,programId:p.program.id},clock),ex=begin.session.exercises[0];
+ data=M.setValue(begin.next,begin.session.id,ex.id,ex.sets[0].id,{weight:50,done:true},advance(1)).next;
+ const before=JSON.stringify(data);
+ const result=M.deleteProgram(data,p.program.id);
+ assert.equal(JSON.stringify(data),before);assert.equal(result.program.id,p.program.id);
+ assert.deepEqual(result.next.programs,[keep.program]);assert.deepEqual(result.next.routines,data.routines);
+ assert.deepEqual(result.next.sessions,data.sessions);
+ const finished=M.finish(result.next,begin.session.id,'COMPLETED',advance(2)).next;
+ assert.equal(finished.sessions[0].programId,p.program.id);
+ assert.equal(finished.sessions[0].status,'COMPLETED');
+ assert.deepEqual(finished.programs,[keep.program]);
+ assert.throws(()=>M.deleteProgram(result.next,p.program.id),/찾을 수 없습니다/);
+});
+test('program cards expose short balanced action labels and delete only on explicit confirmation',()=>{
+ let data=routine(M.empty(),'가슴').next;
+ const a=data.routines[0].id,p=M.createProgram(data,'테스트 프로그램','cycle',[a]);
+ const view=ui(p.next);view.api.open('programs');
+ assert.match(view.host.innerHTML,/fi-program-card-head/);
+ assert.match(view.host.innerHTML,/data-fi-action="begin-program-routine"[^>]*>운동 시작<\/button>/);
+ assert.match(view.host.innerHTML,/data-fi-action="register-program"[^>]*>캘린더 등록<\/button>/);
+ assert.match(view.host.innerHTML,/data-fi-action="edit-program"[^>]*>수정<\/button>/);
+ assert.match(view.host.innerHTML,/data-fi-action="delete-program"[^>]*>삭제<\/button>/);
+ const raw=view.backing.obj.getItem(M.KEY);
+ view.answers.push(false);view.action('delete-program',{id:p.program.id});
+ assert.equal(view.backing.obj.getItem(M.KEY),raw);assert.equal(view.writes.length,0);
+ assert.match(view.prompts[0],/캘린더 일정과 기존 운동 기록은 유지/);
+ view.answers.push(true);view.action('delete-program',{id:p.program.id});
+ const saved=view.backing.store.load().data;
+ assert.equal(saved.programs.length,0);assert.deepEqual(saved.routines,p.next.routines);
+ assert.equal(saved.sessions.length,0);assert.match(view.host.innerHTML,/저장된 프로그램이 없습니다/);
+});
+test('failed program deletion retains the program and does not change other records',()=>{
+ const data=routine(M.empty(),'가슴').next,p=M.createProgram(data,'보존할 프로그램','cycle',[data.routines[0].id]);
+ const view=ui(p.next);view.api.open('programs');
+ const raw=view.backing.obj.getItem(M.KEY),set=view.backing.obj.setItem;
+ view.backing.obj.setItem=(key,value)=>{if(key===M.KEY)throw Error('Quota');return set(key,value)};
+ view.answers.push(true);view.action('delete-program',{id:p.program.id});
+ assert.equal(view.backing.obj.getItem(M.KEY),raw);assert.equal(view.api.getSnapshot().programs.length,1);
+ assert.match(view.host.innerHTML,/보존할 프로그램/);assert.match(view.host.innerHTML,/저장 실패/);
+});
+test('fixed program cards with no workout today retain registration, edit and delete actions',()=>{
+ const data=routine(M.empty(),'가슴').next;
+ const p=M.createProgram(data,'요일 고정','fixed',[data.routines[0].id],{});
+ const view=ui(p.next);view.api.open('programs');
+ assert.match(view.host.innerHTML,/오늘 배정 없음/);
+ assert.doesNotMatch(view.host.innerHTML,/data-fi-action="begin-program-routine"/);
+ assert.match(view.host.innerHTML,/data-fi-action="register-program"/);
+ assert.match(view.host.innerHTML,/data-fi-action="edit-program"/);
+ assert.match(view.host.innerHTML,/data-fi-action="delete-program"/);
+});

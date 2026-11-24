@@ -635,3 +635,23 @@ body[data-fd-screen="home"] .header-actions.fd-home-actions { display: grid; }
 /* FORMDAY Power mark: identical SVG asset for sidebar and browser tab. */
 .brand .brand-icon { flex: 0 0 30px; width: 30px; height: 30px; padding: 0; background: none; border-radius: 0; transform: none; text-shadow: none; }
 .brand .brand-icon img { display: block; width: 30px; height: 30px; }
+
+/* Training program cards: equal action sizes, readable long Korean titles. */
+.fd-ind-root .fi-program-card{display:grid;gap:14px;min-width:0}
+.fi-program-card-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:8px 12px}
+.fi-program-card-head h3{margin:0;font-size:18px;font-weight:800;line-height:1.45;letter-spacing:-.35px;word-break:keep-all;overflow-wrap:anywhere;min-width:0}
+.fi-program-type{font-size:11px;line-height:1.45;font-weight:700;color:var(--fd-muted);background:var(--fd-surface-raised);border:1px solid var(--fd-border);border-radius:6px;white-space:nowrap;padding:5px 8px;margin-top:2px}
+.fi-program-description{display:grid;gap:12px;min-width:0}
+.fi-program-sequence{margin:0;color:var(--fd-muted);font-size:13px;line-height:1.65;word-break:keep-all;overflow-wrap:anywhere}
+.fi-program-next{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:baseline;gap:6px 12px;font-size:12px;line-height:1.55;padding:10px 12px;border-radius:8px;background:var(--fd-input);border:1px solid var(--fd-border)}
+.fi-program-next span{color:var(--fd-muted);white-space:nowrap}
+.fi-program-next strong{font-size:13px;font-weight:750;min-width:0;word-break:keep-all;overflow-wrap:anywhere;text-align:right}
+.fi-program-days{display:flex;flex-wrap:wrap;gap:6px;color:var(--fd-muted);font-size:12px}
+.fi-program-day{padding:5px 8px;border:1px solid var(--fd-border);border-radius:6px;line-height:1.5;word-break:keep-all;overflow-wrap:anywhere;max-width:100%}
+.fi-program-day b{color:var(--fd-text);margin-right:3px}
+.fd-ind-root .fi-program-card .fi-program-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:0;align-items:stretch}
+.fd-ind-root .fi-program-card .fi-program-actions>.fi-btn{width:100%;min-width:0;min-height:46px;margin:0;padding:10px 6px;display:flex;align-items:center;justify-content:center;text-align:center;font-size:13px;font-weight:750;line-height:1.35;letter-spacing:-.15px;word-break:keep-all;overflow-wrap:normal;white-space:nowrap}
+.fd-ind-root .fi-program-card .fi-program-actions>.fi-btn[data-fi-action="delete-program"]{color:#ffabb3;border-color:#94515d;background:transparent}
+.fi-program-actions:not(:has([data-fi-action="begin-program-routine"]))>[data-fi-action="register-program"]{grid-column:1/-1}
+@media(min-width:760px){.fd-ind-root .fi-program-card .fi-program-actions{grid-template-columns:repeat(4,minmax(0,1fr))}.fi-program-actions:not(:has([data-fi-action="begin-program-routine"]))>[data-fi-action="register-program"]{grid-column:span 2}}
+@media(max-width:380px){.fi-program-card-head h3{font-size:16px}.fd-ind-root .fi-program-card .fi-program-actions>.fi-btn{font-size:12px}}
