@@ -68,12 +68,12 @@
       return false;
     }
   }
-  function setScreen(name){
+  function setScreen(name,{scroll=true}={}){
     if(name==='session'){openWorkout('session');return;}
     if(!['home','library','analysis','progress','calendar'].includes(name))return;
     if(document.body.dataset.fdScreen==='independent'&&root.FormdayIndependent?.beforeNavigate?.()===false)return;
     screen=name;render(true);
-    document.querySelector('#main-content')?.scrollIntoView({block:'start',behavior:'smooth'});
+    if(scroll)document.querySelector('#main-content')?.scrollIntoView({block:'start',behavior:'smooth'});
   }
   function banner(title,value,sub,icon){
     return '<div class="fd-metric"><span class="fd-metric-kicker">'+icon+' '+html(title)+'</span><div class="fd-metric-val">'+value+'</div><p>'+sub+'</p></div>';
@@ -302,7 +302,7 @@
     // app.js may have replaced the mini-calendar DOM earlier in this click.
     // The date attribute survives on the original target; its ancestor does not.
     else if(e.target.closest('[data-go]')||e.target.closest('[data-mobile="calendar"]')||e.target.closest('[data-mini]')) {
-      setScreen('calendar');
+      setScreen('calendar',{scroll:!e.target.closest('[data-mini]')});
     }
   });
   node.addEventListener('input',e=>{

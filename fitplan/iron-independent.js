@@ -404,9 +404,9 @@
   }
   function renderCalendar(){
     if(!calendar||!state)return;
-    const selected=root.FormdayBridge?.getSelectedDay?.()||iso(new Date());
+    const selected=root.FormdayBridge?.getDetailDay?.()||root.FormdayBridge?.getSelectedDay?.()||iso(new Date());
     const s=completed().filter(x=>x.date===selected);
-    calendar.innerHTML=s.length?'<div class="fi-calendar-head"><b>IRON MODE · 확정 웨이트</b><small>'+s.length+'건</small></div>'+s.map(x=>recordCard(x,true)).join(''):'';
+    calendar.innerHTML=s.length?'<div class="fi-calendar-head"><b>완료한 운동</b><small>'+s.length+'건</small></div>'+s.map(x=>recordCard(x,true)).join(''):'';
     calendar.hidden=!s.length;
   }
   function removeSessionSheet(){
@@ -967,7 +967,7 @@
     if(action==='finish'||action==='partial'){finish(action==='finish'?'COMPLETED':'PARTIAL');return;}
     if(action==='cancel-session'){cancelSession();return;}
     if(action==='show-history'){go('history');return;}
-    if(action==='record-detail'){focusedSession=id;go('history');return;}
+    if(action==='record-detail'){root.FormdayBridge?.closeDayDetail?.({restoreFocus:false});focusedSession=id;go('history');return;}
     if(action==='save-from-history'){saveFromHistory(id);return;}
     if(action==='apply-from-history'){applyFromHistory(id);return;}
     if(action==='timer-skip'){closeRest();return;}

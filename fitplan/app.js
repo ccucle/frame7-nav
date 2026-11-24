@@ -19,6 +19,63 @@
   let view = 'month', cursor = dateOf(today), selected = today, visibleTypes = new Set(Object.keys(TYPES)), searchTerm = '';
   let externalChange = false;
   let catalogPromise = null;
+  // Presentation state only. Both views use the same detail DOM and existing stores.
+  let daySheetDate = null, daySheetSuspended = false, daySheetPriorFocus = null, daySheetScroll = 0;
+  const detailDay = () => daySheetDate || today;
+
+  function showDaySheet() {
+    const sheet = $('#fd-day-sheet'), panel = $('#fd-day-detail');
+    if (panel.parentElement !== sheet) sheet.appendChild(panel);
+    if (!sheet.open) sheet.showModal();
+    document.body.classList.add('fd-day-sheet-open');
+  }
+  function closeDayDetail({restoreFocus = true, refresh = true} = {}) {
+    const sheet = $('#fd-day-sheet'), panel = $('#fd-day-detail');
+    const focus = daySheetPriorFocus;
+    daySheetDate = null; daySheetSuspended = false; daySheetPriorFocus = null;
+    if (sheet.open) sheet.close();
+    $('#fd-day-inline').appendChild(panel);
+    document.body.classList.remove('fd-day-sheet-open');
+    if (refresh) { renderStats(); renderRight(); window.FormdayIndependent?.renderCalendar?.(); }
+    if (restoreFocus) {
+      const target = focus?.isConnected ? focus : document.querySelector('[data-day="' + selected + '"]');
+      target?.focus?.({preventScroll:true});
+    }
+  }
+  function openDayDetail(day) {
+    if (!C.validDate(day) || $('#modal-root').children.length) return false;
+    const focus = document.activeElement;
+    selected = day; cursor = dateOf(day);
+    if (day === today) closeDayDetail({restoreFocus:false, refresh:false});
+    else {
+      if (!daySheetDate) daySheetPriorFocus = focus;
+      daySheetDate = day; daySheetSuspended = false;
+    }
+    render();
+    if (day === today) {
+      requestAnimationFrame(() => {
+        if ($('#modal-root').children.length || daySheetDate) return;
+        $('#right-date').focus({preventScroll:true});
+        $('#fd-day-detail').scrollIntoView({block:'start', behavior:'smooth'});
+      });
+    } else {
+      showDaySheet(); $('#fd-day-sheet').scrollTop = 0;
+      $('#right-date').focus({preventScroll:true});
+    }
+    return true;
+  }
+  function suspendDaySheet() {
+    const sheet = $('#fd-day-sheet');
+    if (!sheet.open) return;
+    daySheetScroll = sheet.scrollTop; daySheetSuspended = true;
+    sheet.close(); document.body.classList.remove('fd-day-sheet-open');
+  }
+  function resumeDaySheet() {
+    if (!daySheetSuspended) return;
+    daySheetSuspended = false;
+    if (daySheetDate === today) { closeDayDetail({restoreFocus:false}); return; }
+    if (daySheetDate) { showDaySheet(); $('#fd-day-sheet').scrollTop = daySheetScroll; }
+  }
 
   function loadCatalog() {
     if (!catalogPromise) {
@@ -80,6 +137,9 @@
     const node = $('#storage-status');
     node.classList.toggle('storage-error', !!error);
     node.innerHTML = `<span>${esc(message || '이 기기에 저장됩니다 · 기기 동기화에서 연결 상태를 확인하세요.')}</span>${blockedLoad?'<button class="btn btn-small btn-outline" id="export-raw">원본 내보내기</button>':''}${externalChange?'<button class="btn btn-small btn-outline" id="reload-records">최신 기록 불러오기</button>':''}`;
+    const dayStatus=$('#fd-day-status');
+    dayStatus.hidden=!error;dayStatus.dataset.error=String(!!error);
+    dayStatus.textContent=error?message:'';
     $('#export-raw')?.addEventListener('click',()=>downloadText(corruptRaw || '', 'formday-original-backup.txt', 'text/plain'));
     $('#reload-records')?.addEventListener('click',loadLatest);
   }
@@ -112,7 +172,7 @@
     return fmt(totals[key],1)+(totals.missing[key]?' +':'');
   }
   function renderNutrition() {
-    const n=nutritionFor(selected),g=data.settings,kgoal=g.protein*4+g.carbs*4+g.fat*9;
+    const n=nutritionFor(detailDay()),g=data.settings,kgoal=g.protein*4+g.carbs*4+g.fat*9;
     const labels={kcal:'칼로리',protein:'단백질',carbs:'탄수화물',fat:'총 지방',unsat:'불포화지방'};
     const macro=(key,color)=>`<div class="macro-row"><div class="macro-caption"><span>${labels[key]}</span><span>${nutrientText(n,key)} / ${fmt(g[key])}g</span></div><div class="macro-track"><div class="macro-fill" style="width:${Math.min(100,n[key]/Math.max(g[key],.001)*100)}%;background:${color}"></div></div></div>`;
     $('#nutrition').innerHTML=`<div class="calories-header"><span class="nutrition-caption">섭취한 칼로리</span><span class="kcal-amount">${nutrientText(n,'kcal')} <small>/ ${fmt(kgoal)}kcal</small></span></div><div class="progress-track"><div class="progress-fill" style="width:${Math.min(100,n.kcal/kgoal*100)}%"></div></div>${macro('protein','#23836a')}${macro('carbs','#d38944')}${macro('fat','#3877c9')}<div class="unsat-total"><span>그중 불포화지방</span><strong>${nutrientText(n,'unsat')}${n.itemCount&&n.missing.unsat===n.itemCount?'':'g'}</strong></div>`;
@@ -137,8 +197,9 @@
   }
 
   function renderStats() {
-    const sum=A.daySummary(C,data,window.FormdayIndependent?.getSnapshot?.(),selected,new Date());
-    const n=nutritionFor(selected),g=data.settings,weights=getWeightRecords(selected);
+    const day=detailDay();
+    const sum=A.daySummary(C,data,window.FormdayIndependent?.getSnapshot?.(),day,new Date());
+    const n=nutritionFor(day),g=data.settings,weights=getWeightRecords(day);
     $('#stat-workout').textContent=`${sum.completedWorkouts} / ${sum.workoutCount}`;
     $('#stat-kcal').innerHTML=`${nutrientText(n,'kcal')} <small>kcal</small>`;
     $('#stat-kcal-note').textContent=`목표 ${fmt(g.protein*4+g.carbs*4+g.fat*9)} kcal · 완료 식단${n.missing.kcal?' · 일부 미확인':''}`;
@@ -185,6 +246,11 @@
   function toast(message,error=false) {
     $('#toast-root').innerHTML=`<div class="toast ${error?'toast-error':''}">${esc(message)}</div>`;
     clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast-root').innerHTML='',error?6500:3200);
+    if($('#fd-day-sheet').open){
+      const status=$('#fd-day-status');status.textContent=message;
+      status.dataset.error=String(error);status.hidden=false;
+      if(error)status.scrollIntoView({block:'nearest'});
+    }
   }
   function chooseDay(day) {selected=day;cursor=dateOf(day);render();}
   function navigate(direction) {
@@ -197,11 +263,13 @@
     if(!force && modalDirty && !confirm('저장하지 않은 변경을 취소할까요?'))return false;
     modalController?.destroy();modalController=null;modalDirty=false;
     $('#modal-root').innerHTML='';$('.app').inert=false;$('.mobile-nav').inert=false;
-    if(priorFocus?.isConnected)priorFocus.focus();priorFocus=null;return true;
+    resumeDaySheet();
+    if(priorFocus?.isConnected)priorFocus.focus({preventScroll:true});priorFocus=null;return true;
   }
   function modal(title,body,actions,note='',wide=false) {
     if($('#modal-root').children.length)closeModal(true);
     priorFocus=document.activeElement;
+    suspendDaySheet();
     $('#modal-root').innerHTML=`<div class="modal-overlay" id="overlay"><section class="modal ${wide?'modal-workout':''}" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title">${esc(title)}</h2><button class="circle-button" id="modal-close" aria-label="닫기">×</button></div><div class="modal-body">${body}<p id="form-error" class="form-error hide" role="alert"></p></div><div class="modal-actions">${actions}</div>${note?`<p class="modal-note">${esc(note)}</p>`:''}</section></div>`;
     $('.app').inert=true;$('.mobile-nav').inert=true;
     $('#modal-close').onclick=()=>closeModal();
@@ -253,9 +321,9 @@
     }
   }
 
-  function openEvent({event=null,date=selected,start='07:00',type=null,scope='occurrence',initialDetail=null}={}) {
+  function openEvent({event=null,date=selected,start='07:00',type=null,scope='occurrence',initialDetail=null,fromDayDetail=false}={}) {
     if(blockedLoad){toast('먼저 기록 백업을 복원해 주세요.',true);return;}
-    const edit=!!event,recurring=edit&&event.repeat!=='none';
+    const edit=!!event,recurring=edit&&event.repeat!=='none',returnToDay=fromDayDetail||daySheetDate!==null;
     const effective=recurring&&scope==='occurrence'?C.occurrence(event,date):event;
     if(recurring&&!effective){toast('이 날짜의 일정이 없습니다.',true);return;}
     const [hour,minute]=start.split(':').map(Number),endMinute=Math.min(1439,hour*60+minute+60);
@@ -265,15 +333,27 @@
     const titleLabel=recurring?(scope==='series'?'반복 기본 계획 수정':'이 날짜 기록 수정'):(edit?'일정 수정':'새 일정 등록');
     const repeatNote=recurring?'이 날짜 기록은 다른 날짜와 별도로 저장됩니다. 반복 기본 계획을 수정해도 이미 저장된 날짜별 기록은 유지됩니다.':'';
     const completionLabel=()=>currentType==='strength'?'모든 세트 완료':currentType==='meal'?'식사 완료':currentType==='weight'?'측정 완료':'운동 완료';
-    const controls=`${recurring?`<div class="repeat-scope">${selectField('적용 범위','f-scope',[['occurrence','이 날짜만'],['series','반복 기본 계획']],scope)}<p>${esc(repeatNote)}</p></div>`:''}<div class="type-choices" id="type-choices">${Object.entries(TYPES).filter(([key])=>key!=='strength'||edit).map(([key,t])=>`<button class="type-choice ${key===currentType?'active':''}" style="${styl(key)}" data-pick="${key}" ${recurring?'disabled':''}><b>${t.emoji}</b>${t.name}</button>`).join('')}</div><div class="fields"><div class="field full"><label for="f-title">일정 제목</label><input id="f-title" value="${esc(item.title)}" placeholder="예: 상체 운동" maxlength="160"></div>${field(recurring?(scope==='series'?'반복 시작일':'기록 날짜'):'날짜','f-date','date',recurring&&scope==='series'?event.date:date,recurring?'disabled':'required')}${selectField('반복 일정','f-repeat',[['none','반복 안 함'],['daily','매일'],['weekly','매주 같은 요일']],item.repeat,recurring?'disabled':'')}${field('시작 시간','f-start','time',item.start,'required')}${field('종료 시간','f-end','time',item.end,'required')}<div id="until-field" class="field full ${item.repeat==='none'?'hide':''}"><label for="f-until">반복 종료일 · 선택</label><input id="f-until" type="date" value="${esc(event?.repeatUntil||'')}" ${recurring&&scope==='occurrence'?'disabled':''}></div></div><div class="separator"></div><div id="dynamic-details"></div><div class="separator"></div><label class="checkline ${recurring&&scope==='series'?'hide':''}"><input type="checkbox" id="f-completed" ${item.completed?'checked':''}><span id="completion-label">${completionLabel()}</span></label>${recurring&&scope==='series'?'<p class="helper">반복 기본 계획은 아직 기록하지 않은 날짜에 적용됩니다. 실제 수행·섭취·측정은 “이 날짜만”에서 기록하세요.</p>':''}`;
+    const routines=edit?[]:(window.FormdayIndependent?.getSnapshot?.()?.routines||[]);
+    const routinePicker=routines.length?`<div id="f-routine-field" class="field full ${currentType==='strength'?'':'hide'}">${selectField('저장한 루틴 불러오기','f-routine',[['','직접 구성'],...routines.map(r=>[r.id,r.name])],'')}<p class="helper">선택한 날짜의 운동 계획으로 가져옵니다. 원래 루틴은 유지됩니다.</p></div>`:'';
+    const controls=`${recurring?`<div class="repeat-scope">${selectField('적용 범위','f-scope',[['occurrence','이 날짜만'],['series','반복 기본 계획']],scope)}<p>${esc(repeatNote)}</p></div>`:''}<div class="type-choices" id="type-choices">${Object.entries(TYPES).map(([key,t])=>`<button class="type-choice ${key===currentType?'active':''}" style="${styl(key)}" data-pick="${key}" ${recurring?'disabled':''}><b>${t.emoji}</b>${t.name}</button>`).join('')}</div>${routinePicker}<div class="fields"><div class="field full"><label for="f-title">일정 제목</label><input id="f-title" value="${esc(item.title)}" placeholder="예: 상체 운동" maxlength="160"></div>${field(recurring?(scope==='series'?'반복 시작일':'기록 날짜'):'날짜','f-date','date',recurring&&scope==='series'?event.date:date,recurring?'disabled':'required')}${selectField('반복 일정','f-repeat',[['none','반복 안 함'],['daily','매일'],['weekly','매주 같은 요일']],item.repeat,recurring?'disabled':'')}${field('시작 시간','f-start','time',item.start,'required')}${field('종료 시간','f-end','time',item.end,'required')}<div id="until-field" class="field full ${item.repeat==='none'?'hide':''}"><label for="f-until">반복 종료일 · 선택</label><input id="f-until" type="date" value="${esc(event?.repeatUntil||'')}" ${recurring&&scope==='occurrence'?'disabled':''}></div></div><div class="separator"></div><div id="dynamic-details"></div><div class="separator"></div><label class="checkline ${recurring&&scope==='series'?'hide':''}"><input type="checkbox" id="f-completed" ${item.completed?'checked':''}><span id="completion-label">${completionLabel()}</span></label>${recurring&&scope==='series'?'<p class="helper">반복 기본 계획은 아직 기록하지 않은 날짜에 적용됩니다. 실제 수행·섭취·측정은 “이 날짜만”에서 기록하세요.</p>':''}`;
     modal(titleLabel,controls,`<div>${edit?`<button class="danger" id="delete-event">${recurring?(scope==='series'?'반복 전체 삭제':'이 날짜 삭제'):'일정 삭제'}</button>`:''}</div><div class="mini-buttons"><button class="btn btn-outline" id="cancel-event">취소</button><button class="btn btn-primary" id="save-event">${edit?'변경 저장':'일정 등록'}</button></div>`,recurring?repeatNote:'',currentType==='strength');
     mountDetails(currentType,item.detail,date,recurring?scope:'single');
     modalDirty=false;
     const drafts={[currentType]:item.detail};
+    if($('#f-routine'))$('#f-routine').onchange=()=>{
+      const routine=routines.find(r=>r.id===$('#f-routine').value);
+      if(!routine||currentType!=='strength')return;
+      const detail=W.normalize({exercises:routine.exercises.map(ex=>({id:uid(),name:ex.name,notes:'',
+        sets:ex.sets.map(set=>({id:uid(),weight:set.weight,reps:set.reps,rpe:null,warmup:set.warmup===true,done:false}))})),notes:''},false);
+      drafts.strength=detail;mountDetails('strength',detail,date,'single');
+      $('#f-title').value=routine.name;$('#f-completed').checked=false;modalDirty=true;
+    };
     $$('[data-pick]').forEach(button=>button.onclick=()=>{
       if(button.dataset.pick===currentType)return;
       try{drafts[currentType]=modalController?.draft?modalController.draft():readDetail(currentType);}catch(error){formError(error);return;}
       currentType=button.dataset.pick;
+      $('.modal').classList.toggle('modal-workout',currentType==='strength');
+      $('#f-routine-field')?.classList.toggle('hide',currentType!=='strength');
       $$('[data-pick]').forEach(b=>b.classList.toggle('active',b===button));
       mountDetails(currentType,drafts[currentType]||{},date,'single');
       $('#f-completed').checked=false;$('#completion-label').textContent=completionLabel();modalDirty=true;
@@ -302,7 +382,11 @@
         const completed=currentType==='strength'?(()=>{const s=W.summary(detail);return s.setCount>0&&s.completedSets===s.setCount;})():$('#f-completed').checked;
         const update={...item,id:edit?event.id:item.id,type:currentType,date:dateValue,start:startValue,end:endValue,title,repeat:recurring?event.repeat:$('#f-repeat').value,repeatUntil:$('#f-until').value||null,completed,detail,isSample:false};
         const next=C.upsert(data,update,{occurrenceDate:recurring?date:null,scope:recurring?scope:'single'});
-        if(commit(next,edit?'일정과 기록을 저장했습니다.':'새 일정을 등록했습니다.')){selected=recurring?date:dateValue;cursor=dateOf(selected);closeModal(true);render();}
+        if(commit(next,edit?'일정과 기록을 저장했습니다.':'새 일정을 등록했습니다.')){
+          selected=recurring?date:dateValue;cursor=dateOf(selected);
+          if(returnToDay){daySheetDate=selected;daySheetSuspended=true;}
+          closeModal(true);render();
+        }
       }catch(error){formError(error);}
     };
     $('#f-title').focus();
@@ -314,9 +398,9 @@ function renderMini(){const d=dateOf(iso(cursor)),y=d.getFullYear(),m=d.getMonth
 
 function renderMonth(){const y=cursor.getFullYear(),m=cursor.getMonth();const first=new Date(y,m,1),start=new Date(y,m,1-first.getDay());let html='<div class="week-labels">'+DAYS.map(s=>`<span class="week-label">${s}요일</span>`).join('')+'</div><div class="month-grid">';for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const ds=iso(d),events=getDay(ds);html+=`<div class="month-cell ${d.getMonth()!==m?'other':''} ${ds===selected?'selected':''}" data-date="${ds}" title="${dayLabel(ds)}"><div class="cell-top"><button class="day-num ${ds===today?'today':''}" data-day="${ds}" aria-label="${dayLabel(ds)} 상세보기">${d.getDate()}</button><button class="cell-add" data-add="${ds}" aria-label="일정 추가">＋</button></div>`;for(const {event:e} of events.slice(0,3)){html+=`<button draggable="${e.repeat==='none'}" class="month-event ${isDone(e,ds)?'done':''}" style="${styl(e.type)}" data-edit="${e.id}" data-occdate="${ds}" title="${esc(e.title)} — 클릭하여 수정 · 드래그하여 이동"><span class="event-time">${e.start}</span><span class="event-text">${esc(e.title)}</span></button>`}if(events.length>3)html+=`<button class="more-events" data-day="${ds}">+ ${events.length-3}개 더 보기</button>`;html+='</div>'}return html+'</div>'}
 
-function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right-badge').textContent=selected===today?'TODAY':selected.slice(5).replace('-','.');$('#right-date').textContent=dayLabel(selected);$('#right-sub').textContent=`${d.getFullYear()}년 · ${l.length}개 일정 등록`;$('#agenda-count').textContent=`${l.filter(({event,date})=>isDone(event,date)).length}/${l.length} 완료`;$('#agenda').innerHTML=l.length?l.map(({event:e,date})=>`<div class="agenda-item"><span class="agenda-time">${e.start}</span><div class="agenda-card ${isDone(e,date)?'done':''}" style="${styl(e.type)}"><button class="checkbox-btn ${isDone(e,date)?'checked':''}" data-toggle="${e.id}" data-occdate="${date}" aria-label="완료 전환">${isDone(e,date)?'✓':''}</button><button style="text-align:left;background:transparent;color:inherit;padding:0;flex:1;min-width:0" data-edit="${e.id}" data-occdate="${date}"><span class="agenda-name">${TYPES[e.type].emoji} ${esc(e.title)} ${e.repeat!=='none'?'↻':''}</span><span class="agenda-desc">${esc(details(e))}</span></button></div></div>`).join(''):'<div class="empty-note">등록된 일정이 없습니다.<br>운동이나 식단 계획을 추가해보세요.</div>';
+function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$('#right-badge').textContent=day===today?'TODAY / 오늘 상세':'DAY / 날짜 상세';$('#right-date').textContent=dayLabel(day);$('#right-sub').textContent=`${d.getFullYear()}년 · ${l.length}개 일정${day>today?' · 예정된 기록':''}`;$('#agenda-count').textContent=`${l.filter(({event,date})=>isDone(event,date)).length}/${l.length} 완료`;$('#agenda').innerHTML=l.length?l.map(({event:e,date})=>`<div class="agenda-item"><span class="agenda-time">${e.start}</span><div class="agenda-card ${isDone(e,date)?'done':''}" style="${styl(e.type)}"><button class="checkbox-btn ${isDone(e,date)?'checked':''}" data-toggle="${e.id}" data-occdate="${date}" aria-label="${esc(e.title)} 완료 전환">${isDone(e,date)?'✓':''}</button><button style="text-align:left;background:transparent;color:inherit;padding:0;flex:1;min-width:0" data-edit="${e.id}" data-occdate="${date}"><span class="agenda-name">${TYPES[e.type].emoji} ${esc(e.title)} ${e.repeat!=='none'?'↻':''}${e.isSample?'<small class="fd-day-sample">샘플</small>':''}</span><span class="agenda-desc">${esc(details(e))}</span></button></div></div>`).join(''):'<div class="empty-note">등록된 일정이 없습니다.<br>위의 등록 버튼으로 이 날짜의 기록을 추가하세요.</div>';
   renderNutrition();
-  const w=getWeightRecords(selected).slice(-7);if(!w.length){$('#weight-trend').innerHTML='<div class="empty-note">아직 체중 기록이 없습니다.</div>';return}const latest=w[w.length-1],diff=w.length>1?latest.detail.weight-w[0].detail.weight:0;let values=w.map(x=>Number(x.detail.weight)),min=Math.min(...values)-.5,max=Math.max(...values)+.5,pts=values.map((v,i)=>`${15+(i/Math.max(1,values.length-1))*230},${46-((v-min)/(max-min))*38}`).join(' ');$('#weight-trend').innerHTML=`<div class="weight-sub">${latest.date} 기준</div><div class="weight-val">${fmt(latest.detail.weight,1)} <small style="font-weight:500;font-size:12px;color:#9aabaa">kg</small> <span style="font-size:10px;color:${diff<=0?'#21816a':'#bd7045'}">${w.length>1?(diff>0?'+':'')+fmt(diff,1)+'kg':''}</span></div><svg class="sparkline" viewBox="0 0 260 54" role="img" aria-label="최근 체중 변화 그래프"><polyline points="${pts}" fill="none" stroke="#2c9874" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>${values.map((v,i)=>`<circle cx="${15+(i/Math.max(1,values.length-1))*230}" cy="${46-((v-min)/(max-min))*38}" r="3" fill="#2c9874"/>`).join('')}</svg>`;
+  const w=getWeightRecords(day).slice(-7);if(!w.length){$('#weight-trend').innerHTML='<div class="empty-note">아직 체중 기록이 없습니다.</div>';return}const latest=w[w.length-1],diff=w.length>1?latest.detail.weight-w[0].detail.weight:0;let values=w.map(x=>Number(x.detail.weight)),min=Math.min(...values)-.5,max=Math.max(...values)+.5,pts=values.map((v,i)=>`${15+(i/Math.max(1,values.length-1))*230},${46-((v-min)/(max-min))*38}`).join(' ');$('#weight-trend').innerHTML=`<div class="weight-sub">${latest.date} 기준</div><div class="weight-val">${fmt(latest.detail.weight,1)} <small style="font-weight:500;font-size:12px;color:#9aabaa">kg</small> <span style="font-size:10px;color:${diff<=0?'#21816a':'#bd7045'}">${w.length>1?(diff>0?'+':'')+fmt(diff,1)+'kg':''}</span></div><svg class="sparkline" viewBox="0 0 260 54" role="img" aria-label="최근 체중 변화 그래프"><polyline points="${pts}" fill="none" stroke="#2c9874" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>${values.map((v,i)=>`<circle cx="${15+(i/Math.max(1,values.length-1))*230}" cy="${46-((v-min)/(max-min))*38}" r="3" fill="#2c9874"/>`).join('')}</svg>`;
 }
 
   function openSettings() {
@@ -365,11 +449,12 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
     document.addEventListener('click',e=>{
       const b=e.target.closest('button');if(!b||b.disabled)return;const ds=b.dataset;
       if(ds.view){view=ds.view;cursor=dateOf(selected);render();}
-      if(ds.day)chooseDay(ds.day);
-      if(ds.mini)chooseDay(ds.mini);
-      if(ds.add)openEvent({date:ds.add});
-      if(ds.edit){const event=data.events.find(x=>x.id===ds.edit);if(event)openEvent({event,date:ds.occdate||event.date});}
-      if(ds.toggle)toggleDone(ds.toggle,ds.occdate||selected);
+      if(ds.day)openDayDetail(ds.day);
+      if(ds.mini)openDayDetail(ds.mini);
+      if(ds.add){openDayDetail(ds.add);openEvent({date:ds.add});}
+      if(ds.dayCreate){openEvent({date:detailDay(),type:ds.dayCreate,fromDayDetail:true});}
+      if(ds.edit){const event=data.events.find(x=>x.id===ds.edit);if(event){const day=ds.occdate||event.date;if(e.target.closest('#calendar'))openDayDetail(day);openEvent({event,date:day,fromDayDetail:!!e.target.closest('#fd-day-detail')});}}
+      if(ds.toggle)toggleDone(ds.toggle,ds.occdate||detailDay());
       if(ds.filter){visibleTypes.has(ds.filter)?visibleTypes.delete(ds.filter):visibleTypes.add(ds.filter);render();}
       if(b.id==='all-filter'){visibleTypes=new Set(Object.keys(TYPES));render();}
       if(ds.go){
@@ -383,11 +468,18 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
         else (ds.mobile==='detail'?$('.rightbar'):$('#calendar-card')).scrollIntoView({block:'start',behavior:'smooth'});
       }
     });
-    $('#new-event').onclick=()=>openEvent();$('#new-meal').onclick=()=>openEvent({type:'meal'});$('#prev').onclick=()=>navigate(-1);$('#next').onclick=()=>navigate(1);
-    $('#today').onclick=()=>{refreshToday();chooseDay(today);};
+    $('#new-event').onclick=()=>openEvent({date:today});$('#new-meal').onclick=()=>openEvent({date:today,type:'meal'});$('#prev').onclick=()=>navigate(-1);$('#next').onclick=()=>navigate(1);
+    $('#today').onclick=()=>{refreshToday();openDayDetail(today);};
     $('#mini-prev').onclick=()=>{cursor=new Date(cursor.getFullYear(),cursor.getMonth()-1,1);render();};
     $('#mini-next').onclick=()=>{cursor=new Date(cursor.getFullYear(),cursor.getMonth()+1,1);render();};
-    $('#settings-btn').onclick=openSettings;$('#add-at-day').onclick=()=>openEvent();$('#ai-btn').onclick=infoAI;
+    $('#settings-btn').onclick=openSettings;$('#ai-btn').onclick=infoAI;
+    $('#fd-day-close').onclick=()=>closeDayDetail();
+    $('#fd-day-handle').onclick=()=>closeDayDetail();
+    $('#fd-day-back-today').onclick=()=>{refreshToday();openDayDetail(today);};
+    $('#fd-day-prev').onclick=()=>openDayDetail(moveDay(detailDay(),-1));
+    $('#fd-day-next').onclick=()=>openDayDetail(moveDay(detailDay(),1));
+    $('#fd-day-sheet').addEventListener('cancel',e=>{e.preventDefault();closeDayDetail();});
+    $('#fd-day-sheet').addEventListener('click',e=>{if(e.target===$('#fd-day-sheet'))closeDayDetail();});
     $('#export-btn').onclick=exportData;$('#import-btn').onclick=()=>$('#import-file').click();
     $('#import-file').onchange=e=>{if(e.target.files[0])importData(e.target.files[0]);};
     $('#undo-btn').onclick=()=>{if(undoState&&commit(C.clone(undoState),'마지막 변경을 되돌렸습니다.')){undoState=null;$('#undo-btn').disabled=true;}};
@@ -399,11 +491,10 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
     $('#calendar').addEventListener('click',e=>{
       if(e.target.closest('button'))return;
       const lane=e.target.closest('[data-lane]');
-      if(lane){const minutes=Math.max(0,Math.min(1380,Math.floor((e.clientY-lane.getBoundingClientRect().top)/55*2)*30));openEvent({date:lane.dataset.lane,start:`${z(Math.floor(minutes/60))}:${z(minutes%60)}`});return;}
+      if(lane){openDayDetail(lane.dataset.lane);return;}
       const cell=e.target.closest('[data-date]');
-      if(cell){selected=cell.dataset.date;$$('.month-cell').forEach(x=>x.classList.toggle('selected',x===cell));renderMini();renderStats();renderRight();}
+      if(cell)openDayDetail(cell.dataset.date);
     });
-    $('#calendar').addEventListener('dblclick',e=>{const cell=e.target.closest('[data-date]');if(cell&&!e.target.closest('button')){e.preventDefault();openEvent({date:cell.dataset.date});}});
     let dragId=null;
     $('#calendar').addEventListener('dragstart',e=>{const b=e.target.closest('[data-edit]');if(!b||b.getAttribute('draggable')!=='true')return;dragId=b.dataset.edit;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',dragId);});
     $('#calendar').addEventListener('dragover',e=>{if(dragId&&e.target.closest('.month-cell'))e.preventDefault();});
@@ -423,8 +514,8 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
         }return;
       }
       if(e.target.matches('input,textarea,select,[contenteditable="true"]')||e.ctrlKey||e.metaKey||e.altKey)return;
-      if(e.key.toLowerCase()==='n'){e.preventDefault();openEvent();}
-      if(e.key.toLowerCase()==='t'){e.preventDefault();refreshToday();chooseDay(today);}
+      if(e.key.toLowerCase()==='n'){e.preventDefault();openEvent({date:detailDay()});}
+      if(e.key.toLowerCase()==='t'){e.preventDefault();refreshToday();openDayDetail(today);}
     });
     window.addEventListener('storage',e=>{
       if(e.key!==C.STORE&&e.key!==null)return;externalChange=true;
@@ -445,6 +536,9 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
     cloudReload: () => {if(!blockedLoad && !externalChange && !modalDirty && modalController===null){loadLatest();return true;}return false;},
     getToday: () => today,
     getSelectedDay: () => selected,
+    getDetailDay: detailDay,
+    openDayDetail,
+    closeDayDetail,
     getVisibleTypes: () => [...visibleTypes],
     openStrength: (name) => {
       const cleanName=String(name||'').trim().slice(0,80);
