@@ -15,7 +15,6 @@
 Level=1
 UnlockAvatar=my-avatar
 UnlockProfile=player-one
-UnlockCatalog=#CURRENTPATH#rewards.json
 UnlockPanelX=0
 UnlockPanelY=0
 ```
@@ -28,7 +27,7 @@ UnlockPanelY=0
 
 진화 관계는 `pokedex.json`의 기본형 ID별 목록에 등록한다. 각 항목은 전국도감 번호, 영문 ID, 한글 이름, 직전 단계 번호 순서다. 첫 단계는 직전 단계 번호를 생략한다. 분기 진화는 같은 직전 단계 번호를 사용한다. 도감의 진화 정보는 보유·동행 상태를 바꾸지 않는다.
 
-공통 도감의 이름과 그림은 미리보기다. 실제 지급은 별도로 정한 조건이 있을 때만 일어난다. 뿔둥이는 기존 트레이닝복을 첫 유효 레벨부터 받는다. 새 아바타용 키트의 기본 지급 목록은 비어 있다. 다음은 개별 아바타의 의상 보상을 등록하는 예시다.
+뿔둥이는 첫 유효 레벨에 트레이닝복을, Lv.2에 이상해씨·파이리·꼬부기를 한 번씩 받는다. 새 아바타의 기본 지급 목록은 비어 있다. 호스트 전용 보상을 추가하려면 아래 JSON을 스킨 폴더의 rewards.json에 저장하고 변수에 `UnlockCatalog=#CURRENTPATH#rewards.json`을 지정한다.
 
 ```json
 {"items":[{"id":"hoodie","kind":"outfit","level":5}]}
@@ -40,6 +39,10 @@ UnlockPanelY=0
 
 PC에서 한 Windows 사용자로 연결된 아바타는 공통 엔진을 공유한다. `OpenPanel()`은 도감, `OpenUpdates()`는 버전 확인, `ClosePanel()`은 창 닫기다. 새 버전이 있으면 `UnlockUpdateBubble` 그룹을 표시한다. `UnlockUpdateCode`는 최신 0, 확인 중 1, 새 버전 2, 오류 3, 설치 중 4다. 호스트는 `UnlockOnOpen`, `UnlockOnClose`로 다른 정보창이나 걷기를 조정할 수 있다.
 
-독립 채널은 `avatar-unlocks/v1`이다. 도감 그림 원본 `gallery.png`의 64px 격자와 `gallery.json`의 아이템 순서를 맞춘다. 빌드가 두 자료를 엔진에 포함하므로 새 공통 포켓몬과 그림을 공통 업데이트로 전달할 수 있다. 인터넷이 끊겨도 번들 또는 설치된 엔진으로 도감을 연다. v1.0 키트를 사용하던 다른 호스트는 새 도감용 미터를 포함하는 연결 키트를 한 번 적용한다. 기존 뿔둥이는 본체 v0.6.7 업데이트로 이 변경을 받는다.
+뿔둥이 외형·기본 동작·Formday 연결은 본체 채널 `buddy`에서 관리한다. 의상·펫·포켓몬 목록, 도감 그림, 진화·크기, 아바타별 보상과 도감 표시는 공통 채널 `avatar-unlocks/v1`에서 배포한다. 뿔둥이를 더블클릭하고 ‘업데이트 확인’ → ‘업데이트 하기’를 누른다.
+
+공통 소스는 `AvatarUnlocks` 폴더에 있다. 세 종류의 카드와 그림은 `gallery.json`과 `gallery.png`, 포켓몬 정보는 `pokedex.json`과 `pokemon-sizes.json`, 아바타별 지급은 `avatar-rewards.json`에서 편집한다. 같은 ID가 이전 호스트 지급표에도 있으면 도감의 지급 레벨을 적용하고 기존 보유 기록을 이어 쓴다. 뿔둥이 지급표의 키는 `formday-buddy`다. 새 아바타는 자신의 고유 `UnlockAvatar`를 사용한다.
+
+도감 배포 시 `engine.lua`의 헤더와 `M.version`을 함께 올린다. `python work/package_skin.py unlock-release`와 `python work/package_skin.py unlock-kit`로 빌드하고, 기존 발행 계정에서 채널 `avatar-unlocks/v1`을 지정해 서명한다. 버전 Lua, 피드, 연결 키트를 함께 배포한다. 서명된 Lua가 도감 데이터·그림과 기존 도감 미터를 구동하는 코드를 전달한다. 새 아바타는 최신 키트를 한 번 연결한 뒤 같은 도감 업데이트를 받는다.
 
 포켓몬 도트는 하트골드·소울실버 이미지 자료를 사용했다. 포켓몬 및 커비는 각 권리자의 캐릭터다. [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/pokemon/versions/generation-iv/heartgold-soulsilver)
