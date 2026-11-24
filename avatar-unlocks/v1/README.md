@@ -57,7 +57,7 @@ PC에서 한 Windows 사용자로 연결된 아바타는 공통 엔진을 공유
 
 전국도감 번호순으로 이상해씨·파이리·꼬부기·식스테일·고라파덕·야돈·코일·이브이·피츄의 좌우 걷기 그림이 들어 있다. 뿔둥이의 현재 지급 조건은 Lv.2의 이상해씨·파이리·꼬부기다. 새로 제작하는 종은 정지 카드와 걷기 그림을 각각 확인한다. 도감 카드는 Pokémon Database의 하트골드·소울실버 일반색 앞모습을 기준으로 하고, 걷기는 아래 종별 기준을 따른다. [카드 기준](https://pokemondb.net/sprites) · [필드 동행 도트 출처](https://github.com/teobz/pkmn-hgss-animated-overworld-sprites/tree/5295a3bc935aabb56b2958bede509e6f36f77dfe)
 
-바탕화면 동행 배율은 `pokemon-sizes.json`에서 작음 3배, 중간 4배, 큼 5배로 지정한다. 이상해씨의 동행 그림은 Pokémon Ranger의 일반색으로 제작했다. 이 종의 24픽셀 높이 걷기를 기존 작음 크기에 맞추기 위해 `referenceHeight`를 16으로 두며 표시 영역은 56×48픽셀이다. 다른 여덟 종은 기존 동행 그림을 사용한다. [이상해씨 원본 시트 · Ragey](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8452/) 도감 카드의 그림 크기는 별도로 관리한다. 제작용 Python 환경에는 Pillow를 설치한다. 패키징할 때 정수 배율인 종은 실제 표시 크기에 맞춰 최근접 이웃 확대한 그림을 넣는다. 소수 배율은 최대 배율에서 축소한다.
+바탕화면 동행 배율은 `pokemon-sizes.json`에서 작음 3배, 중간 4배, 큼 5배로 지정한다. 이상해씨의 동행 그림은 Pokémon Ranger의 일반색으로 제작했다. 이 종의 24픽셀 높이 걷기를 기존 작음 크기에 맞추기 위해 `referenceHeight`를 16으로 두며 표시 영역은 56×48픽셀이다. [이상해씨 원본 시트 · Ragey](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8452/) 도감 카드의 그림 크기는 별도로 관리한다. 제작용 Python 환경에는 Pillow를 설치한다. 패키징할 때 정수 배율인 종은 실제 표시 크기에 맞춰 최근접 이웃 확대한 그림을 넣는다. 소수 배율은 최대 배율에서 축소한다.
 
 걷기 그림은 `walk-atlas.png`에 32×32 픽셀 네 프레임을 가로로 배치하고 종마다 왼쪽·오른쪽 두 줄을 쓴다. `walk-rows.json`에는 같은 순서로 고유 ID와 여덟 프레임의 도트를 모두 감싸는 `crop` 영역을 적는다. 값은 프레임 안의 왼쪽·위쪽 좌표와 가로·세로 길이다. 같은 영역을 모든 프레임에 적용해 확대해도 발걸음이 흔들리지 않게 한다. 작음은 화면 왼쪽 발끝 앞에 살짝 겹치고 중간은 오른쪽 몸통 옆에 붙는다. 큼은 오른쪽 뒤에서 아바타에 일부 가려진다. 도감이 열리면 동행을 숨기고 아바타·배지·패널 위치를 복원한다. 새 호스트는 아바타보다 앞선 선언 위치에 빈 Image 미터 `UnlockFollowerBack`을 두면 의상을 포함한 실제 아바타 뒤에 큰 동행을 그릴 수 있다. 뿔둥이는 기존 CompactBounds를 사용한다. 별도 이름은 UnlockFollowerBackMeter, 아바타와 함께 이동할 미터 목록은 UnlockFollowerAnchorMeters로 지정한다. `UnlockFollowerFootInset`은 아바타 그림의 아래쪽 투명 여백이며 뿔둥이는 3픽셀이다. 호스트의 `UnlockAvatarMeter`(기본값 `Avatar`)로 실제 위치와 크기를 읽는다. 도감이 닫힌 동안 첫 카드 그림 미터와 검색 타이머를 동행에 사용하므로 기존에 설치된 아바타도 도감 업데이트에서 새 모션을 받는다.
 
@@ -71,4 +71,8 @@ PC에서 한 Windows 사용자로 연결된 아바타는 공통 엔진을 공유
 
 돌의 그림과 이름은 제작창에서 같은 순서로 배치한다. `stones.json` 순서를 바꾸면 `DesktopSkin/@Resources/stone-items.png`의 각 24픽셀 칸 순서도 맞춘다. 맨 왼쪽 칸은 파우더다. 저장은 호스트의 `UnlockDataPath` 아래 `unlock~아바타~프로필~wallet-일련번호.txn`으로 한다. 지급, 제작, 진화마다 한 파일을 확정하고 지출과 결과를 함께 복원한다. 백업은 기존 보유·선택 파일과 같은 Data 폴더 단위로 진행한다.
 
-아이템 그림은 [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/items)에서 가져왔고 스톤 파우더에는 별의모래 그림을 썼다. 1~4세대 진화체에는 위 하트골드·소울실버 필드 그림을 썼다. 님피아 걷기는 [baronessfaron의 SpriteCollab 그림](https://github.com/PMDCollab/SpriteCollab/tree/master/sprite/0700)이며 [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)으로 제공된다. 좌우 방향을 골라 32픽셀 칸에 맞추고 다른 포켓몬과 한 이미지에 배치했다.
+아이템 그림은 [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/items)에서 가져왔고 스톤 파우더에는 별의모래 그림을 썼다. 이상해풀·이상해꽃을 제외한 1~4세대 진화체에는 위 하트골드·소울실버 필드 그림을 썼다. 님피아 걷기는 [baronessfaron의 SpriteCollab 그림](https://github.com/PMDCollab/SpriteCollab/tree/master/sprite/0700)이며 [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)으로 제공된다. 좌우 방향을 골라 32픽셀 칸에 맞추고 다른 포켓몬과 한 이미지에 배치했다.
+
+## 레인저 동행 제작 현황
+
+완료 기준은 레인저 일반색 동행 도트, 좌우 각 네 프레임, 정지와 크기별 배치의 실제 화면 확인이다. 도감 카드의 HGSS 앞모습과 동행 그림은 별도로 관리한다. #0001 이상해씨, #0002 이상해풀, #0003 이상해꽃을 같은 [Pokémon Ranger 원본 시트 · Ragey](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8452/)에서 제작했다. 나머지 등록 종은 기존 동행 도트를 사용한다. 세부 도트가 32픽셀 칸에서 손실되는 종은 원본 해상도의 4×2 프레임 PNG를 보관하고 `walk-rows.json`에 `walkMaster`로 연결한다.
