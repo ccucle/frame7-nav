@@ -73,10 +73,14 @@
     }
     return [...result.values()];
   }
+  function isPerformedSet(s){
+    return s?.done===true&&Number.isFinite(s.weight)&&s.weight>=0&&Number.isInteger(s.reps)&&s.reps>=1;
+  }
   function independentRecords(core,independent){
     const result=new Map();
     for(const session of independent?.sessions||[]){
-      if(!['COMPLETED','PARTIAL'].includes(session.status)||session.isSample||!core.validDate(session.date))continue;
+      if(!['COMPLETED','PARTIAL'].includes(session.status)||session.isSample||!core.validDate(session.date)||
+        !session.exercises?.some(ex=>ex.sets?.some(isPerformedSet)))continue;
       // Matching names or weights may belong to two legitimate workouts.
       // Only an explicit, date-specific calendar source can join both stores.
       const key='iron:'+session.id;
@@ -190,5 +194,5 @@
       bestPR,prMap,currentWorkout
     };
   }
-  return Object.freeze({PHOTOS,PHOTO_CREDITS,EQUIPMENT,MUSCLES,tips,info,all,records,strengthSummary,daySummary,analytics});
+  return Object.freeze({PHOTOS,PHOTO_CREDITS,EQUIPMENT,MUSCLES,tips,info,all,records,isPerformedSet,strengthSummary,daySummary,analytics});
 });

@@ -27,7 +27,7 @@
     if(metric==='weight'){
       min=values.length?Math.min(...values):0;max=values.length?Math.max(...values):100;
       const padding=Math.max(.5,(max-min)*.15);min=Math.max(0,min-padding);max+=padding;
-    }else{min=0;max=Math.max(1,...values)*1.12;}
+    }else{min=0;max=metric==='sets'?Math.max(4,Math.ceil(Math.max(1,...values)*1.12/4)*4):Math.max(1,...values)*1.12;}
     const x=index=>left+((index-D.dayNumber(model.start)+.5)/model.dayCount)*plotWidth;
     const y=value=>top+(max-value)/(max-min)*plotHeight;
     const points=model.buckets.map(bin=>({index:bin.index,value:bin[metric],
@@ -122,6 +122,52 @@
         '<tr><td colspan="3">선택한 기간에 실제 기록이 없습니다.</td></tr>')+'</tbody></table></div>'+
       '<div class="fp-table-pages"><button type="button" data-progress-page="-1" '+(current===0?'disabled':'')+'>이전 날짜 묶음</button><span>'+ (current+1)+' / '+pages+'</span><button type="button" data-progress-page="1" '+(current===pages-1?'disabled':'')+'>다음 날짜 묶음</button></div>';
   }
+  const trainingLabels={volume:'총 운동량',sets:'완료 세트',maxWeight:'최고 중량'};
+  const trainingUnits={volume:'kg',sets:'세트',maxWeight:'kg'};
+  function trainingDetail(series,metric,index){
+    const bin=series.buckets[index],v=bin?.values;
+    if(!v)return '<span class="fp-detail-date">'+esc(bin?dates(bin):'')+'</span><strong>기록 없음</strong><p>선택한 부위에 실제 완료한 본세트가 없습니다.</p>';
+    return '<span class="fp-detail-date">'+esc(dates(bin))+'</span><strong>'+fmt(v[metric])+' '+trainingUnits[metric]+'</strong><p>총 운동량 '+fmt(v.volume)+' kg · 완료 '+v.sets+'세트 · 최고 중량 '+fmt(v.maxWeight)+' kg</p>';
+  }
+  function trainingChart(series,metric,width,selected){
+    const g=geometry(series,metric,width),known=g.points.filter(p=>p.value!==null);
+    if(!known.length)return '<div class="fp-empty">선택한 기간·부위에 완료한 본세트가 없습니다.</div>';
+    const grid=Array.from({length:5},(_,i)=>{
+      const y=g.top+i*g.plotHeight/4,value=g.max-i*(g.max-g.min)/4;
+      return '<line class="fp-grid" x1="'+g.left+'" y1="'+y+'" x2="'+(g.width-g.right)+'" y2="'+y+'"/><text class="fp-axis-label" x="'+(g.left-9)+'" y="'+(y+4)+'" text-anchor="end">'+fmt(value)+'</text>';
+    }).join('');
+    const axis=g.ticks.map((t,i)=>'<text class="fp-axis-label" x="'+t.x+'" y="'+(g.height-18)+'" text-anchor="'+(i===0?'start':i===g.ticks.length-1?'end':'middle')+'">'+esc((series.dayCount>365?t.date.slice(2):t.date.slice(5)).replace(/-/g,'.'))+'</text>').join('');
+    const marks=known.map(p=>{
+      const bin=series.buckets[p.index],active=p.index===selected;
+      const text=dates(bin)+' '+trainingLabels[metric]+' '+fmt(p.value)+' '+trainingUnits[metric];
+      return '<g class="fp-point '+(active?'is-selected':'')+'" role="button" tabindex="'+(active?'0':'-1')+'" focusable="true" aria-pressed="'+active+'" data-training-point="'+p.index+'" aria-label="'+esc(text)+'"><title>'+esc(text)+'</title>'+
+        '<rect class="fp-hit" x="'+(p.x-Math.max(10,p.barWidth/2))+'" y="'+Math.min(p.y,g.baseline-14)+'" width="'+Math.max(20,p.barWidth)+'" height="'+Math.max(14,g.baseline-p.y)+'"/>'+
+        '<rect class="fp-mark" x="'+(p.x-p.barWidth/2)+'" y="'+Math.min(p.y,g.baseline-2)+'" width="'+p.barWidth+'" height="'+Math.max(2,g.baseline-p.y)+'" rx="2"/></g>';
+    }).join('');
+    return '<svg class="fp-svg fp-training-svg" viewBox="0 0 '+g.width+' '+g.height+'" width="'+g.width+'" height="'+g.height+'" role="group" aria-label="'+esc(trainingLabels[metric]+' 변화 그래프')+'">'+grid+marks+axis+'</svg>';
+  }
+  function trainingSection(training,options={}){
+    if(!training)return '';
+    const group=[...D.TRAINING_GROUPS,'전체'].includes(options.trainingGroup)?options.trainingGroup:'전체';
+    const metric=D.TRAINING_METRICS.includes(options.trainingMetric)?options.trainingMetric:'volume';
+    const series=D.trainingSeries(training,group,metric),known=series.buckets.filter(b=>b[metric]!==null);
+    const selected=options.trainingSelected??known.at(-1)?.index??series.buckets.length-1;
+    const bars=(key,heading,unit)=>{
+      const max=Math.max(1,...training.groups.map(g=>g[key]||0));
+      return '<div class="fp-training-bars"><h4>'+heading+'</h4>'+training.groups.map(g=>
+        '<button type="button" class="fp-training-bar" data-training-group="'+esc(g.group)+'" aria-pressed="'+(group===g.group)+'"><span>'+esc(g.group)+'</span><span class="fp-training-track"><i style="width:'+((g[key]||0)/max*100).toFixed(2)+'%"></i></span><b>'+fmt(g[key]||0)+' '+unit+'</b></button>').join('')+'</div>';
+    };
+    return '<section class="fp-card fp-training" aria-labelledby="fp-training-title"><div class="fp-card-head"><div><span class="fp-kicker">STRENGTH TRAINING</span><h3 id="fp-training-title">부위별 운동 기록</h3></div></div>'+
+      '<p class="fp-card-note">'+esc(training.start)+' ~ '+esc(training.end)+' · 실제 완료한 본세트만 집계</p>'+
+      '<div class="fp-training-total"><div><span>총 운동량</span><strong>'+fmt(training.totalVolume)+' <small>kg</small></strong></div><div><span>완료 세트</span><strong>'+fmt(training.totalSets)+' <small>세트</small></strong></div></div>'+
+      '<div class="fp-training-comparison">'+bars('volume','부위별 총 운동량','kg')+bars('sets','부위별 세트 수','세트')+'</div>'+
+      '<div class="fp-training-heading"><h4>부위별 날짜 변화</h4><span>부위를 선택하세요</span></div>'+
+      '<div class="fp-training-groups" role="group" aria-label="운동 부위">'+['전체',...D.TRAINING_GROUPS].map(g=>'<button type="button" data-training-group="'+esc(g)+'" aria-pressed="'+(group===g)+'">'+esc(g)+'</button>').join('')+'</div>'+
+      '<div class="fp-training-metrics" role="group" aria-label="운동 기록 지표">'+D.TRAINING_METRICS.map(m=>'<button type="button" data-training-metric="'+m+'" aria-pressed="'+(metric===m)+'">'+trainingLabels[m]+'</button>').join('')+'</div>'+
+      '<p class="fp-card-note">'+(training.bucketDays>1?training.bucketDays+'일 묶음 · 총 운동량과 세트 수는 합계, 최고 중량은 최댓값':'일별 보기')+' · '+esc(group)+' · '+trainingLabels[metric]+' ('+trainingUnits[metric]+')</p>'+
+      trainingChart(series,metric,options.width||680,selected)+'<div class="fp-detail" id="fp-training-detail" role="status" aria-live="polite">'+trainingDetail(series,metric,selected)+'</div>'+
+      '<p class="fp-footnote">총 운동량 = 중량 × 횟수의 합. 최고 중량 = 기록한 1세트의 최대 kg. 워밍업·미완료·샘플·미래 날짜를 제외합니다. 맨몸 운동은 등록한 중량이 0kg이어도 세트 수에 포함됩니다. 운동 도감의 주 부위 기준이며 분류되지 않은 종목은 기타에 표시됩니다.</p></section>';
+  }
   function pageMarkup(model,options={}){
     const s=model.summary,width=options.width||680,selected=options.selected||{};
     const latest=s.latestWeight,change=s.weightChange;
@@ -136,14 +182,15 @@
       '<article><span>현재 칼로리 목표</span><strong>'+numeric(model.targets.kcal,'kcal')+'</strong><small>'+(s.calorieGoalPercent===null?'목표 설정의 탄수화물·단백질·지방 기준':'기록일 평균은 현재 목표의 '+fmt(s.calorieGoalPercent)+'%')+'</small></article></div>'+
       '<div class="fp-notice"><b>식사 기록은 하루 전체 섭취량과 다를 수 있습니다.</b> 입력하지 않은 식사와 미확인 열량은 추정하지 않습니다. 미기록일은 0으로 채우지 않으며, 평균은 열량 수치가 있는 날만 나눕니다.</div>'+
       (model.bucketDays>1?'<p class="fp-aggregation">긴 기간은 모든 날짜를 빠짐없이 '+model.bucketDays+'일 구간으로 나눴습니다. 각 점·막대는 해당 구간의 <b>기록한 날 평균</b>입니다. 구간에 기록이 없으면 비워 둡니다. 원래 일별 수치는 아래 표에서 확인할 수 있습니다.</p>':'')+
-      metricCard(model,'weight',width,selected.weight)+metricCard(model,'kcal',width,selected.kcal)+
+      metricCard(model,'weight',width,selected.weight)+metricCard(model,'kcal',width,selected.kcal)+trainingSection(options.training,options)+
       '<details class="fp-table-details" '+(options.tableOpen?'open':'')+'><summary>일별 수치로 보기 · '+model.daily.length+'일 기록</summary>'+tableMarkup(model,options.page||0)+'</details>'+
       '<p class="fp-method">체험용 샘플·미완료·미래 날짜는 제외합니다. 목표선은 현재 목표 설정을 전체 기간에 표시하며 과거 목표 변경 이력을 뜻하지 않습니다. 목표 칼로리는 단백질 × 4 + 탄수화물 × 4 + 지방 × 9로 계산합니다.</p></section>';
   }
   function mount(root,document){
     const host=document.getElementById('fd-progress-root'),core=root.FormdayCore,nutrition=root.FormdayNutrition,bridge=root.FormdayBridge;
     if(!host||!D||!core||!nutrition||!bridge)return null;
-    let range='30',model=null,selected={weight:null,kcal:null},page=0,resizeTimer=null;
+    let range='30',model=null,selected={weight:null,kcal:null},page=0,resizeTimer=null,
+      training=null,trainingGroup='전체',trainingMetric='volume',trainingSelected=null;
     const visible=()=>document.body.dataset.fdScreen==='progress';
     const today=()=>core.iso(new (root.Date||Date)());
     function defaultIndex(metric){
@@ -154,17 +201,29 @@
       const active=document.activeElement,focus=active&&host.contains(active)?
         active.getAttribute('data-progress-range')!==null?['data-progress-range',active.getAttribute('data-progress-range')]:
         active.getAttribute('data-progress-point')!==null?['data-progress-point',active.getAttribute('data-progress-point')]:
-        active.getAttribute('data-progress-page')!==null?['data-progress-page',active.getAttribute('data-progress-page')]:null:null;
+        active.getAttribute('data-progress-page')!==null?['data-progress-page',active.getAttribute('data-progress-page')]:
+        active.getAttribute('data-training-group')!==null?['data-training-group',active.getAttribute('data-training-group')]:
+        active.getAttribute('data-training-metric')!==null?['data-training-metric',active.getAttribute('data-training-metric')]:null:null;
       const tableOpen=!!host.querySelector('details')?.open;
       try{
-        const previous=model;
-        model=D.build(core,nutrition,bridge.getState(),{range,today:today()});
+        const previous=model,calendar=bridge.getState(),date=today(),previousTraining=training;
+        model=D.build(core,nutrition,calendar,{range,today:date});
+        if(root.FormdayIronData&&root.FormdayWorkouts){
+          const snapshot=root.FormdayIndependent?.getSnapshot?.();
+          training=D.buildTraining(core,root.FormdayWorkouts,root.FormdayIronData,calendar,snapshot,{range,today:date,earliestDate:model.start});
+          if(range==='all'&&training.start<model.start)model=D.build(core,nutrition,calendar,{range,today:date,earliestDate:training.start});
+          if(!previousTraining||previousTraining.start!==training.start||previousTraining.end!==training.end)trainingSelected=null;
+        }else training=null;
         for(const metric of ['weight','kcal']){
           if(!previous||previous.start!==model.start||previous.end!==model.end||
             !model.buckets[selected[metric]]||model.buckets[selected[metric]][metric]===null)selected[metric]=defaultIndex(metric);
         }
         page=Math.min(page,Math.max(0,Math.ceil(model.daily.length/PAGE_SIZE)-1));
-        host.innerHTML=pageMarkup(model,{width:Math.max(280,(host.clientWidth||720)-40),selected,page,tableOpen});
+        if(training){
+          const series=D.trainingSeries(training,trainingGroup,trainingMetric);
+          if(!series.buckets[trainingSelected]||series.buckets[trainingSelected][trainingMetric]===null)trainingSelected=series.buckets.filter(b=>b[trainingMetric]!==null).at(-1)?.index??series.buckets.length-1;
+        }
+        host.innerHTML=pageMarkup(model,{width:Math.max(280,(host.clientWidth||720)-40),selected,page,tableOpen,training,trainingGroup,trainingMetric,trainingSelected});
         if(focus)host.querySelector('['+focus[0]+'="'+focus[1]+'"]')?.focus({preventScroll:true});
       }catch(error){
         host.innerHTML='<section class="fp-card fp-error" role="alert"><h2>그래프를 불러오지 못했습니다.</h2><p>'+esc(error.message||'기록 형식을 확인해 주세요.')+'</p><p>기존 기록은 변경하지 않았습니다.</p></section>';
@@ -187,9 +246,24 @@
       const next=edge==='first'?0:edge==='last'?indices.length-1:Math.max(0,Math.min(indices.length-1,current+direction));
       select(metric,indices[next],true);
     }
+    function selectTraining(index,focus=false){
+      if(!training)return;
+      const series=D.trainingSeries(training,trainingGroup,trainingMetric);
+      if(!series.buckets[index]||series.buckets[index][trainingMetric]===null)return;
+      trainingSelected=index;
+      host.querySelectorAll('[data-training-point]').forEach(el=>{
+        const active=Number(el.dataset.trainingPoint)===index;el.classList.toggle('is-selected',active);el.setAttribute('aria-pressed',String(active));el.setAttribute('tabindex',active?'0':'-1');
+      });
+      const detail=host.querySelector('#fp-training-detail');if(detail)detail.innerHTML=trainingDetail(series,trainingMetric,index);
+      if(focus)host.querySelector('[data-training-point="'+index+'"]')?.focus({preventScroll:true});
+    }
     host.addEventListener('click',event=>{
+      const g=event.target.closest('[data-training-group]'),m=event.target.closest('[data-training-metric]'),p=event.target.closest('[data-training-point]');
+      if(g&&['전체',...D.TRAINING_GROUPS].includes(g.dataset.trainingGroup)){trainingGroup=g.dataset.trainingGroup;trainingSelected=null;render();return;}
+      if(m&&D.TRAINING_METRICS.includes(m.dataset.trainingMetric)){trainingMetric=m.dataset.trainingMetric;trainingSelected=null;render();return;}
+      if(p?.dataset?.trainingPoint!==undefined){selectTraining(Number(p.dataset.trainingPoint));return;}
       const button=event.target.closest('[data-progress-range]');
-      if(button){range=button.dataset.progressRange;page=0;render();return;}
+      if(button){range=button.dataset.progressRange;page=0;trainingSelected=null;render();return;}
       const point=event.target.closest('[data-progress-point]');
       if(point){select(point.dataset.progressMetric,Number(point.dataset.progressIndex));return;}
       const move=event.target.closest('[data-progress-step]');
@@ -198,6 +272,14 @@
       if(pager&&!pager.disabled){page+=Number(pager.dataset.progressPage);render();}
     });
     host.addEventListener('keydown',event=>{
+      const tp=event.target.closest('[data-training-point]');
+      if(tp?.dataset?.trainingPoint!==undefined&&training){
+        if(event.key==='Enter'||event.key===' '){event.preventDefault();selectTraining(Number(tp.dataset.trainingPoint));}
+        else if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){
+          event.preventDefault();const indices=D.trainingSeries(training,trainingGroup,trainingMetric).buckets.filter(b=>b[trainingMetric]!==null).map(b=>b.index);
+          if(indices.length){const current=Math.max(0,indices.indexOf(Number(tp.dataset.trainingPoint)));const at=event.key==='Home'?0:event.key==='End'?indices.length-1:Math.max(0,Math.min(indices.length-1,current+(event.key==='ArrowLeft'?-1:1)));selectTraining(indices[at],true);}
+        }return;
+      }
       const point=event.target.closest('[data-progress-point]');if(!point)return;
       if(event.key==='Enter'||event.key===' '){event.preventDefault();select(point.dataset.progressMetric,Number(point.dataset.progressIndex));}
       else if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){
@@ -215,5 +297,5 @@
     if(visible())render();
     return api;
   }
-  return Object.freeze({geometry,pointLabel,chartMarkup,detailMarkup,tableMarkup,pageMarkup,mount});
+  return Object.freeze({geometry,pointLabel,chartMarkup,detailMarkup,tableMarkup,trainingDetail,trainingChart,trainingSection,pageMarkup,mount});
 });

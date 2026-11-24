@@ -46,7 +46,12 @@
     }
   }catch(e){blocked='브라우저 저장소에 접근할 수 없습니다. '+e.message;}
   const active=()=>state&&M.getUnfinished(state);
-  const completed=()=>state?.sessions.filter(x=>x.status==='COMPLETED'||x.status==='PARTIAL')||[];
+  const finalSessions=()=>state?.sessions.filter(x=>x.status==='COMPLETED'||x.status==='PARTIAL')||[];
+  const completed=()=>finalSessions().filter(s=>M.isActualSession(s,iso(new Date())));
+  const recordSource=s=>s.calendarSource?'캘린더 연동':s.programId?'프로그램':s.routineId?'저장 루틴':'자유 운동';
+  const reviewReason=s=>s.isSample===true?'체험용으로 표시된 기록':s.date>iso(new Date())?'미래 날짜':!M.isActualSession(s,iso(new Date()))?'실제 완료 세트 없음':'';
+  const testNamed=s=>/^\s*\[TEST\]/i.test(s.label||'');
+  const localStamp=x=>x?new Date(x).toLocaleString('ko-KR'):'—';
   const summary=s=>M.recordSummary(s);
   const current=()=>active();
   const setMessage=(value,isError=false)=>{message=value;error=isError;};
@@ -197,12 +202,13 @@
     return '<section class="fi-panel fi-scheduled" aria-labelledby="fi-scheduled-title"><div class="fi-section-head"><div><span class="fi-kicker">CALENDAR PLAN</span><h3 id="fi-scheduled-title">예정된 운동</h3></div><div class="fi-plan-date"><label class="sr-only" for="fi-calendar-date">예정된 운동 날짜</label><input id="fi-calendar-date" type="date" value="'+esc(scheduledDay)+'">'+button('calendar-today','오늘','subtle')+'</div></div>'+
       (items.length?'<div class="fi-scheduled-list">'+items.map(({event,session,canReplace})=>{
         const final=session&&['COMPLETED','PARTIAL'].includes(session.status),done=!session&&(event.completed||event.workoutSessionId);
-        const label=final?'운동 기록 보기':session?'운동 이어하기':done?'완료한 일정':'이 일정으로 시작';
+        const future=event.date>iso(new Date());
+        const label=final?'운동 기록 보기':future?'예정된 운동':session?'운동 이어하기':done?'완료한 일정':'이 일정으로 시작';
         const metadata='data-id="'+esc(event.id)+'" data-date="'+esc(event.date)+'"';
         return '<article class="fi-planned-card"><div class="fi-planned-heading"><div><small>'+esc(event.start)+'–'+esc(event.end)+(event.repeat!=='none'?' · 반복 일정':'')+'</small><h4>'+esc(event.title)+'</h4></div>'+button('swap-calendar',swap,'outline fd-plan-swap',metadata+' aria-label="'+esc(event.title)+' 루틴 교체" title="'+(canReplace?'이 날짜의 루틴 교체':'시작하거나 기록한 운동은 교체할 수 없습니다')+'" '+(canReplace?'':'disabled'))+'</div>'+
           '<p class="fi-plan-summary">'+event.detail.exercises.length+'종목 · '+event.detail.exercises.reduce((n,e)=>n+e.sets.length,0)+'세트 · '+esc(event.detail.exercises.map(e=>e.name).join(' · '))+'</p>'+
           '<details class="fi-plan-sets"><summary>세트 미리보기</summary>'+event.detail.exercises.map(ex=>'<div><b>'+esc(ex.name)+'</b><span>'+ex.sets.map(set=>(set.warmup?'W · ':'')+fmt(set.weight)+'kg × '+set.reps+'회').join(' / ')+'</span></div>').join('')+'</details>'+
-          button('begin-calendar',label,'primary',metadata+(done?' disabled':''))+'</article>';
+          button('begin-calendar',label,'primary',metadata+(done||(future&&!final)?' disabled':''))+'</article>';
       }).join('')+'</div>':'<p class="fi-empty">이 날짜에 등록된 웨이트 일정이 없습니다.</p>')+
       '<p class="fi-note">캘린더의 종목과 세트로 시작합니다. ↔ 아이콘으로 이 날짜의 루틴을 바꿀 수 있습니다.</p></section>';
   }
@@ -220,7 +226,7 @@
   function recordCard(s,calendarMode=false){
     const result=summary(s),kind=s.status==='PARTIAL'?'부분 완료':'완료';
     return '<button type="button" class="fi-history-card" data-fi-action="record-detail" data-id="'+esc(s.id)+'">'+
-      '<div class="fi-record-leading"><b>'+esc(s.label)+'</b><small>'+esc(s.date)+' · '+result.completedSets+'세트 · '+fmt(result.volume)+'kg · '+esc(s.exercises.map(e=>e.name).slice(0,2).join(' / '))+'</small></div>'+
+      '<div class="fi-record-leading"><b>'+esc(s.label)+'</b><small>'+esc(s.date)+' · '+esc(recordSource(s))+' · '+result.completedSets+'세트 · '+fmt(result.volume)+'kg · '+esc(s.exercises.map(e=>e.name).slice(0,2).join(' / '))+'</small>'+(testNamed(s)?'<small class="fi-review-flag">테스트 이름 · 수행 여부 확인 필요</small>':'')+'</div>'+
       '<span class="fi-status '+(s.status==='PARTIAL'?'fi-partial':'fi-complete')+'">'+kind+'</span><span aria-hidden="true">↗</span></button>';
   }
   function routineOptions(){
@@ -495,10 +501,15 @@
   function historyView(){
     const records=completed().slice().sort((a,b)=>b.startedAt.localeCompare(a.startedAt));
     const selected=records.find(x=>x.id===focusedSession);
+    const needsReview=finalSessions().filter(s=>!M.isActualSession(s,iso(new Date()))).sort((a,b)=>b.date.localeCompare(a.date));
+    const reviewMarkup=needsReview.length?'<details class="fi-panel fi-history-review" '+(needsReview.some(s=>s.id===focusedSession)?'open':'')+'><summary>확인 필요 기록 '+needsReview.length+'건 · 그래프 집계 제외</summary><p class="fi-note">원본을 삭제하지 않았습니다. 미래 날짜, 샘플 또는 완료 세트가 없는 기록입니다.</p>'+
+      needsReview.map(s=>'<div class="fi-history-ex"><b>'+esc(s.label)+'</b><small>'+esc(s.date)+' · '+esc(recordSource(s))+' · '+esc(reviewReason(s))+'</small><small>시작 '+esc(localStamp(s.startedAt))+' / 종료 '+esc(localStamp(s.endedAt))+'</small><small>기록 ID: '+esc(s.id)+'</small></div>').join('')+'</details>':'';
     return '<section class="fi-view fi-history-view" id="fi-history" aria-labelledby="fi-history-title" tabindex="-1"><div class="fi-section-head fi-history-heading"><div><span class="fi-kicker">WORKOUT LOG</span><h2 id="fi-history-title">운동 기록</h2></div><span class="fi-note">전체 '+records.length+'회 기록</span></div>'+
-      '<div class="fi-panel">'+(records.length?records.map(s=>recordCard(s)).join(''):'<p class="fi-empty">완료된 운동 세션이 없습니다.</p>')+'</div>'+
+      '<div class="fi-panel">'+(records.length?records.map(s=>recordCard(s)).join(''):'<p class="fi-empty">완료된 운동 세션이 없습니다.</p>')+'</div>'+reviewMarkup+
       (selected?'<div class="fi-panel" id="fi-history-detail" tabindex="-1" aria-labelledby="fi-history-detail-title"><div class="fi-section-head"><h3 id="fi-history-detail-title">'+esc(selected.label)+'</h3><span>'+ (selected.status==='PARTIAL'?'부분 완료':'정상 완료')+'</span></div>'+
-      '<p class="fi-note">'+esc(selected.date)+' · 운동 '+timeLabel(Math.floor(selected.activeMs/1000))+'</p>'+
+      '<p class="fi-note">'+esc(selected.date)+' · 운동 '+timeLabel(Math.floor(selected.activeMs/1000))+' · '+esc(recordSource(selected))+'</p>'+
+      '<div class="fi-history-source"><span>시작 시각</span><b>'+esc(localStamp(selected.startedAt))+'</b><span>종료 시각</span><b>'+esc(localStamp(selected.endedAt))+'</b><span>기록 ID</span><b>'+esc(selected.id)+'</b></div>'+
+      (testNamed(selected)?'<p class="fi-review-flag">[TEST] 이름으로 저장된 기록입니다. 이름만으로 실제 운동 여부를 판단할 수 없어 자동 삭제하지 않았습니다.</p>':'')+
       reflectionNotice(selected)+
       (selected.notes?'<p class="fi-history-note">'+esc(selected.notes)+'</p>':'')+
       selected.exercises.map(ex=>'<div class="fi-history-ex"><b>'+esc(ex.name)+'</b><small>'+(ex.sets.filter(s=>s.done).map(s=>fmt(s.weight)+'kg × '+s.reps+'회'+(s.warmup?' (워밍업)':'')).join(' · ')||'완료 세트 없음')+'</small>'+(ex.notes?'<p class="fi-history-note">'+esc(ex.notes)+'</p>':'')+'</div>').join('')+
@@ -638,8 +649,9 @@
   function startCalendar(eventId,date){
     if(!beforeNavigate())return false;
     const linked=state.sessions.find(s=>s.calendarSource?.eventId===eventId&&s.calendarSource.date===date);
+    if(linked&&['COMPLETED','PARTIAL'].includes(linked.status)){focusedSession=linked.id;return go('history');}
+    if(date>iso(new Date())){setMessage('미래 날짜의 예정된 운동은 해당 날짜부터 시작할 수 있습니다.',true);render();return false;}
     if(linked){
-      if(['COMPLETED','PARTIAL'].includes(linked.status)){focusedSession=linked.id;return go('history');}
       if(linked.status!=='ACTIVE'&&!changed(()=>M.changeState(state,linked.id,linked.status==='SAVED'?'resumeSaved':'resume'),'예정된 운동을 재개했습니다.'))return false;
       resumeRest();prepareRestAudio();
       return go('session');

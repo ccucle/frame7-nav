@@ -87,6 +87,7 @@
       label:text(raw.label,100),status:raw.status,date:raw.date,startedAt:raw.startedAt,
       activeSince,activeMs,lastSavedAt,endedAt:finished?raw.endedAt:null,
       exercises,notes:typeof raw.notes==='string'?raw.notes.slice(0,4000):'',
+      ...(raw.isSample===true?{isSample:true}:{}),
       ...(raw.calendarSource===undefined?{}:{calendarSource:normalizeCalendarSource(raw.calendarSource,raw.date)})};
   }
   function normalize(raw){
@@ -398,6 +399,11 @@
     if(s&&s.status==='ACTIVE'){s.status='SAVED';s.activeSince=null;s.lastSavedAt=nowIso(date);}
     return next;
   }
+  function isActualSession(session,today){
+    return !!session&&['COMPLETED','PARTIAL'].includes(session.status)&&session.isSample!==true&&dateOk(session.date)&&
+      (!today||session.date<=today)&&Array.isArray(session.exercises)&&session.exercises.some(ex=>
+        Array.isArray(ex.sets)&&ex.sets.some(s=>s.done===true&&Number.isFinite(s.weight)&&s.weight>=0&&Number.isInteger(s.reps)&&s.reps>=1));
+  }
   function recordSummary(s){
     let completedSets=0,volume=0,exercises=0;
     for(const ex of s.exercises){
@@ -410,5 +416,5 @@
     }
     return {completedSets,volume:Math.round(volume*100)/100,exercises,minutes:Math.round(s.activeMs/60000)};
   }
-  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,updateProgram,deleteProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,recordSummary});
+  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,updateProgram,deleteProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,isActualSession,recordSummary});
 });

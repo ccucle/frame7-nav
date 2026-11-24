@@ -833,9 +833,13 @@ test('calendar plans expose exact sets and date-specific start and replacement a
   const start = app.get('agenda').querySelector('[data-calendar-start="scheduled-workout"]');
   const swap = app.get('agenda').querySelector('[data-calendar-swap="scheduled-workout"]');
   assert.ok(start); assert.ok(swap); assert.equal(start.dataset.occdate, '2026-11-24'); assert.equal(swap.disabled, false);
-  start.click();
+  assert.equal(start.disabled,true,'future workouts cannot start');
+  start.click();assert.equal(app.ironOpens.length,0);
+  bridge.openDayDetail('2026-11-23');
+  const todayStart=app.get('agenda').querySelector('[data-calendar-start="scheduled-workout"]');
+  assert.equal(todayStart.disabled,false);todayStart.click();
   assert.equal(app.get('fd-day-sheet').open, false);
-  assert.deepEqual(plain(app.ironOpens), [{ page: 'calendar', extra: { eventId: 'scheduled-workout', date: '2026-11-24' } }]);
+  assert.deepEqual(plain(app.ironOpens), [{ page: 'calendar', extra: { eventId: 'scheduled-workout', date: '2026-11-23' } }]);
   assert.equal(app.map.get(C.STORE), raw); assert.equal(app.writes.length, 0);
   assert.equal(bridge.getScheduledWorkouts('invalid-date').length, 0);
 });
@@ -1093,4 +1097,25 @@ test('changed routine or program while registration is open prevents stale batch
   app.get('fd-program-apply').click();
   assert.match(app.get('form-error').textContent,/프로그램 또는 루틴이 변경/);
   assert.equal(app.map.get(C.STORE),raw);assert.equal(app.writes.length,0);
+});
+
+test('bulk strength completion requires confirmation and does not turn sample or future plans into real workouts',()=>{
+ const initial=scheduledFixture(),raw=JSON.stringify(initial);
+ const declined=boot(raw,{confirm:false}),bridge=declined.context.FormdayBridge;
+ bridge.openDayDetail('2026-11-23');declined.get('agenda').querySelector('[data-toggle="scheduled-workout"]').click();
+ assert.match(declined.confirmations[0],/모든 세트를 실제로 완료/);
+ assert.equal(declined.map.get(C.STORE),raw);assert.equal(declined.writes.length,0);
+ const accepted=boot(raw,{confirm:true});accepted.get('agenda').querySelector('[data-toggle="scheduled-workout"]').click();
+ assert.equal(C.normalizeState(JSON.parse(accepted.map.get(C.STORE))).events[0].completed,true);
+ const future=C.normalizeState({...initial,events:[{...initial.events[0],date:'2026-11-24'}]});
+ const futureRaw=JSON.stringify(future),f=boot(futureRaw);
+ f.context.FormdayBridge.openDayDetail('2026-11-24');
+ f.get('agenda').querySelector('[data-toggle="scheduled-workout"]').click();
+ assert.equal(f.map.get(C.STORE),futureRaw);assert.equal(f.writes.length,0);
+ assert.match(f.get('fd-day-status').textContent,/미래 날짜/);
+ assert.equal(f.context.FormdayBridge.saveSet({eventId:'scheduled-workout',date:'2026-11-24',exerciseId:'planned-bench',setId:'planned-main',weight:60,reps:8,rpe:8,done:true}),false);
+ const sample=C.normalizeState({...initial,events:[{...initial.events[0],isSample:true}]});
+ const sampleRaw=JSON.stringify(sample),s=boot(sampleRaw);
+ s.get('agenda').querySelector('[data-toggle="scheduled-workout"]').click();
+ assert.equal(s.map.get(C.STORE),sampleRaw);assert.equal(s.writes.length,0);
 });
