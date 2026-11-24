@@ -81,7 +81,7 @@ PC에서 한 Windows 사용자로 연결된 아바타는 공통 엔진을 공유
 
 ## 레인저 동행 제작 현황
 
-완료 기준은 레인저 일반색 동행 도트, 좌우 각 네 프레임, 정지와 크기별 배치의 실제 화면 확인이다. 도감 카드의 HGSS 앞모습과 동행 그림은 별도로 관리한다. #0001 이상해씨, #0002 이상해풀, #0003 이상해꽃을 같은 [Pokémon Ranger 원본 시트 · Ragey](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8452/)에서 제작했다. 기존 등록 종 가운데 28종은 이전 동행 도트를 사용한다. 1.6.0의 신규 카드 128종은 도감 앞모습만 등록했다. 세부 도트가 32픽셀 칸에서 손실되는 종은 원본 해상도의 4×2 프레임 PNG를 보관하고 `walk-rows.json`에 `walkMaster`로 연결한다.
+완료 기준은 레인저 일반색 동행 도트, 좌우 각 네 프레임, 정지와 크기별 배치의 실제 화면 확인이다. 도감 카드의 HGSS 앞모습과 동행 그림은 별도로 관리한다. #0001 이상해씨, #0002 이상해풀, #0003 이상해꽃을 같은 [Pokémon Ranger 원본 시트 · Ragey](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8452/)에서 제작했다. 도감 v1.8.1에서 [파이리·리자드](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8453/)와 [리자몽](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8671/)의 일반색 레인저 동행을 추가했다. 1세대 151종 중 #0001–#0006까지 실제 바탕화면에서 검수했다. 다음은 #0007 꼬부기다. 1.6.0의 신규 카드 128종은 도감 앞모습만 등록했다. 세부 도트가 32픽셀 칸에서 손실되는 종은 원본 해상도의 4×2 프레임 PNG를 보관하고 `walk-rows.json`에 `walkMaster`로 연결한다.
 
 ## 마리오 의상 착용 · 도감 1.7.0
 
