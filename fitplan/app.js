@@ -1,6 +1,6 @@
 (function () {
   'use strict';
-  const C = globalThis.FormdayCore, W = globalThis.FormdayWorkouts, N = globalThis.FormdayNutrition, M = globalThis.FormdayMeals, A = globalThis.FormdayIronData;
+  const C = globalThis.FormdayCore, W = globalThis.FormdayWorkouts, N = globalThis.FormdayNutrition, M = globalThis.FormdayMeals, A = globalThis.FormdayIronData, K = globalThis.FormdayCalendarWorkouts;
   const { TYPES, DAYS } = globalThis.FormdayData;
   const $ = s => document.querySelector(s), $$ = s => Array.from(document.querySelectorAll(s));
   const z = n => String(n).padStart(2, '0'), iso = C.iso, dateOf = C.dateOf, moveDay = C.shiftDate, uid = C.uid;
@@ -386,6 +386,7 @@
         const title=currentType==='strength'?($('#f-title').value.trim()||automaticTitle):(edit&&currentType===item.type?item.title:automaticTitle);
         const completed=currentType==='strength'?(()=>{const s=W.summary(detail);return s.setCount>0&&s.completedSets===s.setCount;})():$('#f-completed').checked;
         const update={...item,id:edit?event.id:item.id,type:currentType,date:dateValue,start:startValue,end:endValue,title,repeat:recurring?event.repeat:$('#f-repeat').value,repeatUntil:$('#f-until').value||null,completed,detail,isSample:false};
+        if(item.workoutSessionId && (currentType!=='strength'||dateValue!==item.date))throw new Error('완료한 운동과 연결된 일정은 날짜와 종류를 바꿀 수 없습니다. 다른 날짜에는 새 일정을 등록해 주세요.');
         const next=C.upsert(data,update,{occurrenceDate:recurring?date:null,scope:recurring?scope:'single'});
         if(commit(next,edit?'일정과 기록을 저장했습니다.':'새 일정을 등록했습니다.')){
           selected=recurring?date:dateValue;cursor=dateOf(selected);
@@ -397,13 +398,86 @@
     (currentType==='strength'?$('#f-title'):$('#modal-title')).focus({preventScroll:true});
   }
 
+  function getScheduledWorkouts(day) {
+    if(!C.validDate(day))return [];
+    const iron=window.FormdayIndependent?.getSnapshot?.();
+    return C.dayEvents(data,day).filter(event=>event.type==='strength'&&!event.isSample).map(event=>{
+      const session=iron?.sessions.find(s=>s.calendarSource?.eventId===event.id&&s.calendarSource.date===day)||null;
+      return {event,session,canReplace:!session&&!event.workoutSessionId&&!event.completed&&!C.volume(event.detail).completedSets};
+    });
+  }
+  function calendarWorkoutActions(event,date) {
+    if(event.type!=='strength'||event.isSample)return '';
+    const item=getScheduledWorkouts(date).find(x=>x.event.id===event.id);
+    if(!item)return '';
+    const final=item.session&&['COMPLETED','PARTIAL'].includes(item.session.status);
+    const disabled=!item.session&&(event.completed||!!event.workoutSessionId);
+    const label=final?'운동 기록':item.session?'이어하기':'운동 시작';
+    const swap='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4"/></svg>';
+    return `<div class="fd-agenda-workout-actions"><button class="fd-plan-swap" type="button" data-calendar-swap="${esc(event.id)}" data-occdate="${date}" aria-label="${esc(event.title)} 루틴 교체" title="${item.canReplace?'이 날짜의 루틴 교체':'시작하거나 기록한 운동은 교체할 수 없습니다'}" ${item.canReplace?'':'disabled'}>${swap}</button><button class="btn btn-small btn-outline" type="button" data-calendar-start="${esc(event.id)}" data-occdate="${date}" ${disabled?'disabled':''}>${disabled?'완료됨':label}</button></div>`;
+  }
+  function openRoutineSwap(eventId,date) {
+    try {
+      if(blockedLoad||externalChange)throw new Error('최신 캘린더 기록을 불러온 뒤 교체해 주세요.');
+      if(!K)throw new Error('루틴 연결 기능을 불러오지 못했습니다. 새로고침해 주세요.');
+      const snapshot=window.FormdayIndependent?.getCalendarSnapshot?.();
+      if(!snapshot)throw new Error('운동 기록을 먼저 불러온 뒤 다시 선택해 주세요.');
+      const item=getScheduledWorkouts(date).find(x=>x.event.id===eventId);
+      if(!item?.canReplace)throw new Error('이미 시작하거나 기록한 운동은 루틴을 교체할 수 없습니다.');
+      const routines=snapshot.routines||[];
+      const baseline=K.signature(item.event);
+      let chosen='';
+      const options=routines.map(r=>`<button type="button" class="fd-routine-choice" data-routine-choice="${esc(r.id)}" aria-pressed="false"><span class="fd-routine-choice-copy"><strong>${esc(r.name)}</strong><small>${r.exercises.length}종목 · ${r.exercises.reduce((n,e)=>n+e.sets.length,0)}세트</small><span>${esc(r.exercises.map(e=>e.name).join(' · '))}</span></span><span class="fd-routine-choice-check" aria-hidden="true">✓</span></button>`).join('');
+      modal('루틴 교체',`<p class="fd-routine-swap-context"><b>${esc(dayLabel(date))}</b><span>현재 · ${esc(item.event.title)}</span></p><div class="fd-routine-choices">${options||'<p class="empty-note">저장된 루틴이 없습니다.<br>운동 탭의 루틴 메뉴에서 먼저 루틴을 만들어 주세요.</p>'}</div>`,`<button class="btn btn-outline" id="cancel-routine-swap">취소</button><button class="btn btn-primary" id="apply-routine-swap" disabled>이 날짜에 적용</button>`,'선택한 날짜의 종목과 세트를 교체합니다. 다른 날짜와 원래 루틴은 유지됩니다.');
+      $('.modal').classList.add('fd-routine-swap');
+      $('#modal-title').setAttribute('tabindex','-1');$('#modal-title').focus({preventScroll:true});
+      modalDirty=false;
+      $$('[data-routine-choice]').forEach(button=>button.onclick=()=>{
+        chosen=button.dataset.routineChoice;
+        $$('[data-routine-choice]').forEach(row=>row.setAttribute('aria-pressed',String(row===button)));
+        $('#apply-routine-swap').disabled=false;
+      });
+      $('#cancel-routine-swap').onclick=()=>closeModal(true);
+      $('#apply-routine-swap').onclick=()=>{
+        try {
+          if(!chosen)return;
+          const iron=window.FormdayIndependent?.getCalendarSnapshot?.();
+          if(!iron)throw new Error('운동 기록을 먼저 불러온 뒤 다시 선택해 주세요.');
+          if(JSON.stringify(iron.routines.find(r=>r.id===chosen))!==JSON.stringify(routines.find(r=>r.id===chosen)))throw new Error('선택한 루틴 구성이 변경됐습니다. 창을 닫고 최신 루틴을 다시 선택해 주세요.');
+          const next=K.replaceRoutine(C,data,iron,eventId,date,chosen,baseline);
+          if(commit(next,'이 날짜의 루틴을 교체했습니다. 운동 탭에도 반영됐습니다.'))closeModal(true);
+        }catch(error){formError(error);}
+      };
+      return true;
+    }catch(error){toast(error.message,true);return false;}
+  }
+  function getWorkoutReflection(session) {
+    const source=session?.calendarSource;
+    if(!source)return {applied:false,message:''};
+    const base=data.events.find(e=>e.id===source.eventId),event=base&&C.occurrence(base,source.date);
+    if(event?.type==='strength'&&event.workoutSessionId===session.id)return {applied:true,message:'캘린더에 반영됨'};
+    if(!event||event.type!=='strength')return {applied:false,message:'연결된 일정이 없습니다. 완료한 운동 기록은 보관되어 있습니다.'};
+    if(event.workoutSessionId||K?.signature(event)!==source.baseline)return {applied:false,message:'시작 후 일정이 변경되어 자동 반영하지 않았습니다. 캘린더와 운동 기록을 확인해 주세요.'};
+    return {applied:false,message:'운동 기록은 저장됐습니다. 캘린더 반영을 다시 시도해 주세요.'};
+  }
+  function reflectWorkoutSession(session) {
+    try {
+      if(blockedLoad||externalChange||$('#modal-root').children.length)throw new Error('캘린더 기록을 확인한 뒤 다시 반영해 주세요.');
+      if(!K)throw new Error('캘린더 연결 기능을 불러오지 못했습니다.');
+      const result=K.applySession(C,data,session);
+      if(result.alreadyApplied)return {ok:true,alreadyApplied:true};
+      if(!commit(result.next,''))return {ok:false,error:'운동 기록은 저장됐지만 캘린더 저장에 실패했습니다. 다시 반영할 수 있습니다.'};
+      return {ok:true,alreadyApplied:false};
+    }catch(error){return {ok:false,error:error.message};}
+  }
+
 function renderFilters(){let html='<button class="filter-chip active" id="all-filter">전체</button>';for(let [type,t] of Object.entries(TYPES))html+=`<button class="filter-chip ${visibleTypes.has(type)?'active':''}" data-filter="${type}"><span class="color-dot" style="--c:${t.color}"></span>${t.name}</button>`;$('#filters').innerHTML=html;$('#all-filter').classList.toggle('active',visibleTypes.size===4)}
 
 function renderMini(){const d=dateOf(iso(cursor)),y=d.getFullYear(),m=d.getMonth();$('#mini-title').textContent=`${y}년 ${m+1}월`;let x=`<div class="mini-grid">${DAYS.map(s=>`<span>${s}</span>`).join('')}`;for(let i=0;i<new Date(y,m,1).getDay();i++)x+='<span></span>';const days=new Date(y,m+1,0).getDate();for(let i=1;i<=days;i++){let ds=iso(new Date(y,m,i));x+=`<button class="${ds===today?'today':''} ${ds===selected?'selected':''} ${getDay(ds).length?'has-event':''}" data-mini="${ds}">${i}</button>`}$('#mini-cal').innerHTML=x+'</div>'}
 
-function renderMonth(){const y=cursor.getFullYear(),m=cursor.getMonth();const first=new Date(y,m,1),start=new Date(y,m,1-first.getDay());let html='<div class="week-labels">'+DAYS.map(s=>`<span class="week-label">${s}요일</span>`).join('')+'</div><div class="month-grid">';for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const ds=iso(d),events=getDay(ds);html+=`<div class="month-cell ${d.getMonth()!==m?'other':''} ${ds===selected?'selected':''}" data-date="${ds}" title="${dayLabel(ds)}"><div class="cell-top"><button class="day-num ${ds===today?'today':''}" data-day="${ds}" aria-label="${dayLabel(ds)} 상세보기">${d.getDate()}</button><button class="cell-add" data-add="${ds}" aria-label="일정 추가">＋</button></div>`;for(const {event:e} of events.slice(0,3)){html+=`<button draggable="${e.repeat==='none'}" class="month-event ${isDone(e,ds)?'done':''}" style="${styl(e.type)}" data-edit="${e.id}" data-occdate="${ds}" title="${esc(e.title)} — 클릭하여 수정 · 드래그하여 이동"><span class="event-time">${e.start}</span><span class="event-text">${esc(e.title)}</span></button>`}if(events.length>3)html+=`<button class="more-events" data-day="${ds}">+ ${events.length-3}개 더 보기</button>`;html+='</div>'}return html+'</div>'}
+function renderMonth(){const y=cursor.getFullYear(),m=cursor.getMonth();const first=new Date(y,m,1),start=new Date(y,m,1-first.getDay());let html='<div class="week-labels">'+DAYS.map(s=>`<span class="week-label">${s}요일</span>`).join('')+'</div><div class="month-grid">';for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const ds=iso(d),events=getDay(ds);html+=`<div class="month-cell ${d.getMonth()!==m?'other':''} ${ds===selected?'selected':''}" data-date="${ds}" title="${dayLabel(ds)}"><div class="cell-top"><button class="day-num ${ds===today?'today':''}" data-day="${ds}" aria-label="${dayLabel(ds)} 상세보기">${d.getDate()}</button><button class="cell-add" data-add="${ds}" aria-label="일정 추가">＋</button></div>`;for(const {event:e} of events.slice(0,3)){html+=`<button draggable="${e.repeat==='none'&&!e.workoutSessionId}" class="month-event ${isDone(e,ds)?'done':''}" style="${styl(e.type)}" data-edit="${e.id}" data-occdate="${ds}" title="${esc(e.title)} — 클릭하여 수정 · 드래그하여 이동"><span class="event-time">${e.start}</span><span class="event-text">${esc(e.title)}</span></button>`}if(events.length>3)html+=`<button class="more-events" data-day="${ds}">+ ${events.length-3}개 더 보기</button>`;html+='</div>'}return html+'</div>'}
 
-function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$('#right-badge').textContent=day===today?'TODAY / 오늘 상세':'DAY / 날짜 상세';$('#right-date').textContent=dayLabel(day);$('#right-sub').textContent=`${d.getFullYear()}년 · ${l.length}개 일정${day>today?' · 예정된 기록':''}`;$('#agenda-count').textContent=`${l.filter(({event,date})=>isDone(event,date)).length}/${l.length} 완료`;$('#agenda').innerHTML=l.length?l.map(({event:e,date})=>`<div class="agenda-item"><span class="agenda-time">${e.start}</span><div class="agenda-card ${isDone(e,date)?'done':''}" style="${styl(e.type)}"><button class="checkbox-btn ${isDone(e,date)?'checked':''}" data-toggle="${e.id}" data-occdate="${date}" aria-label="${esc(e.title)} 완료 전환">${isDone(e,date)?'✓':''}</button><button style="text-align:left;background:transparent;color:inherit;padding:0;flex:1;min-width:0" data-edit="${e.id}" data-occdate="${date}"><span class="agenda-name">${TYPES[e.type].emoji} ${esc(e.title)} ${e.repeat!=='none'?'↻':''}${e.isSample?'<small class="fd-day-sample">샘플</small>':''}</span><span class="agenda-desc">${esc(details(e))}</span></button></div></div>`).join(''):'<div class="empty-note">등록된 일정이 없습니다.<br>위의 등록 버튼으로 이 날짜의 기록을 추가하세요.</div>';
+function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$('#right-badge').textContent=day===today?'TODAY / 오늘 상세':'DAY / 날짜 상세';$('#right-date').textContent=dayLabel(day);$('#right-sub').textContent=`${d.getFullYear()}년 · ${l.length}개 일정${day>today?' · 예정된 기록':''}`;$('#agenda-count').textContent=`${l.filter(({event,date})=>isDone(event,date)).length}/${l.length} 완료`;$('#agenda').innerHTML=l.length?l.map(({event:e,date})=>`<div class="agenda-item"><span class="agenda-time">${e.start}</span><div class="agenda-card ${isDone(e,date)?'done':''}" style="${styl(e.type)}"><button class="checkbox-btn ${isDone(e,date)?'checked':''}" data-toggle="${e.id}" data-occdate="${date}" aria-label="${esc(e.title)} 완료 전환">${isDone(e,date)?'✓':''}</button><button style="text-align:left;background:transparent;color:inherit;padding:0;flex:1;min-width:0" data-edit="${e.id}" data-occdate="${date}"><span class="agenda-name">${TYPES[e.type].emoji} ${esc(e.title)} ${e.repeat!=='none'?'↻':''}${e.isSample?'<small class="fd-day-sample">샘플</small>':''}</span><span class="agenda-desc">${esc(details(e))}</span></button>${calendarWorkoutActions(e,date)}</div></div>`).join(''):'<div class="empty-note">등록된 일정이 없습니다.<br>위의 등록 버튼으로 이 날짜의 기록을 추가하세요.</div>';
   renderNutrition();
   const w=getWeightRecords(day).slice(-7);if(!w.length){$('#weight-trend').innerHTML='<div class="empty-note">아직 체중 기록이 없습니다.</div>';return}const latest=w[w.length-1],diff=w.length>1?latest.detail.weight-w[0].detail.weight:0;let values=w.map(x=>Number(x.detail.weight)),min=Math.min(...values)-.5,max=Math.max(...values)+.5,pts=values.map((v,i)=>`${15+(i/Math.max(1,values.length-1))*230},${46-((v-min)/(max-min))*38}`).join(' ');$('#weight-trend').innerHTML=`<div class="weight-sub">${latest.date} 기준</div><div class="weight-val">${fmt(latest.detail.weight,1)} <small style="font-weight:500;font-size:12px;color:#9aabaa">kg</small> <span style="font-size:10px;color:${diff<=0?'#21816a':'#bd7045'}">${w.length>1?(diff>0?'+':'')+fmt(diff,1)+'kg':''}</span></div><svg class="sparkline" viewBox="0 0 260 54" role="img" aria-label="최근 체중 변화 그래프"><polyline points="${pts}" fill="none" stroke="#2c9874" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>${values.map((v,i)=>`<circle cx="${15+(i/Math.max(1,values.length-1))*230}" cy="${46-((v-min)/(max-min))*38}" r="3" fill="#2c9874"/>`).join('')}</svg>`;
 }
@@ -460,6 +534,8 @@ function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$
       if(ds.dayCreate){openEvent({date:detailDay(),type:ds.dayCreate,fromDayDetail:true});}
       if(ds.edit){const event=data.events.find(x=>x.id===ds.edit);if(event){const day=ds.occdate||event.date;if(e.target.closest('#calendar'))openDayDetail(day);openEvent({event,date:day,fromDayDetail:!!e.target.closest('#fd-day-detail')});}}
       if(ds.toggle)toggleDone(ds.toggle,ds.occdate||detailDay());
+      if(ds.calendarSwap)openRoutineSwap(ds.calendarSwap,ds.occdate||detailDay());
+      if(ds.calendarStart){closeDayDetail({restoreFocus:false});window.FormdayIndependent?.open('calendar',{eventId:ds.calendarStart,date:ds.occdate||today});}
       if(ds.filter){visibleTypes.has(ds.filter)?visibleTypes.delete(ds.filter):visibleTypes.add(ds.filter);render();}
       if(b.id==='all-filter'){visibleTypes=new Set(Object.keys(TYPES));render();}
       if(ds.go){
@@ -528,7 +604,7 @@ function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$
       $('#undo-btn').disabled=true;
     });
     window.addEventListener('focus',refreshToday);
-    window.addEventListener('formday:iron-changed',()=>{renderStats();window.FormdayIndependent?.renderCalendar?.();});
+    window.addEventListener('formday:iron-changed',()=>{renderStats();renderRight();window.FormdayIndependent?.renderCalendar?.();});
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshToday();});
   }
 
@@ -537,14 +613,21 @@ function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$
   // Existing records are never migrated or uploaded by this bridge.
   window.FormdayBridge = Object.freeze({
     getState: () => C.clone(data),
-    canCloudApply: () => !blockedLoad && !externalChange && !modalDirty && modalController===null,
-    cloudReload: () => {if(!blockedLoad && !externalChange && !modalDirty && modalController===null){loadLatest();return true;}return false;},
+    canCloudApply: () => !blockedLoad && !externalChange && !modalDirty && modalController===null && !$('.fd-routine-swap'),
+    cloudReload: () => {if(!blockedLoad && !externalChange && !modalDirty && modalController===null && !$('.fd-routine-swap')){loadLatest();return true;}return false;},
+    isRoutineSwapOpen: () => !!$('.fd-routine-swap'),
     getToday: () => today,
     getSelectedDay: () => selected,
     getDetailDay: detailDay,
     openDayDetail,
     closeDayDetail,
     getVisibleTypes: () => [...visibleTypes],
+    getScheduledWorkouts, openRoutineSwap, getWorkoutReflection, reflectWorkoutSession,
+    prepareScheduledWorkout: (eventId,date) => {
+      if(blockedLoad||externalChange)throw new Error('최신 캘린더 기록을 불러온 뒤 운동을 시작해 주세요.');
+      if(!K)throw new Error('캘린더 연결 기능을 불러오지 못했습니다.');
+      return K.prepareStart(C,data,eventId,date);
+    },
     openStrength: (name) => {
       const cleanName=String(name||'').trim().slice(0,80);
       if(window.FormdayIndependent)window.FormdayIndependent.open('start',cleanName?{exercise:cleanName}:undefined);

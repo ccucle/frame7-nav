@@ -4,6 +4,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
 const W=require('../fitplan/workouts.js');
+const C=require('../fitplan/core.js');
 
 // Small, isolated DOM for exercising shipped event handlers and replacement of
 // live input elements. It does not replace browser layout or device verification.
@@ -86,8 +87,8 @@ function ui(options={}){
   const main=document.body.appendChild(new Element('main',document));main.setAttribute('id','main-content');
   const host=main.appendChild(new Element('div',document));host.setAttribute('id','fd-ind-root');
   const calendar=main.appendChild(new Element('div',document));calendar.setAttribute('id','fd-iron-calendar');
-  const db=new Map(),root=new Events(),intervals=[],timeouts=new Map();let failWrite=false,picker=null,pickerActive=false,timeoutId=0;
-  root.localStorage={getItem:key=>db.get(key)??null,setItem:(key,value)=>{if(failWrite&&key==='formday_iron_independent_v1')throw Error('quota');db.set(key,value);},removeItem:key=>db.delete(key)};
+  const db=options.storage||new Map(),root=new Events(),intervals=[],timeouts=new Map(),writes=[];let failWrite=false,picker=null,pickerActive=false,timeoutId=0;
+  root.localStorage={getItem:key=>db.get(key)??null,setItem:(key,value)=>{if(failWrite&&key==='formday_iron_independent_v1')throw Error('quota');writes.push([key,value]);db.set(key,value);},removeItem:key=>db.delete(key)};
   root.FormdayWorkouts=W;root.FormdayExerciseMedia={byName:{'벤치프레스':{src:'assets/exercises/bench.svg',alt:'벤치프레스 동작'},'스쿼트':{src:'assets/exercises/squat.svg',alt:'스쿼트 동작'}}};
   root.innerHeight=844;root.visualViewport=new Events();root.visualViewport.height=844;root.visualViewport.offsetTop=0;
   root.setInterval=fn=>{intervals.push(fn);return intervals.length;};root.clearInterval=()=>{};root.requestAnimationFrame=fn=>fn();root.dispatchEvent=event=>root.emit(event.type,event);
@@ -104,6 +105,9 @@ function ui(options={}){
   root.FormdayExercisePicker={isOpen:()=>pickerActive,open:config=>{picker=config;pickerActive=true;return true;}};
   const context=vm.createContext({window:root,document,Date:Clock,console,setTimeout:root.setTimeout,clearTimeout:root.clearTimeout,CustomEvent:class{constructor(type){this.type=type;}}});
   vm.runInContext(fs.readFileSync(require.resolve('../fitplan/iron-store.js'),'utf8'),context);root.FormdayIronStore=context.FormdayIronStore;
+  vm.runInContext(fs.readFileSync(require.resolve('../fitplan/calendar-workouts.js'),'utf8'),context);root.FormdayCalendarWorkouts=context.FormdayCalendarWorkouts;
+  if(options.initialState){const initial=typeof options.initialState==='function'?options.initialState(root.FormdayIronStore):options.initialState;db.set(root.FormdayIronStore.KEY,JSON.stringify(root.FormdayIronStore.normalize(initial)));}
+  if(options.bridge)root.FormdayBridge=typeof options.bridge==='function'?options.bridge({root,db,document}):options.bridge;
   vm.runInContext(fs.readFileSync(require.resolve('../fitplan/iron-independent.js'),'utf8'),context);
   const api=root.FormdayIndependent;
   const snapshot=()=>JSON.parse(JSON.stringify(api.getSnapshot()));
@@ -121,7 +125,7 @@ function ui(options={}){
   const edit=(exerciseIndex,setIndex,name,value)=>{const input=field(exerciseIndex,setIndex,name);input.value=String(value);host.emit('input',{target:input});return input;};
   const complete=(exerciseIndex,setIndex=0)=>{const session=snapshot().sessions.find(s=>['ACTIVE','PAUSED','SAVED'].includes(s.status)),ex=session.exercises[exerciseIndex];return action('save-session-set',{ex:ex.id,id:ex.sets[setIndex].id});};
   const start=(names=['벤치프레스','스쿼트'])=>{api.open('home');action('start-free');assert.equal(choose(names),true);};
-  return {api,root,document,host,db,answers,prompts,snapshot,action,choose,row,field,edit,complete,start,audioEvents,sheet:()=>host.querySelector('#fi-session-sheet'),
+  return {api,root,document,host,db,writes,answers,prompts,snapshot,action,choose,row,field,edit,complete,start,audioEvents,sheet:()=>host.querySelector('#fi-session-sheet'),
     get picker(){return picker;},get pickerActive(){return pickerActive;},failStorage(value=true){failWrite=value;},
     advance(ms){now+=ms;for(const [id,item]of [...timeouts])if(item.at<=now){timeouts.delete(id);item.fn();}for(const fn of intervals)fn();},hide(){document.hidden=true;document.emit('visibilitychange');},show(){document.hidden=false;document.emit('visibilitychange');},
     timer(){return host.querySelector('#fi-timer-number')?.textContent;}};
@@ -349,4 +353,189 @@ test('failed pagehide persistence freezes exercise and rest time until a safe re
   const view=ui();view.start();view.edit(0,0,'rest',60);view.complete(0);view.advance(8000);view.failStorage();view.root.emit('pagehide');view.advance(120000);
   assert.equal(view.host.querySelector('#fi-duration').textContent,'00:00:08');assert.equal(view.timer(),'00:52');view.failStorage(false);const input=view.edit(1,0,'reps',9);view.host.emit('change',{target:input});
   assert.equal(active(view).activeMs,8000);view.advance(5000);assert.equal(view.host.querySelector('#fi-duration').textContent,'00:00:13');assert.equal(view.timer(),'00:47');
+});
+
+// Calendar persistence is represented by an isolated in-memory fixture. The
+// shipped calendar model prepares and reflects records; the UI and IRON store
+// run unchanged, including their real local-storage writes and lifecycle hooks.
+function scheduledFixture({date='2026-11-24',reflectionError=null}={}){
+  let calendar=C.normalizeState({schemaVersion:C.VERSION,events:[{
+    id:'scheduled-upper',date,start:'18:10',end:'19:20',type:'strength',title:'예약한 상체 운동',repeat:'none',completed:false,
+    detail:{notes:'기존 일정 메모',exercises:[
+      {id:'scheduled-bench',name:'벤치프레스',notes:'벤치 높이 확인',sets:[
+        {id:'bench-warmup',weight:22.5,reps:15,rpe:null,warmup:true,done:false},
+        {id:'bench-work',weight:67.5,reps:7,rpe:8,warmup:false,done:false}
+      ]},
+      {id:'scheduled-squat',name:'스쿼트',notes:'천천히 내려가기',sets:[
+        {id:'squat-1',weight:85,reps:8,rpe:null,warmup:false,done:false},
+        {id:'squat-2',weight:90,reps:6,rpe:null,warmup:false,done:false},
+        {id:'squat-3',weight:92.5,reps:5,rpe:null,warmup:false,done:false},
+        {id:'squat-4',weight:80,reps:10,rpe:null,warmup:false,done:false}
+      ]}
+    ]}
+  }],settings:{...C.defaults},demo:false});
+  const calls={queries:[],prepares:[],reflections:[],swaps:[],closes:0};
+  const copy=value=>JSON.parse(JSON.stringify(value));
+  return {date,eventId:'scheduled-upper',calls,get calendar(){return copy(calendar);},set reflectionError(value){reflectionError=value;},
+    bridge({root,db}){
+      const K=root.FormdayCalendarWorkouts,M=root.FormdayIronStore;
+      return {
+        getToday:()=> '2026-11-24',getSelectedDay:()=>date,getDetailDay:()=>date,
+        closeDayDetail(){calls.closes++;},
+        getScheduledWorkouts(day){
+          calls.queries.push(day);
+          const sessions=root.FormdayIndependent?.getSnapshot?.()?.sessions||[];
+          return C.dayEvents(calendar,day).filter(event=>event.type==='strength').map(event=>{
+            const session=sessions.find(item=>item.calendarSource?.eventId===event.id&&item.calendarSource.date===day)||null;
+            return {event,session,canReplace:!session&&!event.workoutSessionId&&!event.completed&&C.volume(event.detail).completedSets===0};
+          });
+        },
+        prepareScheduledWorkout(id,day){calls.prepares.push({id,date:day});return K.prepareStart(C,calendar,id,day);},
+        reflectWorkoutSession(session){
+          const persisted=JSON.parse(db.get(M.KEY)||'{"sessions":[]}').sessions.find(item=>item.id===session.id);
+          calls.reflections.push({session:copy(session),persisted:persisted?copy(persisted):null});
+          if(reflectionError)return {ok:false,error:reflectionError};
+          try{const result=K.applySession(C,calendar,session);if(result.next)calendar=result.next;return {ok:true,alreadyApplied:result.alreadyApplied};}
+          catch(error){return {ok:false,error:error.message};}
+        },
+        getWorkoutReflection(session){
+          const source=session.calendarSource,event=source&&calendar.events.find(item=>item.id===source.eventId);
+          const occurrence=event&&C.occurrence(event,source.date);
+          const applied=occurrence?.workoutSessionId===session.id;
+          return {applied,message:applied?'캘린더 반영 완료':reflectionError||'캘린더 반영 대기'};
+        },
+        openRoutineSwap(id,day){calls.swaps.push({id,date:day});return true;}
+      };
+    }
+  };
+}
+const trainingValues=session=>session.exercises.map(ex=>({name:ex.name,notes:ex.notes,sets:ex.sets.map(set=>({weight:set.weight,reps:set.reps,warmup:set.warmup,done:set.done}))}));
+
+test('choosing a scheduled date is read-only and starting its workout preserves the exact planned sets',()=>{
+  const fixture=scheduledFixture({date:'2026-11-23'}),before=JSON.stringify(fixture.calendar),view=ui({bridge:fixture.bridge});
+  view.api.open('home');
+  const date=view.host.querySelector('#fi-calendar-date');assert.ok(date,'scheduled-workout date control exists');
+  date.value=fixture.date;view.host.emit('change',{target:date});
+  assert.equal(view.snapshot().sessions.length,0);assert.equal(view.writes.length,0);assert.ok(fixture.calls.queries.includes(fixture.date));
+  view.action('begin-calendar',{id:fixture.eventId,date:fixture.date});
+  const session=active(view),plan=C.dayEvents(fixture.calendar,fixture.date)[0];
+  assert.ok(session);assert.equal(session.label,plan.title);assert.equal(session.date,fixture.date);
+  assert.equal(session.calendarSource.eventId,fixture.eventId);assert.equal(session.calendarSource.date,fixture.date);
+  assert.equal(session.calendarSource.baseline,view.root.FormdayCalendarWorkouts.signature(plan));
+  assert.deepEqual(trainingValues(session),trainingValues(plan.detail));assert.equal(session.notes,plan.detail.notes);
+  assert.deepEqual(session.exercises.map(ex=>ex.sets.length),[2,4]);assert.equal(session.exercises.flatMap(ex=>ex.sets).some(set=>set.done),false);
+  assert.equal(view.field(0,1,'kg').value,'67.5');assert.equal(view.field(1,2,'reps').value,'5');
+  assert.equal(view.snapshot().routines.length,0);assert.equal(JSON.stringify(fixture.calendar),before);
+  assert.deepEqual(fixture.calls.prepares,[{id:fixture.eventId,date:fixture.date}]);assert.equal(fixture.calls.reflections.length,0);
+});
+
+test('opening the same calendar workout resumes its paused session and rest timer without duplicating or resetting edits',()=>{
+  const fixture=scheduledFixture(),view=ui({bridge:fixture.bridge});
+  view.api.open('calendar',{eventId:fixture.eventId,date:fixture.date});
+  const id=active(view).id;
+  view.edit(0,1,'kg',72.5);view.edit(1,3,'reps',12);view.edit(0,1,'rest',60);view.complete(0,1);view.advance(10000);
+  assert.equal(view.timer(),'00:50');view.action('pause');
+  assert.equal(active(view).status,'PAUSED');view.advance(30000);assert.equal(view.timer(),'00:50');view.api.open('home');
+  view.api.open('calendar',{eventId:fixture.eventId,date:fixture.date});
+  const resumed=active(view);
+  assert.equal(resumed.id,id);assert.equal(resumed.status,'ACTIVE');assert.equal(view.snapshot().sessions.length,1);
+  assert.equal(resumed.exercises[0].sets[1].weight,72.5);assert.equal(resumed.exercises[0].sets[1].done,true);assert.equal(resumed.exercises[1].sets[3].reps,12);
+  assert.equal(fixture.calls.prepares.length,1);assert.equal(fixture.calls.reflections.length,0);
+  assert.equal(view.sheet()?.open,true);
+  assert.equal(view.timer(),'00:50');view.advance(10000);assert.equal(view.timer(),'00:40');
+});
+
+test('a linked active workout stashed by a full reload resumes from SAVED with the same recorded sets',()=>{
+  const fixture=scheduledFixture(),view=ui({bridge:fixture.bridge});
+  view.api.open('calendar',{eventId:fixture.eventId,date:fixture.date});
+  view.edit(0,1,'kg',75);view.edit(1,2,'reps',9);view.complete(0,1);
+  const original=active(view);assert.equal(original.status,'ACTIVE');
+  const reloaded=ui({storage:new Map(view.db),bridge:fixture.bridge}),stashed=active(reloaded);
+  assert.equal(stashed.status,'SAVED');assert.equal(stashed.id,original.id);
+  assert.deepEqual(trainingValues(stashed),trainingValues(original));
+  assert.equal(JSON.parse(reloaded.db.get(reloaded.root.FormdayIronStore.KEY)).sessions[0].status,'SAVED');
+  reloaded.api.open('calendar',{eventId:fixture.eventId,date:fixture.date});
+  const resumed=active(reloaded);
+  assert.equal(resumed.status,'ACTIVE');assert.equal(resumed.id,original.id);assert.equal(reloaded.snapshot().sessions.length,1);
+  assert.equal(resumed.date,original.date);assert.deepEqual(resumed.calendarSource,original.calendarSource);
+  assert.deepEqual(trainingValues(resumed),trainingValues(original));assert.equal(resumed.notes,original.notes);
+  assert.equal(reloaded.field(0,1,'kg').value,'75');assert.equal(reloaded.field(1,2,'reps').value,'9');
+  assert.equal(reloaded.sheet()?.open,true);assert.equal(fixture.calls.prepares.length,1);assert.equal(fixture.calls.reflections.length,0);
+});
+
+test('a calendar reflection failure keeps the finalized workout durable and retries explicitly without finalizing it again',()=>{
+  const fixture=scheduledFixture({reflectionError:'캘린더 저장 공간이 부족합니다.'}),before=JSON.stringify(fixture.calendar);
+  const view=ui({bridge:fixture.bridge});view.api.open('calendar',{eventId:fixture.eventId,date:fixture.date});
+  view.edit(0,1,'kg',71.5);view.complete(0,1);view.edit(1,3,'reps',12);view.advance(12000);
+  view.answers.push(true);view.action('partial');
+  const finished=view.snapshot().sessions[0],key=view.root.FormdayIronStore.KEY;
+  assert.equal(finished.status,'PARTIAL');assert.equal(active(view),undefined);
+  assert.equal(finished.exercises[0].sets[1].weight,71.5);assert.equal(finished.exercises[1].sets[3].reps,12);
+  assert.equal(fixture.calls.reflections.length,1);assert.deepEqual(fixture.calls.reflections[0].persisted,finished,'the complete actual record was saved before the calendar was called');
+  assert.equal(JSON.stringify(fixture.calendar),before);assert.ok(view.host.querySelector('[data-fi-action="retry-calendar"][data-id="'+finished.id+'"]'));
+
+  const reloaded=ui({storage:new Map(view.db),bridge:fixture.bridge});
+  assert.equal(fixture.calls.reflections.length,1,'loading persisted history never reapplies a calendar record automatically');
+  reloaded.api.open('history');assert.deepEqual(reloaded.snapshot().sessions[0],finished);
+  const persistedBeforeRetry=reloaded.db.get(key);fixture.reflectionError=null;
+  reloaded.advance(60000);reloaded.action('retry-calendar',{id:finished.id});
+  assert.equal(fixture.calls.reflections.length,2);assert.deepEqual(fixture.calls.reflections[1].session,finished);
+  assert.equal(reloaded.db.get(key),persistedBeforeRetry,'retry must not run finish or rewrite the durable session');
+  assert.equal(reloaded.writes.filter(([writtenKey])=>writtenKey===key).length,0);
+  assert.deepEqual(reloaded.snapshot().sessions[0],finished);
+  const reflected=C.dayEvents(fixture.calendar,fixture.date)[0];
+  assert.equal(reflected.workoutSessionId,finished.id);assert.deepEqual(trainingValues(reflected.detail),trainingValues(finished));
+  assert.equal(reloaded.host.querySelector('[data-fi-action="retry-calendar"][data-id="'+finished.id+'"]'),null);
+  reloaded.api.open('calendar',{eventId:fixture.eventId,date:fixture.date});
+  assert.equal(reloaded.snapshot().sessions.length,1);assert.equal(active(reloaded),undefined);assert.notEqual(reloaded.document.body.dataset.fiSession,'true');
+  assert.equal(fixture.calls.reflections.length,2);
+});
+
+test('failure to save a completed calendar workout never sends an unpersisted result to the calendar',()=>{
+  const fixture=scheduledFixture(),before=JSON.stringify(fixture.calendar),view=ui({bridge:fixture.bridge});
+  view.api.open('calendar',{eventId:fixture.eventId,date:fixture.date});view.complete(0,1);
+  const id=active(view).id;view.failStorage();view.answers.push(true,false);view.action('finish');
+  assert.equal(active(view).id,id);assert.equal(active(view).status,'ACTIVE');
+  assert.equal(JSON.parse(view.db.get(view.root.FormdayIronStore.KEY)).sessions[0].status,'ACTIVE');
+  assert.equal(fixture.calls.reflections.length,0);assert.equal(JSON.stringify(fixture.calendar),before);
+  view.failStorage(false);view.answers.length=0;view.answers.push(true,false);view.action('finish');
+  assert.equal(view.snapshot().sessions[0].status,'COMPLETED');assert.equal(fixture.calls.reflections.length,1);
+  assert.equal(fixture.calls.reflections[0].persisted.status,'COMPLETED');assert.equal(C.dayEvents(fixture.calendar,fixture.date)[0].workoutSessionId,id);
+});
+
+test('calendar routine-swap controls delegate the selected event and date without editing stored routines or starting a session',()=>{
+  const fixture=scheduledFixture(),view=ui({bridge:fixture.bridge,initialState:M=>M.createRoutine(M.empty(),'보관한 하체 루틴',[M.newExercise('스쿼트')]).next});
+  const stored=view.db.get(view.root.FormdayIronStore.KEY),before=JSON.stringify(view.snapshot()),calendarBefore=JSON.stringify(fixture.calendar);
+  view.api.open('home');view.action('swap-calendar',{id:fixture.eventId,date:fixture.date});
+  assert.deepEqual(fixture.calls.swaps,[{id:fixture.eventId,date:fixture.date}]);
+  view.api.open('calendar-swap',{eventId:fixture.eventId,date:fixture.date});
+  assert.deepEqual(fixture.calls.swaps,[{id:fixture.eventId,date:fixture.date},{id:fixture.eventId,date:fixture.date}]);
+  assert.equal(JSON.stringify(view.snapshot()),before);assert.equal(view.db.get(view.root.FormdayIronStore.KEY),stored);assert.equal(view.writes.length,0);
+  assert.equal(JSON.stringify(fixture.calendar),calendarBefore);assert.equal(fixture.calls.prepares.length,0);assert.equal(fixture.calls.reflections.length,0);
+});
+
+test('the calendar snapshot rejects a newer stored session before a cross-tab storage event is delivered',()=>{
+  const fixture=scheduledFixture(),view=ui({bridge:fixture.bridge}),M=view.root.FormdayIronStore;
+  const before=view.snapshot();assert.deepEqual(JSON.parse(JSON.stringify(view.api.getCalendarSnapshot())),before);
+  const plan=view.root.FormdayCalendarWorkouts.prepareStart(C,fixture.calendar,fixture.eventId,fixture.date);
+  M.createStore(view.root.localStorage).save(M.startCalendar(before,plan).next,before.revision);
+  const newerBytes=view.db.get(M.KEY),writes=view.writes.length;
+  assert.equal(JSON.parse(newerBytes).sessions.length,1);
+  // Deliberately omit the storage event: the reader must inspect the revision.
+  assert.throws(()=>view.api.getCalendarSnapshot(),/다른 탭|최신 기록/);
+  assert.deepEqual(view.snapshot(),before);assert.equal(view.db.get(M.KEY),newerBytes);assert.equal(view.writes.length,writes);
+  assert.equal(fixture.calls.swaps.length,0);assert.equal(fixture.calls.reflections.length,0);
+});
+
+test('an open calendar routine chooser blocks cloud apply and reload until the chooser closes',()=>{
+  const fixture=scheduledFixture();let swapOpen=false;
+  const view=ui({bridge:environment=>({...fixture.bridge(environment),isRoutineSwapOpen:()=>swapOpen})}),M=view.root.FormdayIronStore;
+  const before=view.snapshot();assert.equal(view.api.canCloudApply(),true);
+  const incoming=M.createRoutine(before,'다른 기기의 루틴',[M.newExercise('스쿼트')]).next;
+  M.createStore(view.root.localStorage).save(incoming,before.revision);
+  const stored=view.db.get(M.KEY),writes=view.writes.length;swapOpen=true;
+  assert.equal(view.api.canCloudApply(),false);assert.equal(view.api.cloudReload(),false);
+  assert.deepEqual(view.snapshot(),before);assert.equal(view.db.get(M.KEY),stored);assert.equal(view.writes.length,writes);
+  swapOpen=false;assert.equal(view.api.canCloudApply(),true);assert.equal(view.api.cloudReload(),true);
+  assert.equal(view.snapshot().routines[0].name,'다른 기기의 루틴');assert.equal(view.db.get(M.KEY),stored);assert.equal(view.writes.length,writes);
 });

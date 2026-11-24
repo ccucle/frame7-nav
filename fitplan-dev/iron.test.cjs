@@ -6,6 +6,7 @@ const path=require('node:path');
 const vm=require('node:vm');
 const C=require('../fitplan/core.js');
 const W=require('../fitplan/workouts.js');
+const K=require('../fitplan/calendar-workouts.js');
 const D=require('../fitplan/iron-data.js');
 const read=filename=>fs.readFileSync(path.join(__dirname,'../fitplan',filename),'utf8');
 
@@ -144,6 +145,124 @@ test('calendar daily totals include partial independent workouts and exclude war
   assert.equal(future.completedWorkouts,0);
   assert.equal(future.completedSets,0);
   assert.equal(future.volume,0);
+});
+
+function calendarLink(state,eventId,date){
+  const event=state.events.find(event=>event.id===eventId);
+  return {eventId,date,baseline:K.signature(C.occurrence(event,date))};
+}
+const metricClock=()=>new Date(2026,10,25,12);
+function assertLinkedMetrics(state,independent,expected){
+  const day=D.daySummary(C,state,independent,'2026-11-25',metricClock());
+  const week=D.analytics(C,W,state,metricClock(),independent);
+  assert.equal(day.workoutCount,expected.count);
+  assert.equal(day.completedSets,expected.sets);
+  assert.equal(day.volume,expected.volume);
+  assert.equal(week.strengthSessions,expected.sessions??expected.count);
+  assert.equal(week.completedSets,expected.sets);
+  assert.equal(week.totalVolume,expected.volume);
+}
+
+test('pending reflection counts a finalized calendar workout once while its source is unchanged',()=>{
+  const state=C.normalizeState({events:[sample('planned','2026-11-25','벤치프레스',40,10)],settings:C.defaults});
+  state.events[0].completed=false;
+  state.events[0].detail.exercises[0].sets.push({id:'planned-next',weight:50,reps:10,rpe:null,warmup:false,done:false});
+  const session=independentSession('linked','2026-11-25',60,10,{status:'PARTIAL',calendarSource:calendarLink(state,'planned','2026-11-25')});
+  session.exercises[0].sets.push({id:'session-next',weight:70,reps:10,done:false,warmup:false});
+  const independent=independentState(session),before=JSON.stringify({state,independent});
+  assertLinkedMetrics(state,independent,{count:1,sets:1,volume:600});
+  assert.equal(D.records(C,state,independent)[0].source,'iron');
+  assert.equal(JSON.stringify({state,independent}),before);
+});
+
+test('an exact reflected marker counts the calendar result once and respects later calendar edits',()=>{
+  const state=C.normalizeState({events:[sample('planned','2026-11-25','벤치프레스',40,10)],settings:C.defaults});
+  const session=independentSession('linked','2026-11-25',60,10,{calendarSource:calendarLink(state,'planned','2026-11-25')});
+  state.events[0].workoutSessionId=session.id;
+  state.events[0].detail.exercises[0].sets[0].weight=75;
+  const normalized=C.normalizeState(state),independent=independentState(session);
+  assertLinkedMetrics(normalized,independent,{count:1,sets:1,volume:750});
+  assert.equal(D.records(C,normalized,independent)[0].source,'calendar');
+});
+
+test('a changed source or another reflected session marker is not silently hidden by pending reflection',()=>{
+  const state=C.normalizeState({events:[sample('planned','2026-11-25','벤치프레스',40,10)],settings:C.defaults});
+  const session=independentSession('linked','2026-11-25',60,10,{calendarSource:calendarLink(state,'planned','2026-11-25')});
+  const changed=structuredClone(state);
+  changed.events[0].detail.exercises[0].sets[0].weight=80;
+  assertLinkedMetrics(changed,independentState(session),{count:2,sets:2,volume:1400});
+  const otherMarker=structuredClone(state);
+  otherMarker.events[0].workoutSessionId='another-session';
+  assertLinkedMetrics(C.normalizeState(otherMarker),independentState(session),{count:2,sets:2,volume:1000});
+});
+
+test('calendar-only and independent-only sync arrivals retain the available actual record',()=>{
+  const state=C.normalizeState({events:[sample('planned','2026-11-25','벤치프레스',40,10)],settings:C.defaults});
+  const session=independentSession('linked','2026-11-25',60,10,{calendarSource:calendarLink(state,'planned','2026-11-25')});
+  state.events[0].workoutSessionId=session.id;
+  assertLinkedMetrics(C.normalizeState(state),independentState(),{count:1,sets:1,volume:400});
+  const empty=C.normalizeState({events:[],settings:C.defaults});
+  assertLinkedMetrics(empty,independentState(session),{count:1,sets:1,volume:600});
+});
+
+test('calendar links do not merge another day, a different source or an unlinked same-name workout',()=>{
+  const state=C.normalizeState({events:[sample('planned','2026-11-25','벤치프레스',60,10)],settings:C.defaults});
+  const valid=calendarLink(state,'planned','2026-11-25');
+  for(const calendarSource of [undefined,{...valid,date:'2026-11-24'},{...valid,eventId:'another-plan'},{...valid,baseline:''}]){
+    const session=independentSession('linked','2026-11-25',60,10,{calendarSource});
+    const marked=structuredClone(state);marked.events[0].workoutSessionId=session.id;
+    assertLinkedMetrics(C.normalizeState(marked),independentState(session),{count:2,sets:2,volume:1200});
+  }
+});
+
+test('recurring calendar links join only the specified occurrence',()=>{
+  let state=C.normalizeState({events:[{...sample('series','2026-11-24','벤치프레스',40,10),repeat:'daily',completed:false}],settings:C.defaults});
+  for(const date of ['2026-11-24','2026-11-25']){
+    const occurrence=C.occurrence(state.events[0],date);
+    occurrence.detail.exercises[0].sets[0].done=true;
+    occurrence.completed=true;
+    state=C.upsert(state,occurrence,{scope:'occurrence',occurrenceDate:date});
+  }
+  const source=calendarLink(state,'series','2026-11-25');
+  const session=independentSession('linked','2026-11-25',60,10,{calendarSource:source});
+  const independent=independentState(session);
+  const records=D.records(C,state,independent);
+  assert.equal(records.length,2);
+  assert.equal(records.find(record=>record.date==='2026-11-24').source,'calendar');
+  assert.equal(records.find(record=>record.date==='2026-11-25').source,'iron');
+  const analytics=D.analytics(C,W,state,metricClock(),independent);
+  assert.equal(analytics.trainingDays,2);
+  assert.equal(analytics.totalVolume,1000);
+});
+
+test('unfinished and sample sessions cannot hide calendar records and linked warmups do not inflate totals',()=>{
+  const state=C.normalizeState({events:[sample('planned','2026-11-25','벤치프레스',40,10)],settings:C.defaults});
+  const calendarSource=calendarLink(state,'planned','2026-11-25');
+  const ignored=independentState(...['ACTIVE','PAUSED','SAVED'].map(status=>independentSession(status,'2026-11-25',60,10,{status,calendarSource})),
+    independentSession('demo','2026-11-25',60,10,{isSample:true,calendarSource}));
+  assertLinkedMetrics(state,ignored,{count:1,sets:1,volume:400});
+  const warmup=independentSession('warmup','2026-11-25',60,10,{calendarSource});
+  warmup.exercises[0].sets[0].warmup=true;
+  assertLinkedMetrics(state,independentState(warmup),{count:1,sets:0,volume:0,sessions:0});
+});
+
+test('future linked sessions do not replace planned set counts or contribute actual metrics',()=>{
+  const state=C.normalizeState({events:[sample('planned','2026-11-26','벤치프레스',40,10)],settings:C.defaults});
+  const session=independentSession('linked','2026-11-26',60,10,{calendarSource:calendarLink(state,'planned','2026-11-26')});
+  session.exercises[0].sets.push({id:'extra',weight:60,reps:10,done:true,warmup:false});
+  const independent=independentState(session);
+  const day=D.daySummary(C,state,independent,'2026-11-26',metricClock());
+  assert.equal(day.workoutCount,1);assert.equal(day.setCount,1);assert.equal(day.completedSets,0);assert.equal(day.volume,0);
+  assert.equal(D.analytics(C,W,state,metricClock(),independent).totalVolume,0);
+});
+
+test('an anomalous second session with the same calendar source is not silently discarded',()=>{
+  const state=C.normalizeState({events:[sample('planned','2026-11-25','벤치프레스',40,10)],settings:C.defaults});
+  const source=calendarLink(state,'planned','2026-11-25');
+  const first=independentSession('first','2026-11-25',60,10,{calendarSource:source});
+  const second=independentSession('second','2026-11-25',70,10,{calendarSource:source});
+  state.events[0].workoutSessionId=first.id;
+  assertLinkedMetrics(C.normalizeState(state),independentState(first,second),{count:2,sets:2,volume:1100});
 });
 
 // A small render/navigation adapter exercises the actual dashboard script.

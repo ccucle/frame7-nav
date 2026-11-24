@@ -10,9 +10,10 @@ const path = require('node:path');
 const vm = require('node:vm');
 const C = require('../fitplan/core.js');
 const N = require('../fitplan/nutrition.js');
+const I = require('../fitplan/iron-store.js');
 const directory = path.join(__dirname, '../fitplan');
 const html = fs.readFileSync(path.join(directory, 'index.html'), 'utf8');
-const scripts = ['data.js', 'workouts.js', 'nutrition.js', 'core.js', 'iron-data.js', 'meals.js', 'app.js'].map((name) => [name, fs.readFileSync(path.join(directory, name), 'utf8')]);
+const scripts = ['data.js', 'workouts.js', 'nutrition.js', 'core.js', 'iron-store.js', 'calendar-workouts.js', 'iron-data.js', 'meals.js', 'app.js'].map((name) => [name, fs.readFileSync(path.join(directory, name), 'utf8')]);
 const decode = (s = '') => s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 class ClassList {
   constructor(value = '') { this.items = new Set(value.split(/\s+/).filter(Boolean)); }
@@ -101,7 +102,7 @@ class DocumentStub {
 }
 function boot(raw, options = {}) {
   const document = new DocumentStub(); document.body.innerHTML = html;
-  const map = new Map(raw === undefined ? [] : [[C.STORE, raw]]), writes = [], confirmations = [], downloads = [], windowListeners = new Map();
+  const map = new Map(raw === undefined ? [] : [[C.STORE, raw]]), writes = [], confirmations = [], downloads = [], windowListeners = new Map(), ironOpens = [];
   let failWrites = false, unique = 0;
   const storage = {
     getItem: (key) => map.get(key) ?? null,
@@ -126,7 +127,8 @@ function boot(raw, options = {}) {
   let ironSnapshot = options.iron;
   const setIronSnapshot = value => {
     ironSnapshot = value;
-    context.FormdayIndependent = { getSnapshot: () => ironSnapshot, renderCalendar: options.renderIronCalendar || (() => {}) };
+    context.FormdayIndependent = { getSnapshot: () => ironSnapshot, getCalendarSnapshot: () => ironSnapshot, renderCalendar: options.renderIronCalendar || (() => {}),
+      open(page, extra) { ironOpens.push({ page, extra }); return true; } };
   };
   if (options.iron) setIronSnapshot(options.iron);
   if (options.storageDenied) Object.defineProperty(context, 'localStorage', { get() { throw new Error('SecurityError'); } });
@@ -134,7 +136,7 @@ function boot(raw, options = {}) {
     if (name === 'app.js' && options.mealMount) context.FormdayMeals = { mount: options.mealMount };
     vm.runInContext(code, context, { filename: name });
   }
-  return { document, context, map, writes, storage, confirmations, downloads, windowListeners,
+  return { document, context, map, writes, storage, confirmations, downloads, windowListeners, ironOpens,
     setIronSnapshot(value) { setIronSnapshot(value); context.dispatchEvent(new context.CustomEvent('formday:iron-changed')); },
     get: (id) => document.querySelector('#' + id),
     failWrites(value = true) { failWrites = value; },
@@ -774,4 +776,249 @@ test('existing non-workout titles stay hidden and are not reused when their cate
     assert.equal(changed.events[0].id, event.id);
     assert.equal(app.writes.filter(([key]) => key === C.STORE).length, 1);
   }
+});
+
+const plain = value => JSON.parse(JSON.stringify(value));
+function scheduledFixture(repeat = 'none') {
+  return C.normalizeState({ settings: C.defaults, events: [{
+    id: 'scheduled-workout', date: '2026-11-23', start: '18:00', end: '19:00', type: 'strength',
+    title: '월요일 상체', repeat, completed: false, detail: { notes: '원래 계획 메모', exercises: [{
+      id: 'planned-bench', name: '벤치프레스', notes: '종목 원본', sets: [
+        { id: 'planned-warm', weight: 20, reps: 12, rpe: null, warmup: true, done: false },
+        { id: 'planned-main', weight: 60, reps: 8, rpe: 8, warmup: false, done: false }
+      ]
+    }] }
+  }] });
+}
+function routineFixture() {
+  return I.normalize({ ...I.empty(), routines: [{ id: 'lower-routine', name: '하체 루틴', updatedAt: '2026-11-20T00:00:00Z', exercises: [
+    { id: 'routine-squat', name: '스쿼트', notes: '루틴 원본 메모', sets: [
+      { id: 'routine-warm', weight: 25.5, reps: 15, rpe: null, warmup: true, restSec: 60 },
+      { id: 'routine-main', weight: 82.5, reps: 6, rpe: 8.5, warmup: false, restSec: 120 }
+    ] },
+    { id: 'routine-leg', name: '레그프레스', notes: '', sets: [
+      { id: 'routine-leg-main', weight: 120, reps: 10, rpe: 9, warmup: false, restSec: 90 }
+    ] }
+  ] }] });
+}
+function startScheduled(app, date = '2026-11-23') {
+  const bridge = app.context.FormdayBridge;
+  const started = I.startCalendar(app.context.FormdayIndependent.getSnapshot(), bridge.prepareScheduledWorkout('scheduled-workout', date), new Date(date + 'T18:00:00Z'));
+  app.setIronSnapshot(started.next);
+  return started;
+}
+function finishScheduled(app, date = '2026-11-23', kind = 'COMPLETED') {
+  const started = startScheduled(app, date);
+  const recorded = I.modify(started.next, started.session.id, session => {
+    session.exercises[0].sets.forEach((set, index) => { set.done = kind === 'COMPLETED' || index === 1; });
+    session.exercises[0].sets[1].weight = 65;
+  }, new Date(date + 'T18:15:00Z'));
+  const finished = I.finish(recorded.next, started.session.id, kind, new Date(date + 'T18:30:00Z'));
+  const saved = I.createStore(app.storage).save(finished.next, '');
+  app.setIronSnapshot(saved);
+  return saved.sessions[0];
+}
+
+test('calendar plans expose exact sets and date-specific start and replacement actions without writing records', () => {
+  const state = scheduledFixture('daily'), raw = JSON.stringify(state), app = boot(raw, { iron: routineFixture() });
+  const bridge = app.context.FormdayBridge;
+  bridge.openDayDetail('2026-11-24');
+  const items = bridge.getScheduledWorkouts('2026-11-24');
+  assert.equal(items.length, 1); assert.equal(items[0].canReplace, true); assert.equal(items[0].session, null);
+  const plan = bridge.prepareScheduledWorkout('scheduled-workout', '2026-11-24');
+  assert.equal(plan.date, '2026-11-24'); assert.equal(plan.label, '월요일 상체');
+  assert.deepEqual(plain(plan.exercises[0].sets.map(set => [set.id, set.weight, set.reps, set.rpe, set.warmup, set.done])), [
+    ['planned-warm', 20, 12, null, true, false], ['planned-main', 60, 8, 8, false, false]
+  ]);
+  const start = app.get('agenda').querySelector('[data-calendar-start="scheduled-workout"]');
+  const swap = app.get('agenda').querySelector('[data-calendar-swap="scheduled-workout"]');
+  assert.ok(start); assert.ok(swap); assert.equal(start.dataset.occdate, '2026-11-24'); assert.equal(swap.disabled, false);
+  start.click();
+  assert.equal(app.get('fd-day-sheet').open, false);
+  assert.deepEqual(plain(app.ironOpens), [{ page: 'calendar', extra: { eventId: 'scheduled-workout', date: '2026-11-24' } }]);
+  assert.equal(app.map.get(C.STORE), raw); assert.equal(app.writes.length, 0);
+  assert.equal(bridge.getScheduledWorkouts('invalid-date').length, 0);
+});
+
+test('replacing a scheduled routine changes only that occurrence and the workout projection, preserving the saved routine', () => {
+  const state = scheduledFixture('daily'), iron = routineFixture(), originalIron = JSON.stringify(iron), app = boot(JSON.stringify(state), { iron });
+  const bridge = app.context.FormdayBridge;
+  bridge.openDayDetail('2026-11-24');
+  app.get('agenda').querySelector('[data-calendar-swap="scheduled-workout"]').click();
+  assert.equal(app.get('fd-day-sheet').open, false);
+  assert.equal(app.get('apply-routine-swap').disabled, true);
+  const choice = app.document.querySelector('[data-routine-choice="lower-routine"]');
+  assert.equal(choice.getAttribute('aria-pressed'), 'false');
+  choice.click();
+  assert.equal(choice.getAttribute('aria-pressed'), 'true'); assert.equal(app.get('apply-routine-swap').disabled, false);
+  assert.equal(app.writes.length, 0);
+  app.get('apply-routine-swap').click();
+  assert.equal(app.get('modal-root').children.length, 0); assert.equal(app.get('fd-day-sheet').open, true);
+  const saved = C.normalizeState(JSON.parse(app.map.get(C.STORE))), event = saved.events[0];
+  assert.equal(saved.events.length, 1); assert.equal(event.title, '월요일 상체');
+  assert.deepEqual(event.detail, state.events[0].detail);
+  assert.deepEqual(Object.keys(event.occurrences), ['2026-11-24']);
+  const replaced = C.occurrence(event, '2026-11-24');
+  assert.equal(replaced.title, '하체 루틴'); assert.equal(replaced.completed, false);
+  assert.deepEqual(replaced.detail.exercises.map(ex => [ex.name, ex.sets.map(set => [set.weight, set.reps, set.rpe, set.warmup, set.done])]), [
+    ['스쿼트', [[25.5, 15, null, true, false], [82.5, 6, 8.5, false, false]]],
+    ['레그프레스', [[120, 10, 9, false, false]]]
+  ]);
+  assert.notEqual(replaced.detail.exercises[0].id, iron.routines[0].exercises[0].id);
+  assert.equal(C.occurrence(event, '2026-11-25').title, '월요일 상체');
+  assert.equal(bridge.getScheduledWorkouts('2026-11-24')[0].event.title, '하체 루틴');
+  assert.deepEqual(plain(bridge.prepareScheduledWorkout('scheduled-workout', '2026-11-24').exercises.map(ex => ex.name)), ['스쿼트', '레그프레스']);
+  assert.match(app.get('agenda').innerHTML, /하체 루틴/);
+  assert.equal(JSON.stringify(iron), originalIron);
+  assert.equal(app.writes.filter(([key]) => key === C.STORE).length, 1);
+  assert.equal(app.map.has(I.KEY), false);
+});
+
+test('cancelled and empty routine replacement dialogs leave both stores unchanged', () => {
+  const raw = JSON.stringify(scheduledFixture());
+  for (const iron of [routineFixture(), I.empty()]) {
+    const app = boot(raw, { iron }), bridge = app.context.FormdayBridge;
+    assert.equal(bridge.canCloudApply(), true);
+    assert.equal(bridge.openRoutineSwap('scheduled-workout', '2026-11-23'), true);
+    assert.equal(bridge.isRoutineSwapOpen(), true);
+    assert.equal(bridge.canCloudApply(), false);
+    assert.equal(bridge.cloudReload(), false);
+    assert.ok(app.get('apply-routine-swap'), 'a rejected cloud reload must leave the selection dialog open');
+    assert.equal(app.get('apply-routine-swap').disabled, true);
+    app.document.querySelector('[data-routine-choice="lower-routine"]')?.click();
+    app.get('cancel-routine-swap').click();
+    assert.equal(bridge.isRoutineSwapOpen(), false);
+    assert.equal(bridge.canCloudApply(), true);
+    assert.equal(app.get('modal-root').children.length, 0); assert.equal(app.map.get(C.STORE), raw); assert.equal(app.writes.length, 0);
+  }
+});
+
+test('already-started or recorded workouts cannot be replaced, including a start while selection is open', () => {
+  const raw = JSON.stringify(scheduledFixture()), app = boot(raw, { iron: routineFixture() }), bridge = app.context.FormdayBridge;
+  assert.equal(bridge.openRoutineSwap('scheduled-workout', '2026-11-23'), true);
+  app.document.querySelector('[data-routine-choice="lower-routine"]').click();
+  startScheduled(app);
+  assert.equal(bridge.getScheduledWorkouts('2026-11-23')[0].canReplace, false);
+  app.get('apply-routine-swap').click();
+  assert.match(app.get('form-error').textContent, /이미 시작/);
+  assert.equal(app.map.get(C.STORE), raw); assert.equal(app.writes.length, 0);
+  app.get('cancel-routine-swap').click();
+  assert.equal(bridge.openRoutineSwap('scheduled-workout', '2026-11-23'), false);
+  assert.equal(app.get('agenda').querySelector('[data-calendar-swap="scheduled-workout"]').disabled, true);
+  assert.match(app.get('agenda').innerHTML, /이어하기/);
+
+  const recorded = scheduledFixture(); recorded.events[0].detail.exercises[0].sets[0].done = true;
+  const doneApp = boot(JSON.stringify(recorded), { iron: routineFixture() });
+  assert.equal(doneApp.context.FormdayBridge.openRoutineSwap('scheduled-workout', '2026-11-23'), false);
+  assert.equal(doneApp.writes.length, 0);
+});
+
+test('a calendar edit during routine selection prevents stale replacement and retains the newer plan', () => {
+  const app = boot(JSON.stringify(scheduledFixture()), { iron: routineFixture() }), bridge = app.context.FormdayBridge;
+  bridge.openRoutineSwap('scheduled-workout', '2026-11-23');
+  app.document.querySelector('[data-routine-choice="lower-routine"]').click();
+  assert.equal(bridge.saveSet({ eventId: 'scheduled-workout', date: '2026-11-23', exerciseId: 'planned-bench', setId: 'planned-main', weight: 72.5, reps: 7, rpe: 9, done: false }), true);
+  const edited = app.map.get(C.STORE), writes = app.writes.length;
+  app.get('apply-routine-swap').click();
+  assert.match(app.get('form-error').textContent, /일정이 변경/);
+  assert.equal(app.map.get(C.STORE), edited); assert.equal(app.writes.length, writes);
+  assert.equal(bridge.getScheduledWorkouts('2026-11-23')[0].event.detail.exercises[0].sets[1].weight, 72.5);
+});
+
+test('finalized workout reflection updates one recurring occurrence and idempotent retry does not write again', () => {
+  const original = scheduledFixture('daily'), app = boot(JSON.stringify(original), { iron: routineFixture() }), bridge = app.context.FormdayBridge;
+  const session = finishScheduled(app, '2026-11-24');
+  const independentRaw = app.map.get(I.KEY);
+  assert.equal(bridge.getWorkoutReflection(session).applied, false);
+  assert.equal(bridge.reflectWorkoutSession(session).ok, true);
+  const saved = C.normalizeState(JSON.parse(app.map.get(C.STORE))), event = saved.events[0];
+  assert.deepEqual(event.detail, original.events[0].detail);
+  assert.deepEqual(Object.keys(event.occurrences), ['2026-11-24']);
+  const actual = C.occurrence(event, '2026-11-24');
+  assert.equal(actual.completed, true); assert.equal(actual.workoutSessionId, session.id);
+  assert.deepEqual(actual.detail.exercises[0].sets.map(set => [set.weight, set.done]), [[20, true], [65, true]]);
+  assert.equal(C.occurrence(event, '2026-11-25').completed, false);
+  assert.equal(C.occurrence(event, '2026-11-25').workoutSessionId, undefined);
+  assert.equal(bridge.getWorkoutReflection(session).applied, true);
+  const writes = app.writes.length;
+  assert.equal(bridge.reflectWorkoutSession(session).alreadyApplied, true);
+  assert.equal(app.writes.length, writes); assert.equal(app.map.get(I.KEY), independentRaw);
+  bridge.openDayDetail('2026-11-24');
+  assert.match(app.get('agenda').innerHTML, /운동 기록/);
+  assert.equal(app.get('agenda').querySelector('[data-calendar-swap="scheduled-workout"]').disabled, true);
+});
+
+test('calendar save failure preserves a finalized partial workout and can retry without changing the independent store', () => {
+  const raw = JSON.stringify(scheduledFixture()), app = boot(raw, { iron: routineFixture() }), bridge = app.context.FormdayBridge;
+  const session = finishScheduled(app, '2026-11-23', 'PARTIAL'), independentRaw = app.map.get(I.KEY);
+  app.failWrites();
+  const failed = bridge.reflectWorkoutSession(session);
+  assert.equal(failed.ok, false); assert.match(failed.error, /캘린더 저장에 실패/);
+  assert.equal(app.map.get(C.STORE), raw); assert.equal(app.map.get(I.KEY), independentRaw);
+  assert.equal(bridge.getWorkoutReflection(session).applied, false);
+  app.failWrites(false);
+  assert.equal(bridge.reflectWorkoutSession(session).ok, true);
+  const actual = bridge.getScheduledWorkouts('2026-11-23')[0].event;
+  assert.equal(actual.completed, false); assert.equal(actual.workoutSessionId, session.id);
+  assert.deepEqual(plain(actual.detail.exercises[0].sets.map(set => set.done)), [false, true]);
+  assert.equal(app.map.get(I.KEY), independentRaw);
+  assert.equal(app.get('stat-workout').textContent, '1 / 1');
+  assert.match(app.get('workout-progress').innerHTML, /520/);
+});
+
+test('changed source plans and an open calendar editor block reflection without losing completed sets', () => {
+  const app = boot(JSON.stringify(scheduledFixture()), { iron: routineFixture() }), bridge = app.context.FormdayBridge;
+  const session = finishScheduled(app), independentRaw = app.map.get(I.KEY);
+  app.get('settings-btn').click();
+  assert.equal(bridge.reflectWorkoutSession(session).ok, false);
+  app.get('modal-close').click();
+  assert.equal(bridge.saveSet({ eventId: 'scheduled-workout', date: '2026-11-23', exerciseId: 'planned-bench', setId: 'planned-main', weight: 75, reps: 8, rpe: 9, done: false }), true);
+  const edited = app.map.get(C.STORE), writes = app.writes.length;
+  const result = bridge.reflectWorkoutSession(session);
+  assert.equal(result.ok, false); assert.match(result.error, /일정이 변경/);
+  assert.equal(bridge.getWorkoutReflection(session).applied, false);
+  assert.match(bridge.getWorkoutReflection(session).message, /일정이 변경/);
+  assert.equal(app.map.get(C.STORE), edited); assert.equal(app.map.get(I.KEY), independentRaw); assert.equal(app.writes.length, writes);
+});
+
+test('a reflected calendar workout cannot be moved to another date or changed to another record type', () => {
+  const app = boot(JSON.stringify(scheduledFixture()), { iron: routineFixture() }), bridge = app.context.FormdayBridge;
+  const session = finishScheduled(app);
+  assert.equal(bridge.reflectWorkoutSession(session).ok, true);
+  const raw = app.map.get(C.STORE);
+  app.get('agenda').querySelector('[data-edit="scheduled-workout"]').click();
+  app.get('f-date').value = '2026-11-24';
+  app.get('save-event').click();
+  assert.match(app.get('form-error').textContent, /날짜와 종류/); assert.equal(app.map.get(C.STORE), raw);
+  app.get('f-date').value = '2026-11-23';
+  app.document.querySelector('[data-pick="cardio"]').click();
+  app.get('save-event').click();
+  assert.match(app.get('form-error').textContent, /날짜와 종류/); assert.equal(app.map.get(C.STORE), raw);
+});
+
+test('routine replacement rejects a stale independent snapshot at apply time without changing either store', () => {
+  const raw = JSON.stringify(scheduledFixture()), iron = routineFixture(), originalIron = JSON.stringify(iron), app = boot(raw, { iron });
+  const bridge = app.context.FormdayBridge;
+  assert.equal(bridge.openRoutineSwap('scheduled-workout', '2026-11-23'), true);
+  app.document.querySelector('[data-routine-choice="lower-routine"]').click();
+  app.context.FormdayIndependent.getCalendarSnapshot = () => { throw new Error('다른 탭에서 운동 기록이 변경되었습니다. 최신 기록을 불러와 주세요.'); };
+  app.get('apply-routine-swap').click();
+  assert.match(app.get('form-error').textContent, /다른 탭/);
+  assert.equal(app.map.get(C.STORE), raw); assert.equal(JSON.stringify(iron), originalIron); assert.equal(app.writes.length, 0);
+});
+
+test('a saved routine changed after selection must be selected again before replacing a calendar plan', () => {
+  const raw = JSON.stringify(scheduledFixture()), iron = routineFixture(), originalIron = JSON.stringify(iron), app = boot(raw, { iron });
+  const bridge = app.context.FormdayBridge;
+  assert.equal(bridge.openRoutineSwap('scheduled-workout', '2026-11-23'), true);
+  app.document.querySelector('[data-routine-choice="lower-routine"]').click();
+  const latest = structuredClone(iron);
+  latest.routines[0].exercises[0].sets[1].weight = 95;
+  app.setIronSnapshot(latest);
+  app.get('apply-routine-swap').click();
+  assert.match(app.get('form-error').textContent, /루틴 구성이 변경/);
+  assert.equal(app.map.get(C.STORE), raw); assert.equal(app.writes.length, 0);
+  assert.equal(JSON.stringify(iron), originalIron);
+  assert.equal(app.context.FormdayIndependent.getCalendarSnapshot().routines[0].exercises[0].sets[1].weight, 95);
+  assert.equal(bridge.isRoutineSwapOpen(), true);
 });
