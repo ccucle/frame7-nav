@@ -221,6 +221,97 @@
       ex.sets.push({...last,id:uid(),done:false});
     },date);
   }
+  function modifyActive(data,sessionId,apply,date){
+    const result=modify(data,sessionId,session=>{
+      must(session.status==='ACTIVE','운동을 재개한 뒤 기록을 변경해 주세요.');
+      apply(session);
+    },date);
+    // Validate the entire candidate before returning an atomic, independently owned snapshot.
+    const next=normalize(result.next);
+    return {next,session:next.sessions.find(session=>session.id===sessionId)};
+  }
+  function patchKeys(value,allowed,message){
+    must(obj(value)&&Object.keys(value).every(key=>allowed.includes(key)),message);
+  }
+  function updateSession(data,sessionId,patch,date=new Date()){
+    patchKeys(patch,['notes','exercises'],'운동 입력 항목을 확인해 주세요.');
+    if(own(patch,'notes'))must(typeof patch.notes==='string','운동 메모는 글자로 입력해 주세요.');
+    if(own(patch,'exercises'))must(Array.isArray(patch.exercises),'종목 입력 형식을 확인해 주세요.');
+    return modifyActive(data,sessionId,session=>{
+      if(own(patch,'notes'))session.notes=patch.notes.slice(0,4000);
+      const exerciseIds=new Set();
+      for(const change of patch.exercises||[]){
+        patchKeys(change,['id','notes','sets'],'종목 입력 항목을 확인해 주세요.');
+        must(idOk(change.id)&&!exerciseIds.has(change.id),'종목 식별자가 없거나 중복되었습니다.');
+        exerciseIds.add(change.id);
+        const exercise=session.exercises.find(item=>item.id===change.id);
+        must(!!exercise,'기록할 운동 종목을 찾지 못했습니다.');
+        if(own(change,'notes')){
+          must(typeof change.notes==='string','종목 메모는 글자로 입력해 주세요.');
+          exercise.notes=change.notes.slice(0,2000);
+        }
+        if(own(change,'sets'))must(Array.isArray(change.sets),'세트 입력 형식을 확인해 주세요.');
+        const setIds=new Set();
+        for(const values of change.sets||[]){
+          patchKeys(values,['id','weight','reps','rpe','restSec','warmup','done'],'세트 입력 항목을 확인해 주세요.');
+          must(idOk(values.id)&&!setIds.has(values.id),'세트 식별자가 없거나 중복되었습니다.');
+          setIds.add(values.id);
+          const set=exercise.sets.find(item=>item.id===values.id);
+          must(!!set,'기록할 세트를 찾지 못했습니다.');
+          if(own(values,'warmup'))must(typeof values.warmup==='boolean','워밍업 상태를 확인해 주세요.');
+          if(own(values,'restSec'))integer(values.restSec,0,600);
+          Object.assign(set,normalizeSet({...set,...values},true));
+        }
+      }
+    },date);
+  }
+  function removeSet(data,sessionId,exerciseId,date=new Date()){
+    return modifyActive(data,sessionId,session=>{
+      const exercise=session.exercises.find(item=>item.id===exerciseId);
+      must(!!exercise,'변경할 운동 종목을 찾지 못했습니다.');
+      must(exercise.sets.length>1,'종목마다 세트가 최소 1개 필요합니다.');
+      must(!exercise.sets.at(-1).done,'완료한 마지막 세트는 먼저 완료 체크를 해제해 주세요.');
+      exercise.sets.pop();
+    },date);
+  }
+  function replaceExercise(data,sessionId,exerciseId,name,date=new Date()){
+    const selected=text(name,80);
+    return modifyActive(data,sessionId,session=>{
+      const exercise=session.exercises.find(item=>item.id===exerciseId);
+      must(!!exercise,'교체할 운동 종목을 찾지 못했습니다.');
+      must(!exercise.sets.some(set=>set.done),'완료한 세트가 있는 종목은 교체할 수 없습니다. 새 종목으로 추가해 주세요.');
+      const replacement=newExercise(selected);
+      exercise.name=replacement.name;
+      exercise.notes='';
+      exercise.sets=replacement.sets.map(set=>({...set,done:false}));
+    },date);
+  }
+  function getPreviousExercise(data,name,beforeSessionId=null){
+    const snapshot=normalize(data),selected=text(name,80);
+    const current=beforeSessionId===null?null:snapshot.sessions.find(session=>session.id===beforeSessionId);
+    if(beforeSessionId!==null)must(!!current,'현재 운동 세션을 찾지 못했습니다.');
+    const cutoff=current?Date.parse(current.startedAt):Infinity;
+    const sessions=snapshot.sessions.filter(session=>session.id!==beforeSessionId&&
+      (session.status==='COMPLETED'||session.status==='PARTIAL')&&Date.parse(session.endedAt)<=cutoff)
+      .sort((a,b)=>Date.parse(b.endedAt)-Date.parse(a.endedAt)||Date.parse(b.startedAt)-Date.parse(a.startedAt));
+    for(const session of sessions){
+      const exercise=session.exercises.find(item=>item.name===selected&&item.sets.some(set=>set.done));
+      if(exercise)return {sessionId:session.id,date:session.date,label:session.label,endedAt:session.endedAt,exercise};
+    }
+    return null;
+  }
+  function loadPreviousSets(data,sessionId,exerciseId,date=new Date()){
+    let previous=null;
+    const result=modifyActive(data,sessionId,session=>{
+      const exercise=session.exercises.find(item=>item.id===exerciseId);
+      must(!!exercise,'기록을 불러올 운동 종목을 찾지 못했습니다.');
+      must(!exercise.sets.some(set=>set.done),'완료한 세트가 있는 종목에는 이전 기록을 덮어쓸 수 없습니다.');
+      previous=getPreviousExercise(data,exercise.name,sessionId);
+      must(!!previous,'이 종목의 이전 완료 기록이 없습니다.');
+      exercise.sets=previous.exercise.sets.filter(set=>set.done).map(set=>({...set,id:uid(),done:false}));
+    },date);
+    return {...result,previous};
+  }
   function changeState(data,sessionId,action,date=new Date()){
     return modify(data,sessionId,s=>{
       const transitions={pause:['ACTIVE','PAUSED'],stash:['ACTIVE','SAVED'],resume:['PAUSED','ACTIVE'],resumeSaved:['SAVED','ACTIVE'],stashPaused:['PAUSED','SAVED']};
@@ -268,5 +359,5 @@
     }
     return {completedSets,volume:Math.round(volume*100)/100,exercises,minutes:Math.round(s.activeMs/60000)};
   }
-  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,getUnfinished,start,modify,setValue,addExercise,addExercises,addSet,changeState,finish,cancel,resumeAfterReload,recordSummary});
+  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,getUnfinished,start,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,recordSummary});
 });

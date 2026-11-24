@@ -372,7 +372,8 @@ test('free workout opens the picker and saves all selected exercises in one writ
   const current=M.getUnfinished(view.api.getSnapshot());
   assert.deepEqual(current.exercises.map(ex=>ex.name),['스쿼트','랫풀다운']);
   assert.equal(view.writes.filter(([key])=>key===M.KEY).length,1);
-  assert.match(view.host.innerHTML,/ACTIVE WORKOUT/);
+  assert.match(view.host.innerHTML,/aria-label="진행 중인 운동"/);
+  assert.equal(view.document.body.dataset.fiSession,'true');
   assert.equal(view.pickerIsOpen,false);
 });
 test('canceling free selection makes no session, and a missing picker displays a useful error',()=>{
@@ -456,7 +457,8 @@ test('resuming a saved workout enters its session and repeated resume never star
   const started=M.start(M.empty(),{},clock),data=M.changeState(started.next,started.session.id,'stash',advance(1)).next;
   const view=ui(data);view.workout();view.action('resume');
   assert.equal(M.getUnfinished(view.api.getSnapshot()).status,'ACTIVE');
-  assert.match(view.host.innerHTML,/ACTIVE WORKOUT/);
+  assert.match(view.host.innerHTML,/aria-label="진행 중인 운동"/);
+  assert.equal(view.document.body.dataset.fiSession,'true');
   const before=JSON.stringify(view.api.getSnapshot());view.action('resume');
   assert.equal(JSON.stringify(view.api.getSnapshot()),before);
   assert.equal(view.api.getSnapshot().sessions.length,1);

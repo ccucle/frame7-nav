@@ -20,7 +20,10 @@
   const TIME_LIMIT_MS=24*60*60*1000;
   let store,blocked='',state=null,screen='home',editingRoutine=null,draft=null,programDraft=null,
       draftBaseline='',programBaseline='',pickerOpen=false,
-      focusedSession=null,message='',error=false,revisionConflict=false,clockTick=Date.now(),timerSecs=90,timerEnd=0;
+      focusedSession=null,message='',error=false,revisionConflict=false,clockTick=Date.now(),timerSecs=90,timerEnd=0,
+      timerVisible=false,timerAutoPaused=false,sessionDirty=false,sessionViewMode='all',sessionExerciseIndex=0,
+      backgroundStoppedAt=null,previousCacheSession=null;
+  const previousCache=new Map();
   try{
     store=M.createStore(root.localStorage);
     const result=store.load();
@@ -45,6 +48,10 @@
   function paintMessage(){
     const banner=host.querySelector('#fi-banner');
     if(banner){banner.hidden=!message;banner.textContent=message;banner.classList?.toggle('fi-msg-error',error);}
+    const reload=host.querySelector('#fi-session-reload');
+    if(reload)reload.hidden=!revisionConflict;
+    const saved=host.querySelector('#fi-session-save-state');
+    if(saved)saved.textContent=error?'저장 상태를 확인해 주세요':sessionDirty?'입력 중 · 입력을 마치면 저장됩니다':'기기에 저장됨';
   }
   function editable(){
     if(blocked||!state)throw Error(blocked||'운동 기록을 먼저 불러와 주세요.');
@@ -79,6 +86,7 @@
   }
   function beforeNavigate(){
     if(pickerOpen||root.FormdayExercisePicker?.isOpen?.()){setMessage('종목 선택을 완료하거나 선택창을 닫은 뒤 이동해 주세요.',true);paintMessage();return false;}
+    if(screen==='session'&&!saveSessionInputs())return false;
     const discarded=hasUnsavedDraft();
     if(discarded&&!root.confirm('저장하지 않은 루틴 또는 프로그램 변경사항을 버리고 이동할까요? 계속 작성하려면 취소를 누르세요.'))return false;
     clearDrafts();
@@ -88,6 +96,7 @@
   function go(page){
     if(page==='choose')page='routines';
     if(!['home','routines','builder','programs','programBuilder','session','history'].includes(page))page='home';
+    if(screen==='session'&&page!=='session'&&!saveSessionInputs())return false;
     const leavingDraft=(screen==='builder'&&page!=='builder'&&draft)||(screen==='programBuilder'&&page!=='programBuilder'&&programDraft);
     if(leavingDraft&&!beforeNavigate())return false;
     document.body.dataset.fdScreen='independent';
@@ -264,38 +273,78 @@
       button('edit-routine','편집','outline','data-id="'+esc(r.id)+'"')+'</div>').join('')+'</div></section>';
   }
   const duration=s=>{
-    const active=s.status==='ACTIVE'&&s.activeSince?Math.max(0,Date.now()-Date.parse(s.activeSince)):0;
+    const active=s.status==='ACTIVE'&&s.activeSince?Math.max(0,(backgroundStoppedAt??Date.now())-Date.parse(s.activeSince)):0;
     return Math.floor((s.activeMs+active)/1000);
   };
   const timeLabel=n=>String(Math.floor(n/3600)).padStart(2,'0')+':'+String(Math.floor((n%3600)/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+  const sessionButton=(action,label,classes='',attrs='')=>'<button type="button" class="'+classes+'" data-fi-action="'+action+'" '+attrs+'>'+label+'</button>';
+  const restLabel=n=>Math.floor(n/60)+':'+String(n%60).padStart(2,'0');
+  const mainSetCount=s=>s.exercises.reduce((n,ex)=>n+ex.sets.filter(set=>set.done&&!set.warmup).length,0);
+  const finishedExerciseCount=s=>s.exercises.filter(ex=>{const sets=ex.sets.filter(set=>!set.warmup);return sets.length&&sets.every(set=>set.done);}).length;
+  function previousExercise(name,sessionId){
+    // Finalized history cannot change during this workout; explicit reload invalidates this cache.
+    if(previousCacheSession!==sessionId){previousCacheSession=sessionId;previousCache.clear();}
+    if(!previousCache.has(name))previousCache.set(name,M.getPreviousExercise(state,name,sessionId));
+    return previousCache.get(name);
+  }
+  function sessionExercise(ex,index,s){
+    const enabled=s.status==='ACTIVE',disabled=enabled?'':'disabled';
+    const media=root.FormdayExerciseMedia?.byName?.[ex.name];
+    const previous=previousExercise(ex.name,s.id);
+    const previousSet=previous?.exercise.sets.filter(set=>set.done&&!set.warmup).at(-1);
+    const allDone=ex.sets.every(set=>set.done),hasDone=ex.sets.some(set=>set.done);
+    const nextSet=ex.sets.find(set=>!set.done)||ex.sets.at(-1);
+    let workIndex=0;
+    return '<article class="fs-exercise" data-fi-ex="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+'">'+
+      '<div class="fs-ex-head"><div class="fs-art">'+(media?'<img src="'+esc(media.src)+'" alt="'+esc(media.alt)+'" width="96" height="112" loading="lazy">':'<span>이미지<br>준비 중</span>')+'</div>'+
+      '<div class="fs-ex-title"><span class="fs-ex-order">EXERCISE '+String(index+1).padStart(2,'0')+'</span><h3>'+esc(ex.name)+'</h3><div class="fs-ex-meta">'+
+      sessionButton('rest-exercise','◷ 휴식 '+restLabel(nextSet.restSec),'','data-id="'+esc(ex.id)+'" '+disabled)+
+      '<span>'+(previousSet?'이전 '+esc(previous.date.slice(5).replace('-','.'))+' · '+fmt(previousSet.weight)+'kg × '+previousSet.reps+'회':previous?'이전 워밍업 기록 있음':'이전 기록 없음')+'</span></div></div>'+
+      '<div class="fs-ex-actions">'+sessionButton('replace-session-ex','⇄','fs-icon','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 종목 교체" title="'+(hasDone?'완료 체크를 해제한 뒤 교체할 수 있습니다':'종목 교체')+'" '+(enabled&&!hasDone?'':'disabled'))+'</div></div>'+
+      '<label class="sr-only" for="note-'+esc(ex.id)+'">'+esc(ex.name)+' 메모</label><input id="note-'+esc(ex.id)+'" class="fs-ex-note" data-fi-ex-note="'+esc(ex.id)+'" maxlength="2000" placeholder="이 종목의 메모를 남겨보세요" value="'+esc(ex.notes)+'" '+disabled+'>'+
+      '<div class="fs-set-tools"><div class="fs-stepper">'+
+      sessionButton('remove-session-set','−','','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 마지막 세트 삭제" '+(enabled&&ex.sets.length>1&&!ex.sets.at(-1).done?'':'disabled'))+
+      '<span>'+ex.sets.length+' 세트</span>'+sessionButton('add-session-set','＋','','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 세트 추가" '+(enabled&&ex.sets.length<50?'':'disabled'))+'</div>'+
+      sessionButton('load-previous','불러오기','fs-load','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 이전 기록 불러오기" title="'+(hasDone?'완료 체크를 해제한 뒤 불러올 수 있습니다':previous?'최근 완료 기록을 불러옵니다':'불러올 이전 완료 기록이 없습니다')+'" '+(enabled&&!hasDone&&previous?'':'disabled'))+
+      sessionButton('complete-exercise','✓✓','fs-all-done','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+(allDone?' 전체 완료 해제':' 전체 세트 완료')+'" aria-pressed="'+allDone+'" '+disabled)+'</div>'+
+      '<div class="fs-columns" aria-hidden="true"><span>세트</span><span>중량</span><span>횟수</span><span>완료</span></div>'+
+      ex.sets.map((set,j)=>{
+        const count=set.warmup?'W':++workIndex;
+        return '<div class="fs-set-wrap" data-fi-set="'+esc(set.id)+'" data-fi-exid="'+esc(ex.id)+'"><div class="fs-set" data-done="'+set.done+'">'+
+          sessionButton('toggle-warmup',count,'fs-set-number'+(set.warmup?' fs-warmup':''),'data-ex="'+esc(ex.id)+'" data-id="'+esc(set.id)+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 '+(set.warmup?'본세트로 변경':'워밍업으로 변경')+'" aria-pressed="'+set.warmup+'" '+disabled)+
+          '<label class="fs-number"><input type="number" inputmode="decimal" data-fi-kg min="0" max="2000" step="any" value="'+set.weight+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 중량" '+disabled+'><span>kg</span></label>'+
+          '<label class="fs-number"><input type="number" inputmode="numeric" data-fi-reps min="1" max="1000" step="1" value="'+set.reps+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 횟수" '+disabled+'><span>회</span></label>'+
+          sessionButton('save-session-set','✓','fs-check','data-ex="'+esc(ex.id)+'" data-id="'+esc(set.id)+'" data-done="'+set.done+'" aria-pressed="'+set.done+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 '+(set.done?'완료 해제':'완료')+'" '+disabled)+'</div>'+
+          '<details class="fs-set-details"><summary>'+ (j+1)+'세트 상세 <span>휴식 '+restLabel(set.restSec)+(set.rpe?' · RPE '+set.rpe:'')+'</span></summary><div>'+
+          '<label>휴식(초)<input type="number" inputmode="numeric" data-fi-rest min="0" max="600" step="1" value="'+set.restSec+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 휴식 시간" '+disabled+'></label>'+
+          '<label>RPE <small>선택 · 1–10</small><input type="number" inputmode="decimal" data-fi-rpe min="1" max="10" step="0.5" placeholder="—" value="'+(set.rpe??'')+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 RPE" '+disabled+'></label></div></details></div>';
+      }).join('')+'</article>';
+  }
   function sessionView(){
     const s=current();
     if(!s)return home();
-    const result=summary(s);
-    return '<section class="fi-view"><div class="fi-section-head"><div><span class="fi-kicker">ACTIVE WORKOUT / '+esc(s.date)+'</span><h2>'+esc(s.label)+'</h2></div>'+
-      '<span class="fi-status">'+(s.status==='ACTIVE'?'운동 중':s.status==='SAVED'?'임시 보관':'일시정지')+'</span></div>'+
-      (Date.now()-Date.parse(s.lastSavedAt)>=TIME_LIMIT_MS?'<div class="fi-alert">마지막 저장 이후 24시간이 지났습니다. 자동 종료나 삭제는 하지 않습니다.</div>':'')+
-      '<div class="fi-stats"><div><span>운동 시간</span><strong id="fi-duration">'+timeLabel(duration(s))+'</strong></div><div><span>완료 세트</span><strong>'+result.completedSets+'</strong></div><div><span>운동량</span><strong>'+fmt(result.volume)+' <small>kg</small></strong></div></div>'+
-      '<div class="fi-inline-actions fi-session-control">'+
-      (s.status==='ACTIVE'?button('pause','Ⅱ 일시정지','outline')+button('stash','↧ 나중에 이어하기','outline'):
-      button('resume','▶ 운동 재개','primary')+(s.status==='PAUSED'?button('stash','임시 보관','outline'):''))+
-      button('cancel-session','운동 취소','danger')+'</div>'+
-      '<div class="fi-session-exercises">'+s.exercises.map((ex,i)=>'<div class="fi-panel fi-session-ex" data-fi-ex="'+esc(ex.id)+'">'+
-      '<div class="fi-section-head"><h3>'+(i+1)+'. '+esc(ex.name)+'</h3>'+button('add-session-set','＋ 세트','outline','data-id="'+esc(ex.id)+'" '+(s.status==='ACTIVE'?'':'disabled'))+'</div>'+
-      '<div class="fi-set-grid fi-set-label"><span>세트</span><span>kg</span><span>횟수</span><span>RPE</span><span>완료</span><span>저장</span></div>'+
-      ex.sets.map((set,j)=>'<div class="fi-set-grid fi-set-row" data-fi-set="'+esc(set.id)+'" data-fi-exid="'+esc(ex.id)+'">'+
-      '<strong>'+(j+1)+(set.warmup?' W':'')+'</strong>'+
-      '<input type="number" inputmode="decimal" data-fi-kg min="0" max="2000" step="0.5" value="'+set.weight+'" aria-label="'+(j+1)+'세트 중량" '+(s.status==='ACTIVE'?'':'disabled')+'>'+
-      '<input type="number" inputmode="numeric" data-fi-reps min="1" max="1000" step="1" value="'+set.reps+'" aria-label="'+(j+1)+'세트 횟수" '+(s.status==='ACTIVE'?'':'disabled')+'>'+
-      '<input type="number" inputmode="decimal" data-fi-rpe min="1" max="10" step="0.5" placeholder="–" value="'+(set.rpe??'')+'" aria-label="'+(j+1)+'세트 RPE" '+(s.status==='ACTIVE'?'':'disabled')+'>'+
-      '<label><input type="checkbox" data-fi-done '+(set.done?'checked':'')+' '+(s.status==='ACTIVE'?'':'disabled')+' aria-label="'+(j+1)+'세트 완료"></label>'+
-      button('save-session-set','저장',set.done?'done':'outline','data-ex="'+esc(ex.id)+'" data-id="'+esc(set.id)+'" '+(s.status==='ACTIVE'?'':'disabled'))+'</div>').join('')+'</div>').join('')+'</div>'+
-      '<div class="fi-panel fi-picker-add"><div><h3>운동 종목 추가</h3><p>현재 '+s.exercises.length+' / 30종목 · 여러 종목을 한 번에 고를 수 있습니다.</p></div>'+
-      button('add-session-ex','＋ 종목 선택','outline',s.status==='ACTIVE'&&s.exercises.length<30?'':'disabled')+'</div>'+
-      '<div class="fi-panel fi-timer"><span class="fi-kicker">REST TIMER</span><div class="fi-timer-number" id="fi-timer-number">'+Math.ceil(timerSecs)+'초</div>'+
-      '<div class="fi-inline-actions">'+button('timer90','90초','outline')+button('timer120','120초','outline')+button('timer-toggle',timerEnd?'일시정지':'타이머 시작','outline')+'</div></div>'+
-      '<div class="fi-sticky-actions">'+button('finish','운동 완료 확정')+button('partial','여기까지 부분 완료','outline')+'</div>'+
-      '<p class="fi-note">완료 세트만 운동량에 반영됩니다. 확정하지 않은 세션은 캘린더에 표시하지 않습니다.</p></section>';
+    const result=summary(s),enabled=s.status==='ACTIVE';
+    const finishedExercises=finishedExerciseCount(s);
+    sessionExerciseIndex=Math.min(sessionExerciseIndex,s.exercises.length-1);
+    const shown=sessionViewMode==='one'?[[s.exercises[sessionExerciseIndex],sessionExerciseIndex]]:s.exercises.map((ex,i)=>[ex,i]);
+    return '<section class="fs-session" aria-label="진행 중인 운동"><header class="fs-top"><div class="fs-top-row">'+
+      sessionButton('minimize-session','⌄','fs-icon fs-back','aria-label="운동 화면 접기"')+
+      sessionButton(enabled?'pause':'resume','<span id="fi-duration">'+timeLabel(duration(s))+'</span><span aria-hidden="true">'+(enabled?'Ⅱ':'▶')+'</span>','fs-clock','aria-label="'+(enabled?'운동 일시정지':'운동 재개')+'"')+
+      sessionButton('finish','완료','fs-finish')+'</div><div class="fs-metrics"><div><span>운동량</span><strong><span id="fi-session-volume">'+fmt(result.volume)+'</span> <small>kg</small></strong></div><div><span>완료 본세트</span><strong><span id="fi-session-sets">'+mainSetCount(s)+'</span> <small>세트</small></strong></div><div><span>완료 종목</span><strong><span id="fi-session-exercises">'+finishedExercises+'</span> <small>/ '+s.exercises.length+'</small></strong></div></div></header>'+
+      '<div class="fs-body"><div id="fi-banner" class="'+(error?'fi-msg-error':'')+'" '+(!message?'hidden':'')+' role="status">'+esc(message)+'</div>'+
+      sessionButton('reload','다른 탭의 최신 기록 불러오기','fi-btn fi-outline','id="fi-session-reload" '+(revisionConflict?'':'hidden'))+
+      (!enabled?'<div class="fs-pause-note"><b>'+(s.status==='SAVED'?'임시 보관한 운동':'운동을 잠시 멈췄습니다')+'</b><span>상단의 재생 버튼을 누르면 이어서 기록할 수 있습니다.</span></div>':'')+
+      (Date.now()-Date.parse(s.lastSavedAt)>=TIME_LIMIT_MS?'<div class="fi-alert">마지막 저장 이후 24시간이 지났습니다. 이어서 진행하거나 여기까지 완료할 수 있습니다.</div>':'')+
+      '<div class="fs-heading"><span class="fi-kicker">TODAY’S TRAINING · '+esc(s.date)+'</span><h2>'+esc(s.label)+'</h2><label class="sr-only" for="fi-session-note">오늘의 운동 메모</label><textarea id="fi-session-note" class="fs-note-input" rows="2" maxlength="4000" placeholder="오늘의 컨디션이나 메모를 남겨보세요" '+(enabled?'':'disabled')+'>'+esc(s.notes)+'</textarea><span id="fi-session-save-state" class="fs-save-state">기기에 저장됨</span></div>'+
+      sessionButton('toggle-session-view',sessionViewMode==='all'?'▤ 한 종목씩 보기':'☷ 모든 종목 보기','fs-view-switch','aria-pressed="'+(sessionViewMode==='one')+'"')+
+      (sessionViewMode==='one'?'<nav class="fs-focus-nav" aria-label="현재 운동 종목">'+sessionButton('session-prev','← 이전','','aria-label="이전 운동 종목" '+(sessionExerciseIndex===0?'disabled':''))+'<span>'+(sessionExerciseIndex+1)+' / '+s.exercises.length+'</span>'+sessionButton('session-next','다음 →','','aria-label="다음 운동 종목" '+(sessionExerciseIndex===s.exercises.length-1?'disabled':''))+'</nav>':'')+
+      '<div class="fs-exercises">'+shown.map(([ex,i])=>sessionExercise(ex,i,s)).join('')+'</div>'+
+      '<p class="fs-footer-note">세트 번호를 누르면 워밍업(W)으로 바뀝니다. 운동량과 완료 본세트에는 완료한 본세트만 반영됩니다.</p>'+
+      '<details class="fs-session-actions"><summary>운동 관리</summary><div class="fi-inline-actions">'+
+      (s.status!=='SAVED'?button('stash','나중에 이어하기','outline'):'')+button('partial','여기까지 부분 완료','outline')+button('cancel-session','이 운동 취소','danger')+'</div><p>완료하면 기록에 저장됩니다. 운동 중의 종목·세트 변경은 원래 루틴에 영향을 주지 않습니다.</p></details>'+
+      '<a class="fs-credits" href="exercise-credits.html" target="_blank" rel="noopener">운동 이미지 출처</a></div>'+
+      '<div class="fs-dock"><div class="fs-rest" '+(timerVisible?'':'hidden')+' role="group" aria-label="휴식 타이머"><div><span id="fi-timer-label">휴식</span><strong id="fi-timer-number">'+restLabel(Math.ceil(timerSecs))+'</strong></div>'+sessionButton('timer-toggle',timerEnd?'Ⅱ':'▶','fs-icon','id="fi-timer-toggle" aria-label="휴식 타이머 '+(timerEnd?'일시정지':'시작')+'" '+(enabled?'':'disabled'))+sessionButton('timer-add','+15초','','aria-label="휴식 15초 추가" '+(enabled?'':'disabled'))+sessionButton('timer-skip','닫기','','aria-label="휴식 타이머 닫기"')+'</div>'+
+      sessionButton('add-session-ex','<span aria-hidden="true">＋</span> 종목 추가','fs-add',enabled&&s.exercises.length<30?'':'disabled')+'</div></section>';
   }
   function historyView(){
     const records=completed().slice().sort((a,b)=>b.startedAt.localeCompare(a.startedAt));
@@ -305,7 +354,8 @@
       '<div class="fi-panel">'+(records.length?records.map(s=>recordCard(s)).join(''):'<p class="fi-empty">완료된 운동 세션이 없습니다.</p>')+'</div>'+
       (selected?'<div class="fi-panel"><div class="fi-section-head"><h3>'+esc(selected.label)+'</h3><span>'+ (selected.status==='PARTIAL'?'부분 완료':'정상 완료')+'</span></div>'+
       '<p class="fi-note">'+esc(selected.date)+' · 운동 '+timeLabel(Math.floor(selected.activeMs/1000))+'</p>'+
-      selected.exercises.map(ex=>'<div class="fi-history-ex"><b>'+esc(ex.name)+'</b><small>'+(ex.sets.filter(s=>s.done).map(s=>fmt(s.weight)+'kg × '+s.reps+'회'+(s.warmup?' (워밍업)':'')).join(' · ')||'완료 세트 없음')+'</small></div>').join('')+
+      (selected.notes?'<p class="fi-history-note">'+esc(selected.notes)+'</p>':'')+
+      selected.exercises.map(ex=>'<div class="fi-history-ex"><b>'+esc(ex.name)+'</b><small>'+(ex.sets.filter(s=>s.done).map(s=>fmt(s.weight)+'kg × '+s.reps+'회'+(s.warmup?' (워밍업)':'')).join(' · ')||'완료 세트 없음')+'</small>'+(ex.notes?'<p class="fi-history-note">'+esc(ex.notes)+'</p>':'')+'</div>').join('')+
       '<p class="fi-note">이 화면에서는 확정 기록이 읽기 전용입니다. 루틴을 변경해도 이 기록은 유지됩니다.</p>'+
       '<div class="fi-inline-actions">'+button('save-from-history','새 루틴으로 저장','outline','data-id="'+esc(selected.id)+'"')+
       (state.routines.length?'<select id="fi-apply-routine">'+routineOptions()+'</select>'+button('apply-from-history','기존 루틴 반영','outline','data-id="'+esc(selected.id)+'"'):'')+'</div></div>':'')+'</section>';
@@ -328,10 +378,15 @@
     if(!host)return;
     if(document.body.dataset.fdScreen!=='independent')return;
     top();
+    document.body.classList?.remove('fs-keyboard');
+    document.body.dataset.fiSession=String(screen==='session'&&!!current()&&!blocked);
     if(blocked||!state){
       host.innerHTML=hubNav()+'<div class="fi-panel fi-alert" role="alert"><h3>운동 기록을 불러오지 못했습니다.</h3><p>'+esc(blocked||'알 수 없는 오류')+'</p>'+
       '<p>기록을 확인하기 전까지 새 운동 저장을 중단했습니다. 원본 데이터는 유지됩니다.</p>'+button('reload','기록 다시 확인','outline')+'</div>';
       return;
+    }
+    if(screen==='session'&&current()){
+      host.innerHTML=sessionView();paintTimer();return;
     }
     host.innerHTML=hubNav()+'<div id="fi-banner" class="'+(error?'fi-msg-error':'')+'" '+(!message?'hidden':'')+' role="status">'+esc(message)+'</div>'+
       (revisionConflict?button('reload','다른 탭의 최신 기록 불러오기','outline'):'')+
@@ -356,7 +411,7 @@
     if(!fromPicker&&!beforeNavigate())return false;
     if(active()){setMessage('기존에 진행 중인 운동이 있습니다. 이어하기 또는 확정 후 새 운동을 시작하세요.',true);go('session');return false;}
     const result=changed(()=>M.start(state,{routineId,programId,exerciseNames}),'새 운동을 시작했습니다. 실제 세트 기록만 완료 처리하세요.');
-    if(result)go('session');
+    if(result){resetRest();backgroundStoppedAt=null;sessionDirty=false;sessionExerciseIndex=0;go('session');}
     return result;
   }
   function selectedNames(names,limit){
@@ -414,50 +469,120 @@
   function pickSessionExercises(){
     const session=current();
     if(!session||session.status!=='ACTIVE')throw Error('운동을 재개한 뒤 종목을 추가해 주세요.');
+    if(!saveSessionInputs())return false;
     return selectExercises({title:'이번 운동에 추가할 종목 선택',limit:30-session.exercises.length,onConfirm:names=>{
       if(current()?.id!==session.id||current()?.status!=='ACTIVE')throw Error('운동 상태가 바뀌었습니다. 선택창을 닫고 운동을 재개해 주세요.');
       return changed(()=>M.addExercises(state,session.id,names),names.length+'개 운동 종목을 추가했습니다.',false);
     }});
   }
-  function sessionSet(button){
-    const row=button.closest('[data-fi-set]'),session=current();
-    if(!row||!session||session.status!=='ACTIVE')return;
-    const exid=row.dataset.fiExid,setid=row.dataset.fiSet;
-    const previous=session.exercises.find(x=>x.id===exid)?.sets.find(x=>x.id===setid);
-    const wasDone=previous?.done;
-    const vals={
-      weight:Number(row.querySelector('[data-fi-kg]').value),
-      reps:Number(row.querySelector('[data-fi-reps]').value),
-      rpe:row.querySelector('[data-fi-rpe]').value===''?null:Number(row.querySelector('[data-fi-rpe]').value),
-      done:row.querySelector('[data-fi-done]').checked
-    };
+  function sessionNumber(row,selector,label,optional=false){
+    const field=row.querySelector(selector);
+    if(!field)return undefined;
+    const text=String(field.value??'').trim();
+    if(optional&&text==='')return null;
+    if(text==='')throw Error(label+'을 입력해 주세요.');
+    const value=Number(text);
+    if(!Number.isFinite(value))throw Error(label+'은 숫자로 입력해 주세요.');
+    return value;
+  }
+  function saveSessionInputs(overrides=[],success=''){
+    const session=current();
+    if(screen!=='session'||!session)return true;
+    if(session.status!=='ACTIVE')return !sessionDirty;
     try{
-      if(blocked||revisionConflict)throw Error('저장 오류 또는 다른 탭과의 기록 충돌이 있습니다. 먼저 확인해 주세요.');
-      const result=M.setValue(state,session.id,exid,setid,vals);
-      const saved=store.save(result.next,state.revision);
-      state=saved;
-      root.dispatchEvent(new CustomEvent('formday:iron-changed'));
-      setMessage('세트 기록을 저장했습니다.');
-      if(vals.done&&!wasDone){
-        timerSecs=previous?.restSec??90;
-        timerEnd=Date.now()+timerSecs*1000;
+      editable();
+      const patch={},exercises=new Map();
+      const note=host.querySelector('#fi-session-note');
+      if(note&&note.value!==session.notes)patch.notes=note.value;
+      const forExercise=id=>{
+        if(!exercises.has(id))exercises.set(id,{id,sets:[]});
+        return exercises.get(id);
+      };
+      host.querySelectorAll('[data-fi-ex-note]').forEach(field=>{
+        const ex=session.exercises.find(ex=>ex.id===field.dataset.fiExNote);
+        if(!ex)throw Error('메모를 저장할 종목을 찾지 못했습니다.');
+        if(field.value!==ex.notes)forExercise(ex.id).notes=field.value;
+      });
+      host.querySelectorAll('[data-fi-set]').forEach(row=>{
+        const ex=session.exercises.find(ex=>ex.id===row.dataset.fiExid);
+        const previous=ex?.sets.find(set=>set.id===row.dataset.fiSet);
+        if(!previous)throw Error('입력한 세트를 찾지 못했습니다.');
+        const values={weight:sessionNumber(row,'[data-fi-kg]','중량'),reps:sessionNumber(row,'[data-fi-reps]','횟수'),
+          rpe:sessionNumber(row,'[data-fi-rpe]','RPE',true),restSec:sessionNumber(row,'[data-fi-rest]','휴식 시간')};
+        const updated={id:previous.id};
+        for(const key of Object.keys(values))if(values[key]!==undefined&&values[key]!==previous[key])updated[key]=values[key];
+        if(Object.keys(updated).length>1)forExercise(ex.id).sets.push(updated);
+      });
+      for(const {exid,setid,values} of overrides){
+        const patchEx=forExercise(exid);
+        let patchSet=patchEx.sets.find(set=>set.id===setid);
+        if(!patchSet){patchSet={id:setid};patchEx.sets.push(patchSet);}
+        Object.assign(patchSet,values);
       }
-      render();
+      if(exercises.size)patch.exercises=Array.from(exercises.values()).map(ex=>{
+        if(!ex.sets.length)delete ex.sets;
+        return ex;
+      });
+      const recovering=backgroundStoppedAt!==null;
+      let base=state;
+      if(recovering){
+        base=M.changeState(base,session.id,'pause',new Date(backgroundStoppedAt)).next;
+        base=M.changeState(base,session.id,'resume').next;
+      }
+      if(Object.keys(patch).length||recovering){
+        if(!commit(M.updateSession(base,session.id,patch),success,false))return false;
+      }
+      if(recovering){backgroundStoppedAt=null;resumeRest();}
+      sessionDirty=false;
+      if(success)setMessage(success,false);else if(error)setMessage('입력한 기록을 저장했습니다.',false);
+      paintMessage();paintSessionMetrics();return true;
     }catch(e){
-      // Keep unsaved input visible for correction instead of rerendering it away.
       setMessage('저장하지 못했습니다. 입력값을 유지합니다. '+e.message,true);
-      const banner=host.querySelector('#fi-banner');
-      if(banner){banner.hidden=false;banner.classList.add('fi-msg-error');banner.textContent=message;}
       if(/다른 탭/.test(e.message))revisionConflict=true;
+      paintMessage();return false;
     }
   }
+  function startRest(seconds){
+    timerSecs=seconds;timerVisible=seconds>0;timerEnd=seconds>0?Date.now()+seconds*1000:0;timerAutoPaused=false;
+  }
+  function pauseRest(){
+    if(timerEnd){timerSecs=Math.max(0,Math.ceil((timerEnd-Date.now())/1000));timerEnd=0;timerAutoPaused=timerSecs>0;}
+  }
+  function resumeRest(){
+    if(timerVisible&&timerAutoPaused&&timerSecs>0)timerEnd=Date.now()+timerSecs*1000;
+    timerAutoPaused=false;
+  }
+  function resetRest(){timerEnd=0;timerSecs=90;timerVisible=false;timerAutoPaused=false;}
+  function sessionSet(button){
+    const row=button.closest?.('[data-fi-set]'),session=current();
+    if(!session||session.status!=='ACTIVE')return;
+    const exid=row?.dataset.fiExid||button.dataset.ex,setid=row?.dataset.fiSet||button.dataset.id;
+    const previous=session.exercises.find(ex=>ex.id===exid)?.sets.find(set=>set.id===setid);
+    if(!previous)return;
+    if(saveSessionInputs([{exid,setid,values:{done:!previous.done}}],previous.done?'세트 완료를 해제했습니다.':'세트를 완료했습니다.')){
+      const saved=current().exercises.find(ex=>ex.id===exid).sets.find(set=>set.id===setid);
+      if(saved.done)startRest(saved.restSec);
+      render();
+    }
+  }
+  function replaceSessionExercise(id){
+    const session=current(),ex=session?.exercises.find(ex=>ex.id===id);
+    if(!ex||session.status!=='ACTIVE'||ex.sets.some(set=>set.done))throw Error('완료 체크를 해제한 뒤 종목을 교체해 주세요.');
+    if(!saveSessionInputs())return false;
+    if(!root.confirm('이 종목을 바꾸면 현재 종목의 세트 입력과 메모가 새 종목의 기본값으로 바뀝니다. 교체할까요?'))return false;
+    return selectExercises({title:'교체할 운동 종목 선택',multiple:false,limit:1,onConfirm:names=>{
+      if(current()?.id!==session.id)throw Error('진행 중인 운동이 변경되었습니다.');
+      return changed(()=>M.replaceExercise(state,session.id,id,names[0]),'종목을 교체했습니다.',false);
+    }});
+  }
   function finish(kind){
+    if(!saveSessionInputs())return;
     const s=current();if(!s)return;
     const done=summary(s).completedSets;
     if(!done){setMessage('완료한 세트가 없습니다. 먼저 기록하거나 임시 보관해 주세요.',true);render();return;}
     if(!root.confirm((kind==='PARTIAL'?'부분 완료':'운동 완료')+'로 확정할까요? 완료한 '+done+'세트만 반영하며, 이후 같은 세션을 이어할 수 없습니다.'))return;
     if(changed(()=>M.finish(state,s.id,kind),'운동 기록을 확정했습니다. 캘린더에도 표시됩니다.')){
-      focusedSession=s.id;go('history');
+      resetRest();backgroundStoppedAt=null;sessionDirty=false;focusedSession=s.id;go('history');
       if(kind==='COMPLETED'&&root.confirm('이번 운동 구성을 새 루틴으로 저장할까요? (선택하지 않아도 운동 기록은 유지됩니다.)')){
         saveFromHistory(s.id);
       }
@@ -470,7 +595,7 @@
       '완료 세트가 없는 이 운동을 삭제하고 새 운동을 시작할 수 있습니다.';
     if(!root.confirm('현재 운동을 취소할까요? '+detail+' 저장된 루틴, 프로그램 순서, 이전 확정 기록은 유지됩니다.'))return;
     if(changed(()=>M.cancel(state,s.id),'진행 중이던 운동을 취소했습니다. 새 운동을 시작할 수 있습니다.')){
-      timerEnd=0;timerSecs=90;focusedSession=null;go('home');
+      resetRest();backgroundStoppedAt=null;sessionDirty=false;focusedSession=null;go('home');
     }
   }
   function routineFromSession(sessionId){
@@ -503,8 +628,18 @@
     const ticker=host.querySelector('#fi-timer-number'),dur=host.querySelector('#fi-duration');
     if(timerEnd&&Date.now()>=timerEnd){timerSecs=0;timerEnd=0;}
     const remaining=timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):timerSecs;
-    if(ticker)ticker.textContent=remaining+'초';
+    if(ticker)ticker.textContent=restLabel(remaining);
     if(dur&&current())dur.textContent=timeLabel(duration(current()));
+    const label=host.querySelector('#fi-timer-label'),toggle=host.querySelector('#fi-timer-toggle'),rest=host.querySelector('.fs-rest');
+    if(label)label.textContent=remaining<=0?'휴식 완료':timerAutoPaused?'휴식 일시정지':'휴식';
+    if(toggle){toggle.textContent=timerEnd?'Ⅱ':'▶';toggle.setAttribute?.('aria-label',timerEnd?'휴식 타이머 일시정지':'휴식 타이머 시작');}
+    if(rest)rest.hidden=!timerVisible;
+  }
+  function paintSessionMetrics(){
+    const s=current();if(screen!=='session'||!s)return;
+    for(const [id,value] of [['fi-session-volume',fmt(summary(s).volume)],['fi-session-sets',mainSetCount(s)],['fi-session-exercises',finishedExerciseCount(s)]]){
+      const el=host.querySelector('#'+id);if(el)el.textContent=String(value);
+    }
   }
   function downloadBackup(){
     try{
@@ -535,12 +670,44 @@
       store=store||M.createStore(root.localStorage);
       const loaded=store.load();
       if(loaded.error){blocked=loaded.error;render();return;}
+      // The user explicitly discarded this screen. Never flush old DOM values into the new revision.
+      screen='home';sessionDirty=false;backgroundStoppedAt=null;previousCache.clear();resetRest();
       state=loaded.data;blocked='';revisionConflict=false;error=false;clearDrafts();setMessage('최신 운동 기록을 불러왔습니다.');
       root.dispatchEvent(new CustomEvent('formday:iron-changed'));go('home');
     }catch(e){blocked='운동 기록을 다시 불러오지 못했습니다. '+e.message;render();}
   }
   function onAction(button){
     const action=button.dataset.fiAction,id=button.dataset.id;
+    if(screen==='session'&&['pause','stash','resume','minimize-session','toggle-session-view','session-prev','session-next','add-session-set','remove-session-set','load-previous','complete-exercise','rest-exercise'].includes(action)&&!saveSessionInputs())return;
+    if(action==='minimize-session'){go('home');return;}
+    if(action==='toggle-session-view'){sessionViewMode=sessionViewMode==='all'?'one':'all';render();return;}
+    if(action==='session-prev'||action==='session-next'){
+      const s=current();if(!s)return;
+      sessionExerciseIndex=Math.max(0,Math.min(s.exercises.length-1,sessionExerciseIndex+(action==='session-next'?1:-1)));render();return;
+    }
+    if(action==='remove-session-set'){const s=current();if(s?.status==='ACTIVE')changed(()=>M.removeSet(state,s.id,id),'마지막 미완료 세트를 삭제했습니다.');return;}
+    if(action==='replace-session-ex'){replaceSessionExercise(id);return;}
+    if(action==='load-previous'){
+      const s=current();if(!s||s.status!=='ACTIVE')return;
+      if(!root.confirm('이 종목의 현재 입력을 가장 최근에 완료한 세트로 바꿀까요? 불러온 세트는 미완료 상태로 시작합니다.'))return;
+      changed(()=>M.loadPreviousSets(state,s.id,id),'이전 세트를 불러왔습니다. 실제 수행한 뒤 완료 체크해 주세요.');return;
+    }
+    if(action==='complete-exercise'){
+      const ex=current()?.exercises.find(ex=>ex.id===id);if(!ex||current().status!=='ACTIVE')return;
+      const done=!ex.sets.every(set=>set.done);
+      if(saveSessionInputs(ex.sets.map(set=>({exid:id,setid:set.id,values:{done}})),done?'이 종목의 모든 세트를 완료했습니다.':'이 종목의 완료를 해제했습니다.')){
+        if(done)startRest(ex.sets.at(-1).restSec);render();
+      }return;
+    }
+    if(action==='toggle-warmup'){
+      const ex=current()?.exercises.find(ex=>ex.id===button.dataset.ex),set=ex?.sets.find(set=>set.id===id);
+      if(!set||current().status!=='ACTIVE')return;
+      if(saveSessionInputs([{exid:ex.id,setid:id,values:{warmup:!set.warmup}}],set.warmup?'본세트로 바꿨습니다.':'워밍업 세트로 바꿨습니다.'))render();return;
+    }
+    if(action==='rest-exercise'){
+      const ex=current()?.exercises.find(ex=>ex.id===id);if(!ex||current().status!=='ACTIVE')return;
+      startRest((ex.sets.find(set=>!set.done)||ex.sets.at(-1)).restSec);paintTimer();return;
+    }
     if(action==='back-home'){go('home');return;}
     if(action==='start-free'){
       if(!beforeNavigate())return;
@@ -594,7 +761,10 @@
       const s=current();if(!s)throw Error('진행 중인 운동이 없습니다. 운동을 먼저 시작해 주세요.');
       if(action==='resume'&&s.status==='ACTIVE'){go('session');return;}
       const trans=action==='resume'?(s.status==='SAVED'?'resumeSaved':'resume'):action==='stash'&&s.status==='PAUSED'?'stashPaused':action;
-      if(changed(()=>M.changeState(state,s.id,trans),action==='resume'?'운동을 재개했습니다.':'운동 상태를 저장했습니다.')&&action==='resume')go('session');
+      if(changed(()=>M.changeState(state,s.id,trans),action==='resume'?'운동을 재개했습니다.':'운동 상태를 저장했습니다.',false)){
+        if(action==='resume')resumeRest();else pauseRest();
+        if(action==='stash')go('home');else go('session');
+      }
       return;
     }
     if(action==='inspect-session'){go('session');return;}
@@ -608,12 +778,20 @@
     if(action==='save-from-history'){saveFromHistory(id);return;}
     if(action==='apply-from-history'){applyFromHistory(id);return;}
     if(action==='timer90'||action==='timer120'){
-      timerSecs=action==='timer90'?90:120;timerEnd=0;paintTimer();return;
+      timerSecs=action==='timer90'?90:120;timerEnd=0;timerVisible=true;timerAutoPaused=false;paintTimer();return;
+    }
+    if(action==='timer-skip'){resetRest();paintTimer();return;}
+    if(action==='timer-add'){
+      if(current()?.status!=='ACTIVE')return;
+      timerSecs=Math.min(600,(timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):timerSecs)+15);
+      if(timerEnd)timerEnd=Date.now()+timerSecs*1000;
+      paintTimer();return;
     }
     if(action==='timer-toggle'){
+      if(current()?.status!=='ACTIVE')return;
       if(timerEnd){timerSecs=Math.max(0,Math.ceil((timerEnd-Date.now())/1000));timerEnd=0;}
       else {if(timerSecs<=0)timerSecs=90;timerEnd=Date.now()+timerSecs*1000;}
-      paintTimer();return;
+      timerVisible=true;timerAutoPaused=false;paintTimer();return;
     }
     if(action==='export'){downloadBackup();return;}
     if(action==='reload'){reload();return;}
@@ -632,21 +810,17 @@
       const action=targetFor(event,'[data-fi-action]');
       if(action&&!action.disabled){event.preventDefault();onAction(action);return;}
       if(targetFor(event,'[data-day],[data-mini],[data-date],[data-mobile="calendar"]'))root.requestAnimationFrame?.(renderCalendar);
-    }catch(e){setMessage('요청을 처리하지 못했습니다. '+e.message,true);render();}
+    }catch(e){setMessage('요청을 처리하지 못했습니다. '+e.message,true);if(screen==='session')paintMessage();else render();}
   });
-  host.addEventListener('input',()=>{
+  host.addEventListener('input',event=>{
     if(screen==='builder')readDraft();
     if(screen==='programBuilder')readProgram();
+    if(screen==='session'&&event.target?.closest?.('input,textarea')){sessionDirty=true;paintMessage();}
   });
   host.addEventListener('change',event=>{
     if(screen==='builder')readDraft();
     if(screen==='programBuilder')readProgram();
-    const row=event.target.closest?.('[data-fi-set]');
-    if(row&&row.classList?.contains('fi-set-row')){
-      const button=row.querySelector('[data-fi-action="save-session-set"]');
-      if(button)sessionSet(button);
-      return;
-    }
+    if(screen==='session'&&event.target.closest?.('input,textarea')){saveSessionInputs();return;}
     if(event.target.name==='fi-mode'){
       readProgram();programDraft.mode=event.target.value;render();return;
     }
@@ -657,24 +831,37 @@
   root.addEventListener('formday:changed',renderCalendar);
   root.addEventListener('storage',event=>{
     if(event.key!==M.KEY&&event.key!==null)return;
-    revisionConflict=true;setMessage('다른 탭에서 독립 웨이트 기록을 변경했습니다. 충돌을 피하려면 최신 기록을 불러오세요.',true);render();
+    revisionConflict=true;setMessage('다른 탭에서 독립 웨이트 기록을 변경했습니다. 충돌을 피하려면 최신 기록을 불러오세요.',true);
+    if(screen==='session')paintMessage();else render();
   });
   document.addEventListener('visibilitychange',()=>{
     // A phone call or app switch must not count hidden time as exercise time.
     const s=current();
+    if(document.hidden&&s?.status==='ACTIVE'&&(blocked||revisionConflict)){backgroundStoppedAt=backgroundStoppedAt??Date.now();pauseRest();return;}
     if(document.hidden&&s?.status==='ACTIVE'&&!blocked&&!revisionConflict){
-      try{state=store.save(M.changeState(state,s.id,'pause').next,state.revision);root.dispatchEvent(new CustomEvent('formday:iron-changed'));}
-      catch(e){setMessage('화면 전환 중 저장에 실패했습니다. '+e.message,true);}
-    } else if(!document.hidden&&document.body.dataset.fdScreen==='independent')render();
+      const stoppedAt=Date.now();
+      if(!saveSessionInputs()){backgroundStoppedAt=backgroundStoppedAt??stoppedAt;pauseRest();return;}
+      try{state=store.save(M.changeState(state,s.id,'pause',new Date(stoppedAt)).next,state.revision);backgroundStoppedAt=null;pauseRest();root.dispatchEvent(new CustomEvent('formday:iron-changed'));}
+      catch(e){backgroundStoppedAt=backgroundStoppedAt??stoppedAt;pauseRest();setMessage('화면 전환 중 저장에 실패했습니다. '+e.message,true);paintMessage();}
+    } else if(!document.hidden&&document.body.dataset.fdScreen==='independent'){
+      if(sessionDirty)paintMessage();else render();
+    }
   });
   root.addEventListener('pagehide',()=>{
     const s=current();
     if(s?.status==='ACTIVE'&&!blocked&&!revisionConflict){
-      try{state=store.save(M.changeState(state,s.id,'stash').next,state.revision);root.dispatchEvent(new CustomEvent('formday:iron-changed'));}catch(e){}
+      if(!saveSessionInputs()){backgroundStoppedAt=backgroundStoppedAt??Date.now();pauseRest();return;}
+      try{state=store.save(M.changeState(state,s.id,'stash').next,state.revision);pauseRest();root.dispatchEvent(new CustomEvent('formday:iron-changed'));}catch(e){}
     }
   });
   root.addEventListener('beforeunload',event=>{
-    if(hasUnsavedDraft()){event.preventDefault();event.returnValue='';}
+    if(hasUnsavedDraft()||sessionDirty){event.preventDefault();event.returnValue='';}
+  });
+  host.addEventListener('focusin',event=>{
+    if(screen==='session'&&event.target.closest?.('input,textarea'))document.body.classList?.add('fs-keyboard');
+  });
+  host.addEventListener('focusout',event=>{
+    if(!event.relatedTarget?.closest?.('input,textarea'))document.body.classList?.remove('fs-keyboard');
   });
   root.setInterval(()=>{clockTick=Date.now();paintTimer();},1000);
   root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,getSnapshot:()=>state?M.copy(state):null,
