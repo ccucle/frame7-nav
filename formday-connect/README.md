@@ -1,8 +1,8 @@
 # FORMDAY Connect — scoped MCP/OAuth backend
 
-**2026-11-24 (Asia/Seoul): Phase 5 source v0.4.0 with mobile-route verification and read-correctness fixes. 81 synthetic tests pass locally on Node 24. Not deployed, not installed in ChatGPT, not connected to real records.**
+**2026-11-24 (Asia/Seoul): source v0.4.0 with mobile-route verification, read-correctness fixes and mandatory post-save reread. 86 synthetic tests pass locally on Node 24. Connect server not deployed; no live Firebase connection or mobile read/write success. The separately available FORMDAY skill prepares drafts only. Additional monthly operating budget: KRW 0.**
 
-[Current mobile-route and read verification](PHASE5-MOBILE-REVIEW.md) · [Phase 5 append implementation and limitations](PHASE5-APPEND.md) · [Phase 4 security review](PHASE4-REVIEW.md)
+[Zero-cost route and post-save verification](PHASE6-ZERO-COST.md) · [Mobile-route and read verification](PHASE5-MOBILE-REVIEW.md) · [Phase 5 append implementation and limitations](PHASE5-APPEND.md) · [Phase 4 security review](PHASE4-REVIEW.md)
 
 ## User-facing behavior
 
@@ -18,6 +18,8 @@
 Default is read-only. The exact server setting FORMDAY_ENABLE_APPEND=true AND a new OAuth consent granting formday:read formday:append are required to expose the four append tools. Existing read grants remain read-only. The consent page reads the stored flow and displays the requested permissions.
 
 The signed preview binds user, MCP resource, exact entry, payload hash, snapshot revision and Firestore updateTime. New writes expire after ten minutes. Reusing the same preview can check whether that exact entry already exists, even after expiry, without another write. A fresh preview is a distinct operation; it is not a global duplicate detector.
+
+After a successful conditional commit, the same authenticated document is read again. `saved` requires exactly one matching ID and unchanged entry, and includes `readBackVerified: true` with the observed document revision. Unrelated later edits are preserved. Failed or mismatched rereads never return success. An unknown POST outcome is not automatically resent; the SAME preview reconciles the existing entry, returning `already_saved` only after verification.
 
 Writes use Firebase USER ID tokens, not Admin credentials. Only the authenticated user's calendar or iron snapshot can be changed. Each write uses an updateTime precondition and a server timestamp. A missing document, conflict, unsupported schema, demo calendar, oversized payload or permission denial fails closed. Existing JSON entries and unrelated snapshot properties are preserved; only the appended collection and revision change.
 
@@ -41,12 +43,12 @@ See .env.example. The entry point requires an HTTPS origin, an OAuth encryption 
 
 ## Release blockers
 
-1. No Connect web service, isolated OAuth storage, verified IAM isolation or production secrets have been provisioned. No paid service was created. During this work, another task deployed FORMDAY v0.7.0 commit `2e98ed66f6f82f7efc97a070867e78e3765bf6b5`; the final Render read confirms it is live. Preserve that latest site and all Firebase data/rules/authentication settings. Never deploy this development branch's older `fitplan/` over the live site. Current account billing and overage safeguards remain unverified.
+1. No Connect web service, isolated OAuth storage or production secrets have been provisioned. The latest observed Render deployment is FORMDAY v0.7.1 commit `ca4e67cdf5020b0a0147832e8650ea7931a894c7` from another task (2026-11-24 10:05:26 KST). Preserve the latest live site and all Firebase data/rules/authentication settings. Never deploy this branch's older `fitplan/` over it. The user requires KRW 0 additional monthly costs. Workers Free plus SQLite Durable Objects is a conditional candidate; actual Cloudflare subscription and Firebase Spark/Blaze status remain unverified. No paid plan, trial, billing link or automatic upgrade is authorized.
 2. OAuth token-bundle issuance is not atomic; grant-family revocation, concurrent Firebase credential rotation, request limits and expired-secret cleanup still require implementation and failure testing. This remains development code, with writes disabled by default.
 3. Actual Google browser login, authorized domains, exact ChatGPT callback/CIMD registration, live Firestore rules and owner-account read/write smoke tests remain unverified. Selecting a new Google account can create a Firebase Auth user; first-login prevention remains unresolved.
 4. The website requires cloud download to apply remote records. Local unsynced changes may conflict; active IRON sessions can block download. No automatic site refresh was added.
-5. Direct custom MCP connections are documented as web-only, while account-available cloud plugins support mobile Chat/Work. A Sites-hosted MCP plugin is a valid candidate, but Sites sign-in does not authenticate Firebase. No FORMDAY tool is available in the inspected mobile session. See the mobile review for observed account access and the separate authentication/cost gates.
-6. Every successful write still needs a mandatory post-save server reread. The inherited commit tool currently returns saved after a commit acknowledgement. Independent test roundtrips do not establish this production guarantee, nor semantic deduplication across newly created previews.
+5. Direct custom MCP connections are documented as web-only, while account-available cloud plugins support mobile Chat/Work. The external HTTPS MCP/OAuth plugin format is documented, but this account's endpoint discovery, installation, authorization and iPhone invocation remain unverified. Sites has future overage charges with no confirmed zero-cost hard stop, so it is not the selected hosting route. The current FORMDAY skill has no live access tool.
+6. The post-save reread contract is now implemented and tested with synthetic records. Cross-preview duplicate prevention, latest live-schema write preservation, actual owner-account writes and two-device read-back remain unverified. Keep writes disabled until real authenticated reads and these gates are complete.
 
 ## Main modules
 

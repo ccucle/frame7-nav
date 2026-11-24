@@ -1,5 +1,7 @@
 # FORMDAY Connect — Phase 5 mobile route and read correctness
 
+> 후속 상태: 사용자가 추가 운영비 월 0원을 확정했다. 저장 후 필수 재조회 보완, 초안 전용 FORMDAY 스킬 제공, 새 운영본 v0.7.1 관측 및 무료 연결 후보는 [Phase 6 기록](PHASE6-ZERO-COST.md)을 따른다. 아래는 당시 확인을 보존한 이력이며 현재 완료 상태는 아니다.
+
 검증일: 2026-11-24 (Asia/Seoul). 이 문서는 실제 계정/도구 조회, 공식 문서, 코드 검토, 모의 검증을 구분한다.
 
 **상태: 읽기 코드 보완 단계. FORMDAY 연결 서버 미배포, 전용 플러그인 미생성·미설치, 실제 Firebase 사용자 연결 미완료. 실제 개인 기록 조회/저장 및 PC·iPhone 교차 검증은 아직 0회다.**
