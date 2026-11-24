@@ -9,7 +9,7 @@
   flex: 1 1 320px;
   align-items: center;
   min-width: 0;
-  min-height: 72px;
+  min-height: 80px;
   padding: 0;
   border: 0;
   border-radius: 12px;
@@ -25,9 +25,9 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  width: 70%;
+  width: 100%;
   min-width: 0;
-  padding: 10px 0 10px 14px;
+  padding: 12px 14px;
   box-sizing: border-box;
 }
 .fd-page-icon {
@@ -67,17 +67,17 @@ body[data-fd-screen="analysis"] .fd-page-icon > svg[data-page-icon="analysis"] {
 .fd-page-header .page-title {
   margin: 0;
   color: var(--fd-text, #f1f4f8);
-  font-size: 22px;
+  font-size: 32px;
   font-weight: 800;
-  line-height: 1.25;
-  letter-spacing: -.45px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: 1.2;
+  letter-spacing: -.7px;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 .fd-page-header .crumb {
   display: block;
-  margin: 3px 0 0;
+  margin: 4px 0 0;
   color: var(--fd-subtle, #93a1b2);
   font-size: 10px;
   font-weight: 650;
@@ -110,10 +110,10 @@ body[data-fd-screen="analysis"] .fd-page-icon > svg[data-page-icon="analysis"] {
   background-position: center;
   background-size: cover;
   background-repeat: no-repeat;
-  filter: grayscale(1) brightness(.65) contrast(.92);
-  opacity: .85;
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 32%, #000 100%);
-  mask-image: linear-gradient(to right, transparent 0%, #000 32%, #000 100%);
+  filter: grayscale(1) brightness(.6) contrast(.92);
+  opacity: .65;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #0002 28%, #000 76%, #000 100%);
+  mask-image: linear-gradient(to right, transparent 0%, #0002 28%, #000 76%, #000 100%);
   pointer-events: none;
 }
 body[data-fd-screen="independent"] .fd-page-header { --fd-header-image: url("assets/headers/workout.webp"); }
@@ -122,11 +122,23 @@ body[data-fd-screen="progress"] .fd-page-header { --fd-header-image: url("assets
 body[data-fd-screen="library"] .fd-page-header { --fd-header-image: url("assets/headers/library.webp"); }
 body[data-fd-screen="analysis"] .fd-page-header { --fd-header-image: url("assets/headers/performance.webp"); }
 
+/* Views that share the page heading only need a count and their actions here. */
+.fd-view-toolbar, .fi-view-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+.fi-view > .fi-view-toolbar { margin-bottom: 0; }
+
 @media (max-width: 730px) {
-  .toprow > .fd-page-header { flex-basis: 100%; min-height: 64px; border-radius: 10px; }
-  .fd-page-heading { gap: 10px; padding-left: 12px; }
+  .toprow > .fd-page-header { flex-basis: 100%; min-height: 72px; border-radius: 10px; }
+  .fd-page-heading { gap: 10px; padding: 10px 12px; }
   .fd-page-icon { flex-basis: 36px; width: 36px; height: 36px; border-radius: 10px; }
   .fd-page-icon > svg { width: 20px; height: 20px; }
-  .fd-page-header .page-title { font-size: 20px; letter-spacing: -.35px; }
-  .fd-page-header .crumb { font-size: 9px; letter-spacing: .65px; }
+  .fd-page-header .page-title { font-size: 28px; letter-spacing: -.6px; }
+  .fd-page-header .crumb { font-size: 10px; letter-spacing: .65px; }
 }

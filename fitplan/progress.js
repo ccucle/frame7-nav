@@ -127,7 +127,7 @@
     const latest=s.latestWeight,change=s.weightChange;
     const goalNote=model.targets.weight===null?'목표 체중 미설정':s.weightToGoal===null?'목표 '+fmt(model.targets.weight)+' kg':s.weightToGoal===0?'목표 체중과 같음':
       '목표보다 '+fmt(Math.abs(s.weightToGoal))+' kg '+(s.weightToGoal>0?'높음':'낮음');
-    return '<section class="fp-view" aria-labelledby="fp-title"><header class="fp-header"><div><span class="fp-kicker">BODY & NUTRITION</span><h2 id="fp-title">기록으로 보는 변화</h2><p>체중과 식단 기록을 같은 날짜 흐름에서 확인하세요.</p></div></header>'+
+    return '<section class="fp-view" aria-labelledby="fd-page-title">'+
       '<div class="fp-range" role="group" aria-label="그래프 조회 기간">'+D.RANGES.map(range=>'<button type="button" data-progress-range="'+range+'" aria-pressed="'+(model.range===range)+'">'+(range==='all'?'전체':range+'일')+'</button>').join('')+'</div>'+
       '<p class="fp-period">'+model.start+' ~ '+model.end+' · '+fmt(model.dayCount)+'일'+(model.bucketDays>1?' · 그래프는 '+model.bucketDays+'일 묶음':' · 일별 보기')+'</p>'+
       '<div class="fp-summary"><article><span>최근 측정 체중</span><strong>'+numeric(latest?.weight??null,'kg')+'</strong><small>'+(latest?latest.date+' 측정'+(latest.date<model.start?' · 선택 기간 이전':''):'실제 측정 기록 없음')+' · '+goalNote+'</small></article>'+

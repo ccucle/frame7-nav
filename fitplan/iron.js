@@ -105,13 +105,7 @@
       trainingAction='open-legacy';trainingLabel='기존 일정 열기';
     }
     const best=a.bestPR;
-    const imageCredit='<a class="fd-photo-credit" target="_blank" rel="noopener noreferrer" href="https://unsplash.com/license">운동 분위기 사진 · Unsplash</a>';
-    return '<section class="fd-hero fd-hero-photo" aria-label="오늘 운동 요약">'+img(D.PHOTOS.hero,'피트니스 운동 장면','fd-hero-image')+
-      '<div class="fd-hero-shade"></div><div class="fd-hero-content"><span class="fd-overline"><i></i> FORMDAY / STRENGTH</span>'+
-      '<h2>오늘도<br><em>기록 갱신하자.</em></h2>'+
-      '<p>계획하고, 들어 올리고, 어제의 나를 넘어선다.</p>'+
-      '<button class="fd-action-primary" data-fd-route="session">'+(unfinished?'운동 이어하기':'운동 시작')+' <span>↗</span></button></div>'+imageCredit+'</section>'+
-      '<section class="fd-main-layout" aria-label="운동 대시보드">'+
+    return '<section class="fd-main-layout" aria-label="운동 대시보드">'+
       '<div class="fd-feature-card"><div class="fd-feature-icon">▤</div><div class="fd-feature-details"><span class="fd-overline">TODAY\'S TRAINING</span><h3>'+html(trainingTitle)+'</h3><p>'+html(trainingNote)+'</p></div>'+
       '<button class="fd-feature-go" data-fd-action="'+trainingAction+'" '+(strength?'data-fd-workout="'+html(strength.id)+'"':'')+' aria-label="'+trainingLabel+'">↗</button></div>'+
       '<div class="fd-metrics">'+banner('최근 체중',unit(a.weight),'<span>실제 완료된 측정 기록 기준</span>','⌁')+
@@ -148,7 +142,7 @@
       '<p class="fd-photo-note">종목을 구분하는 동작 삽화입니다. <a href="exercise-credits.html" target="_blank" rel="noopener noreferrer">운동 이미지 출처 ↗</a></p></div></div>';
   }
   function library(){
-    return '<section class="fd-library-view"><div class="fd-section-heading"><div><span class="fd-overline">EXERCISE LIBRARY</span><h2>운동 도감 <em>'+catalog.length+' EXERCISES</em></h2><p>이름·부위·장비로 종목을 찾고 운동 기록에 추가하세요.</p></div></div>'+
+    return '<section class="fd-library-view" aria-labelledby="fd-page-title">'+
       '<div class="fd-lib-search-box"><span>⌕</span><input id="fd-lib-search" type="search" autocomplete="off" placeholder="운동 이름 검색 · 벤치프레스, 풀업, 스쿼트..." value="'+html(query)+'" aria-label="운동 이름 검색"></div>'+
       '<div class="fd-filter-heading">운동 부위</div><div class="fd-filter-buttons">'+D.MUSCLES.map(g=>'<button data-fd-group="'+html(g)+'" class="'+(g===muscle?'active':'')+'">'+html(g)+'</button>').join('')+'</div>'+
       '<div class="fd-filter-heading">장비 종류</div><div class="fd-filter-buttons fd-equip-buttons">'+equipmentOptions.map(g=>'<button data-fd-equip="'+html(g)+'" class="'+(g===equipment?'active':'')+'">'+html(g)+'</button>').join('')+'</div>'+
@@ -218,7 +212,7 @@
     const {a}=dataset();
     const groups=Object.entries(a.byGroup).sort((x,y)=>y[1]-x[1]);
     const weights=[...a.prMap.values()].sort((x,y)=>y.oneRM-x.oneRM).slice(0,8);
-    return '<section class="fd-analysis"><div class="fd-section-heading"><div><span class="fd-overline">TRAINING ANALYTICS</span><h2>숫자로 보는 성장</h2><p>이번 주 기록과 실제 완료한 운동만 집계했습니다.</p></div></div>'+
+    return '<section class="fd-analysis" aria-labelledby="fd-page-title">'+
       '<div class="fd-metrics fd-analysis-metrics">'+banner('운동한 날짜',n(a.trainingDays)+' <small>일</small>','이번 주','▦')+
       banner('기록한 웨이트',n(a.strengthSessions)+' <small>회</small>','이번 주 완료 본세트가 있는 운동','◉')+
       banner('완료 본세트',n(a.completedSets)+' <small>세트</small>','워밍업 제외','▥')+

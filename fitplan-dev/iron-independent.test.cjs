@@ -258,7 +258,7 @@ test('canceling an untouched routine draft releases cloud apply without promptin
   view.action('new-routine');assert.equal(view.api.canCloudApply(),false);
   view.action('back-home');assert.equal(view.api.canCloudApply(),true);
   assert.equal(view.prompts.length,0);
-  assert.match(view.host.innerHTML,/오늘의 운동을 시작하세요/);
+  assert.match(view.host.innerHTML,/data-fi-nav="home" aria-current="page"/);
 });
 test('routine draft edits remain until discard is explicitly confirmed',()=>{
   const view=ui();view.action('new-routine');
@@ -354,7 +354,7 @@ test('batch exercise selection starts or extends one session atomically with no 
 test('workout navigation handles icon and text targets and keeps training selected on every subpage',()=>{
   const view=ui();view.workout();
   assert.equal(view.document.body.dataset.fdScreen,'independent');
-  assert.match(view.host.innerHTML,/오늘의 운동을 시작하세요/);
+  assert.match(view.host.innerHTML,/data-fi-nav="home" aria-current="page"/);
   for(const page of ['routines','programs','history','home']){
     view.subnav(page);
     assert.match(view.host.innerHTML,new RegExp('data-fi-nav="'+page+'" aria-current="page"'));
