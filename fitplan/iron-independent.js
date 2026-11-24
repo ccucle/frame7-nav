@@ -312,18 +312,30 @@
       '<p class="fi-note">변경한 구성은 앞으로 사용할 프로그램에만 적용되며 이미 시작했거나 완료한 운동의 종목과 세트 기록은 그대로 유지됩니다.</p>'+
       '</div><div class="fi-sticky-actions">'+button('save-program',editingProgram?'변경사항 저장':'프로그램 저장')+button('program-list','취소','outline')+'</div></section>';
   }
+  function programCard(p){
+    const rid=programNext(p),r=state.routines.find(x=>x.id===rid),attrs='data-id="'+esc(p.id)+'"';
+    const names=p.routineIds.map(id=>state.routines.find(x=>x.id===id)?.name||'삭제된 루틴');
+    const days=['일','월','화','수','목','금','토'];
+    const daySummary=days.map((day,index)=>{
+      const routine=state.routines.find(x=>x.id===p.weekdays[String(index)]);
+      return routine?'<span class="fi-program-day"><b>'+day+'</b> '+esc(routine.name)+'</span>':'';
+    }).join('');
+    return '<article class="fi-panel fi-program-card"><header class="fi-program-card-head"><h3>'+esc(p.name)+'</h3><span class="fi-program-type">'+(p.mode==='cycle'?'순환형':'요일 고정형')+'</span></header>'+
+      '<div class="fi-program-description">'+
+      (p.mode==='fixed'?'<div class="fi-program-days">'+(daySummary||'<span>배정된 요일 없음</span>')+'</div>':
+        '<p class="fi-program-sequence">'+names.map(esc).join(' → ')+'</p>')+
+      '<div class="fi-program-next"><span>'+(p.mode==='fixed'?'오늘 운동':'다음 운동')+'</span><strong>'+(r?esc(r.name):'오늘 배정 없음')+'</strong></div></div>'+
+      '<div class="fi-program-actions">'+
+      (r?button('begin-program-routine','운동 시작','primary',attrs+' aria-label="'+esc(p.name)+' 운동 시작"'):'')+
+      button('register-program','캘린더 등록','outline',attrs+' aria-label="'+esc(p.name)+' 캘린더 등록"')+
+      button('edit-program','수정','outline',attrs+' aria-label="'+esc(p.name)+' 프로그램 수정"')+
+      button('delete-program','삭제','outline',attrs+' aria-label="'+esc(p.name)+' 프로그램 삭제"')+
+      '</div></article>';
+  }
   function programs(){
     return '<section class="fi-view" aria-label="훈련 프로그램"><div class="fi-view-toolbar"><span class="fi-note">'+state.programs.length+'개 프로그램</span>'+
       button('new-program','＋ 프로그램','primary')+'</div><p class="fi-note">자유 운동은 프로그램 순서를 변경하지 않습니다.</p>'+
-      (state.programs.length?state.programs.map(p=>{
-        const rid=programNext(p),r=state.routines.find(x=>x.id===rid);
-        return '<div class="fi-panel"><div class="fi-section-head"><h3>'+esc(p.name)+'</h3><span>'+ (p.mode==='cycle'?'순환형':'요일 고정형')+'</span></div>'+
-        '<p>'+p.routineIds.map(id=>state.routines.find(x=>x.id===id)?.name||'삭제된 루틴').map(esc).join(' → ')+'</p>'+
-        '<p class="fi-note">다음 운동: '+(r?esc(r.name):'오늘 배정 없음')+'</p>'+
-        '<div class="fi-inline-actions fi-program-actions">'+(r?button('begin-program-routine','이 프로그램으로 운동 시작','primary','data-id="'+esc(p.id)+'"'):'')+
-        button('edit-program','프로그램 수정','outline','data-id="'+esc(p.id)+'"')+
-        button('register-program','캘린더 등록','outline','data-id="'+esc(p.id)+'"')+'</div></div>';
-      }).join(''):'<div class="fi-panel fi-empty">저장된 프로그램이 없습니다. 먼저 루틴을 만든 뒤 프로그램을 구성하세요.</div>')+
+      (state.programs.length?state.programs.map(programCard).join(''):'<div class="fi-panel fi-empty">저장된 프로그램이 없습니다. 먼저 루틴을 만든 뒤 프로그램을 구성하세요.</div>')+
       '<div class="fi-panel"><h3>루틴 보관함</h3>'+state.routines.map(r=>'<div class="fi-list-row"><div><b>'+esc(r.name)+'</b><small>'+r.exercises.length+'종목</small></div>'+
       button('edit-routine','편집','outline','data-id="'+esc(r.id)+'"')+'</div>').join('')+'</div></section>';
   }
@@ -1051,6 +1063,15 @@
       if(result){clearDrafts();go('routines');}return;
     }
     if(action==='program-list'){go('programs');return;}
+    if(action==='delete-program'){
+      editable();
+      if(screen!=='programs')return;
+      const program=state.programs.find(p=>p.id===id);
+      if(!program)throw Error('삭제할 프로그램을 찾을 수 없습니다.');
+      if(!root.confirm('"'+program.name+'" 프로그램을 삭제할까요? 프로그램만 삭제되며 저장된 루틴, 캘린더 일정과 기존 운동 기록은 유지됩니다.'))return;
+      changed(()=>M.deleteProgram(state,id),'프로그램을 삭제했습니다. 루틴과 기존 운동 기록은 유지됩니다.');
+      return;
+    }
     if(action==='new-program'||action==='edit-program'){
       editable();
       if(!state.routines.length){setMessage('먼저 루틴을 하나 이상 만들어 주세요.',true);render();return;}

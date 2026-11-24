@@ -180,6 +180,17 @@
     return {next,program:changed};
   }
 
+  function deleteProgram(data,programId){
+    const next=normalize(data),index=next.programs.findIndex(p=>p.id===programId);
+    must(index>=0,'삭제할 프로그램을 찾을 수 없습니다.');
+    const program=next.programs[index];
+    // Sessions hold their own immutable exercise snapshots. Keep their
+    // original program IDs for historical provenance; finish tolerates a
+    // removed program and simply does not advance its cycle.
+    next.programs.splice(index,1);
+    return {next,program};
+  }
+
   function updateRoutine(data,routineId,name,exercises,date=new Date()){
     const next=normalize(data),index=next.routines.findIndex(r=>r.id===routineId);
     must(index>=0,'변경할 루틴을 찾을 수 없습니다.');
@@ -399,5 +410,5 @@
     }
     return {completedSets,volume:Math.round(volume*100)/100,exercises,minutes:Math.round(s.activeMs/60000)};
   }
-  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,updateProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,recordSummary});
+  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,updateProgram,deleteProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,recordSummary});
 });
