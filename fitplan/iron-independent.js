@@ -172,21 +172,12 @@
     return '<nav class="fi-hub-nav" aria-label="운동 하위 메뉴">'+[['home','운동','◉'],['routines','루틴','▤'],['programs','프로그램','◎'],['history','기록','▦']].map(([page,label,icon])=>
       '<button type="button" data-fi-nav="'+page+'" aria-current="'+(selected===page?'page':'false')+'"><span aria-hidden="true">'+icon+'</span><b>'+label+'</b></button>').join('')+'</nav>';
   }
-  function banner(){
-    const s=current();
-    if(!s)return '';
-    const sum=summary(s);
-    const stale=Date.now()-Date.parse(s.lastSavedAt)>=TIME_LIMIT_MS;
-    return '<div class="fi-resume '+(stale?'fi-stale':'')+'"><span class="fi-kicker">'+(stale?'24시간 경과 · 삭제되지 않았습니다':'보관 또는 진행 중인 운동')+'</span>'+
-      '<h3>'+esc(s.label)+'</h3><p>'+esc(s.date)+' · '+sum.completedSets+'세트 완료 · '+fmt(sum.volume)+'kg · '+s.status+'</p>'+
-      '<div class="fi-inline-actions">'+button(s.status==='ACTIVE'?'inspect-session':'resume','운동 이어하기','primary')+button('inspect-session','진행 기록 보기','outline')+'</div></div>';
-  }
   function home(){
     const history=completed().slice().reverse();
     return '<section class="fi-view" aria-label="오늘의 운동">'+
-      banner()+scheduledWorkouts()+'<div class="fi-stats"><div><span>저장된 루틴</span><strong>'+state.routines.length+'</strong></div><div><span>훈련 프로그램</span><strong>'+state.programs.length+'</strong></div><div><span>확정한 운동</span><strong>'+history.length+'</strong></div></div>'+
+      scheduledWorkouts()+'<div class="fi-stats"><div><span>저장된 루틴</span><strong>'+state.routines.length+'</strong></div><div><span>훈련 프로그램</span><strong>'+state.programs.length+'</strong></div><div><span>확정한 운동</span><strong>'+history.length+'</strong></div></div>'+
       '<div class="fi-hub-start"><div><h3>어떻게 운동할까요?</h3><p>자유 운동에서는 검색과 즐겨찾기로 여러 종목을 한 번에 고를 수 있습니다.</p></div><div class="fi-action-grid">'+
-      button('start-free','＋ 종목 골라 운동 시작')+button('routine-list','저장한 루틴으로 시작','outline')+'</div></div>'+
+      (current()?button('inspect-session','운동 이어하기'):button('start-free','＋ 종목 골라 운동 시작'))+button('routine-list','저장한 루틴으로 시작','outline')+'</div></div>'+
       (state.programs.some(p=>p.active)?'<div class="fi-panel"><div class="fi-section-head"><h3>프로그램의 다음 운동</h3>'+button('program-list','프로그램 보기','subtle')+'</div>'+programStarts()+'</div>':'')+
       '<div class="fi-panel"><div class="fi-section-head"><h3>최근 운동</h3>'+button('show-history','기록 전체 →','subtle')+'</div>'+
       (!history.length?'<p class="fi-empty">아직 확정된 운동 기록이 없습니다.</p>':history.slice(0,4).map(s=>recordCard(s)).join(''))+'</div></section>';
