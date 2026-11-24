@@ -126,8 +126,10 @@ function commonBase(kind,l,meta){
  if(!meta)return null;
  try{
   const saved=JSON.parse(localStorage.getItem(metadataKey(kind)+':base')||'null');
-  if(saved&&saved.remoteRevision===meta.remoteRevision&&saved.localRevision===meta.localRevision)
-   return kind==='calendar'?C.normalizeState(saved.data):I.normalize(saved.data);
+  if(saved&&saved.remoteRevision===meta.remoteRevision&&saved.localRevision===meta.localRevision){
+   const base=kind==='calendar'?C.normalizeState(saved.data):I.normalize(saved.data);
+   if(base.revision===meta.localRevision)return base;
+  }
  }catch(e){}
  // Old installations may have the exact last paired local version in their
  // existing previous backup. Only use it if its revision matches the pair.
@@ -198,7 +200,7 @@ function slotView(kind){
  (s.working?'<p class="fd-sync-note">기록 확인 또는 동기화 처리 중입니다.</p>':'')+
  '<div class="fd-sync-small-actions"><button type="button" class="fd-sync-secondary" data-sync-action="backup" data-kind="'+kind+'">이 기기 JSON 백업</button>'+
  '<button type="button" class="fd-sync-secondary" data-sync-action="refresh" data-kind="'+kind+'">다시 확인</button></div>'+
- (account&&localStorage.getItem(keys[kind]+'_merge_backup_'+account.uid)?'<button type="button" class="fd-sync-secondary" data-sync-action="merge-backup" data-kind="'+kind+'">병합 전 양쪽 복구 사본 받기</button>':'')+
+ backupView(kind)+
  (meta?'<p class="fd-sync-note">마지막 동기화 연결: '+safe(new Date(meta.updatedAt).toLocaleString('ko-KR'))+'</p>':'')+'</section>';
 }
 function render(){
@@ -221,13 +223,40 @@ function exactLocal(kind,review){
  if(l.raw!==review.localRaw||l.revision!==review.localRevision)throw Error('비교 중 이 기기의 기록이 변경되었습니다. 다시 비교해 주세요.');
  return l;
 }
+function backupPairs(kind,uid){
+ const raw=localStorage.getItem(keys[kind]+'_merge_backup_'+uid);
+ if(!raw)return [];
+ const value=JSON.parse(raw);
+ if(value.version!==1||!value.local||!value.remote)throw Error('기존 복구 사본을 읽을 수 없습니다.');
+ const {history=[],...latest}=value;
+ if(!Array.isArray(history)||history.some(p=>p.version!==1||!p.local||!p.remote))throw Error('복구 사본 목록이 올바르지 않습니다.');
+ return [latest,...history];
+}
+function backupView(kind){
+ if(!account)return '';
+ try{
+  if(ownerConflict(kind))return '';
+  const pairs=backupPairs(kind,account.uid);
+  if(!pairs.length)return '';
+  return '<details class="fd-sync-replace"><summary>병합 전 복구 사본 '+pairs.length+'건</summary>'+
+   pairs.map((p,index)=>'<div class="fd-sync-small-actions"><p class="fd-sync-note">'+safe(new Date(p.savedAt).toLocaleString('ko-KR'))+'</p>'+
+    ['local','remote'].map(side=>'<button type="button" class="fd-sync-secondary" data-sync-action="merge-backup" data-kind="'+kind+'" data-index="'+index+'" data-side="'+side+'">'+(side==='local'?'기기':'서버')+' 원본 받기</button>').join('')+'</div>').join('')+'</details>';
+ }catch(e){return '<p class="fd-sync-error">복구 사본 확인 실패: '+safe(e.message)+'</p>';}
+}
 function backupBoth(kind,context,review){
- // One durable pair per slot, containing the original snapshots (not the merged result).
- // Do not proceed if both originals cannot be stored and read back.
+ // Preserve every distinct source pair; never replace an earlier recovery
+ // copy silently. Quota failure aborts BEFORE the cloud transaction.
  const key=keys[kind]+'_merge_backup_'+context.uid;
- const raw=JSON.stringify({version:1,local:review.local,remote:review.remote,localRevision:review.localRevision,remoteRevision:review.remoteRevision,savedAt:new Date().toISOString()});
+ const previous=backupPairs(kind,context.uid);
+ if(previous.some(p=>p.localRevision===review.localRevision&&p.remoteRevision===review.remoteRevision&&
+   JSON.stringify(p.local)===JSON.stringify(review.local)&&JSON.stringify(p.remote)===JSON.stringify(review.remote)))return;
+ const raw=JSON.stringify({version:1,local:review.local,remote:review.remote,localRevision:review.localRevision,remoteRevision:review.remoteRevision,savedAt:new Date().toISOString(),history:previous});
  localStorage.setItem(key,raw);
  if(localStorage.getItem(key)!==raw)throw Error('병합 전 양쪽 원본을 보관하지 못했습니다.');
+}
+function readyToMerge(kind,next){
+ if(kind==='iron'&&typeof window.FormdayIndependent?.canCloudMerge==='function')return window.FormdayIndependent.canCloudMerge(next)===true;
+ return readyToApply(kind);
 }
 function recalc(kind){
  const review=reviews[kind];if(!review)return;
@@ -256,22 +285,22 @@ async function prepareMerge(kind){
 async function applyMerge(kind){
  const s=entry(kind),review=reviews[kind];
  if(!review||!review.result?.next||!writable()||s.working)return;
- const context=review.context;s.working=true;let committed=false;
+ const context=review.context;s.working=true;let committed=false,localApplied=false;render();
  try{
   requireCurrent(context);
   if(ownerConflict(kind))throw Error('계정이 변경되었습니다.');
-  const l=exactLocal(kind,review);
+  exactLocal(kind,review);
+  const data=review.result.next;
   const identical=P.equivalent(kind,review.local,review.remote,C,I);
   // An identical pair can be repaired without changing either store. All
   // data-changing merges require the existing editor/session safety guards.
-  if(!identical&&!readyToApply(kind))throw Error('진행 중인 운동이나 편집을 완료한 후 다시 시도해 주세요. 기존 기록은 유지됩니다.');
+  if(!identical&&!readyToMerge(kind,data))throw Error('진행 중인 운동을 일시정지하고 운동 창을 닫거나 편집을 마친 후 다시 시도해 주세요. 기존 기록은 유지됩니다.');
   if(!identical&&kind==='iron'&&review.result.next.sessions.some(x=>x.status==='ACTIVE'))
    throw Error('다른 기기의 진행 중인 운동을 종료한 후 다시 시도해 주세요.');
   if(!identical&&!window.confirm('병합 미리보기대로 기록을 합치고 이 Google 계정에 동기화할까요? 양쪽 원본은 이 기기에 복구 사본으로 보관합니다.'))return;
   requireCurrent(context);exactLocal(kind,review);
   if(!identical)backupBoth(kind,context,review);
   const ref=doc(db,'users',context.uid,'formday_sync',kind);
-  const data=review.result.next;
   const payload=identical?null:P.safePayload(kind,{...data,revision:kind==='calendar'?C.uid():I.uid()},C,I);
   await runTransaction(db,async transaction=>{
    requireCurrent(context);exactLocal(kind,review);
@@ -280,40 +309,42 @@ async function applyMerge(kind){
    const remote=readRemote(remoteSnap);
    if(remote.revision!==review.remoteRevision||remote.payload!==review.remotePayload)throw Error('비교 후 서버 기록이 변경되었습니다. 다시 비교해 주세요.');
    if(!identical){
-    if(!readyToApply(kind))throw Error('운동이나 편집이 시작되어 병합을 중단했습니다.');
+    if(!readyToMerge(kind,data))throw Error('운동이나 편집이 시작되어 병합을 중단했습니다.');
     transaction.set(ref,{...payload,updatedAt:serverTimestamp()});
    }
   });
   committed=!identical;requireCurrent(context);
   const before=exactLocal(kind,review);
-  if(!identical&&!readyToApply(kind))throw Error('서버 병합은 완료되었지만 기기에서 편집이 시작됐습니다. 기기 원본은 유지됩니다.');
+  if(!identical&&!readyToMerge(kind,data))throw Error('서버 병합은 완료되었지만 기기에서 편집이 시작됐습니다. 기기 원본은 유지됩니다.');
   const saved=identical?before.data:before.store.save(data,before.revision);
+  localApplied=!identical;
+  if(!identical){
+   const reloaded=kind==='calendar'?window.FormdayBridge?.cloudReload?.():
+    (typeof window.FormdayIndependent?.cloudMergeReload==='function'?window.FormdayIndependent.cloudMergeReload(saved.revision):window.FormdayIndependent?.cloudReload?.());
+   if(reloaded!==true)throw Error('화면을 최신 기록으로 갱신하지 못했습니다. 페이지를 새로고침하고 다시 확인해 주세요.');
+  }
   saveMeta(kind,identical?review.remoteRevision:payload.revision,saved.revision,context,saved);
-  s.remote=identical?{format:1,revision:review.remoteRevision,payload:review.remotePayload}:payload;
-  s.issues='';reviews[kind]=null;
-  if(!identical){if(kind==='calendar')window.FormdayBridge?.cloudReload?.();else window.FormdayIndependent?.cloudReload?.();}
+  const paired=identical?{format:1,revision:review.remoteRevision,payload:review.remotePayload}:payload;
+  if(!s.remote||s.remote.revision===review.remoteRevision||s.remote.revision===paired.revision)s.remote=paired;
+  s.issues='';reviews[kind]=null;schedule(kind);
   show(labels[kind]+' · 기록 비교 및 동기화 복구 완료');
- }catch(e){if(isCurrent(context)){reviews[kind]=null;show((committed?'서버 병합 후 기기 반영을 완료하지 못했습니다. 기기 원본과 양쪽 복구 사본은 보존됩니다. 다시 비교해 주세요. ':'')+syncError(e),true);}}
+ }catch(e){if(isCurrent(context)){reviews[kind]=null;show((localApplied?'병합 기록은 기기와 서버에 저장됐지만 연결 확인이 완료되지 않았습니다. 원본 복구 사본은 보존됩니다. 새로고침 후 다시 확인해 주세요. ':committed?'서버 병합 후 기기 반영을 완료하지 못했습니다. 기기 원본과 양쪽 복구 사본은 보존됩니다. 다시 비교해 주세요. ':'')+syncError(e),true);}}
  finally{if(isCurrent(context)){s.working=false;render();}}
 }
 function chooseMerge(kind,key,side){
- const review=reviews[kind];if(!review||!['local','remote'].includes(side)||!review.result.conflicts.some(c=>c.key===key))return;
+ const review=reviews[kind];if(entry(kind).working||!review||!['local','remote'].includes(side)||!review.result.conflicts.some(c=>c.key===key))return;
  review.choices[key]=side;recalc(kind);render();
 }
-function exportMergeBackup(kind){
+function exportMergeBackup(kind,index,side){
  try{
   if(!account||ownerConflict(kind))throw Error('현재 계정의 복구 사본을 확인해 주세요.');
-  const raw=localStorage.getItem(keys[kind]+'_merge_backup_'+account.uid);
-  if(!raw)throw Error('이 기기에 보관된 병합 복구 사본이 없습니다.');
-  const data=JSON.parse(raw);
-  // Export both copies in their existing import formats.
-  for(const side of ['local','remote']){
-   const content=JSON.stringify(P.backupPayload(kind,data[side],C,I),null,2);
-   const file=new Blob([content],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(file),a=document.createElement('a');
-   a.href=url;a.download='FORMDAY-'+kind+'-before-merge-'+side+'.json';document.body.appendChild(a);a.click();a.remove();
-   setTimeout(()=>URL.revokeObjectURL(url),1000);
-  }
-  show('양쪽 복구 사본 다운로드를 요청했습니다. 파일 앱에서 확인해 주세요.');
+  const data=backupPairs(kind,account.uid)[Number(index)];
+  if(!data||!['local','remote'].includes(side))throw Error('이 기기에 보관된 병합 복구 사본을 찾을 수 없습니다.');
+  const content=JSON.stringify(P.backupPayload(kind,data[side],C,I),null,2);
+  const file=new Blob([content],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(file),a=document.createElement('a');
+  a.href=url;a.download='FORMDAY-'+kind+'-before-merge-'+String(index)+'-'+side+'.json';document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  show('원본 복구 사본 다운로드를 요청했습니다. 파일 앱에서 확인해 주세요.');
  }catch(e){show(syncError(e),true);}
 }
 async function download(kind,interactive=false){
@@ -483,13 +514,13 @@ if(btn&&dialog&&panel&&P&&C&&I){
   const b=event.target.closest('[data-sync-action]');
   if(!b)return;
   const kind=b.dataset.kind,action=b.dataset.syncAction;
-  if(!P.slots.includes(kind))return;
+  if(!P.slots.includes(kind)||entry(kind).working)return;
   if(action==='backup'){backup(kind);return;}
   if(action==='seed'){upload(kind,true);return;}
   if(action==='merge-review'){prepareMerge(kind);return;}
   if(action==='merge-apply'){applyMerge(kind);return;}
   if(action==='merge-cancel'){reviews[kind]=null;render();return;}
-  if(action==='merge-backup'){exportMergeBackup(kind);return;}
+  if(action==='merge-backup'){exportMergeBackup(kind,b.dataset.index,b.dataset.side);return;}
   if(action==='take'){download(kind,true);return;}
   if(action==='receive'){download(kind,false);return;}
   if(action==='send'){upload(kind,false);return;}

@@ -227,3 +227,27 @@ test('changed server after review blocks merge before any overwrite',async()=>{
  tx.reject(failure);await apply;
  assert.equal(h.map.get(I.KEY),JSON.stringify(l));
 });
+
+test('repeated merge retains earlier recovery pairs and does not overwrite them',async()=>{
+ const l=iron('local2'),r=iron('remote2');
+ const old={version:1,local:iron('old-local'),remote:iron('old-remote'),localRevision:'old-local',remoteRevision:'old-remote',savedAt:'2026-11-24T00:00:00Z'};
+ const h=boot({[I.KEY]:JSON.stringify(l),[I.KEY+'_merge_backup_A']:JSON.stringify(old)});
+ h.login(user('A'));h.emit('iron',r);
+ const prep=h.api.prepareMerge('iron');h.reads[0].resolve(snapshot(r));await prep;
+ const apply=h.api.applyMerge('iron'),tx=h.transactions[0],attempt=h.attempt(tx);
+ tx.reads[0].resolve(snapshot(r));await attempt;tx.resolve();await apply;
+ const archived=JSON.parse(h.map.get(I.KEY+'_merge_backup_A'));
+ assert.deepEqual(archived.local,l);assert.deepEqual(archived.remote,r);
+ assert.deepEqual(archived.history,[old]);
+});
+test('merge rejects a local edit made while awaiting the transaction read',async()=>{
+ const l=iron('local2'),r=iron('remote2'),h=boot({[I.KEY]:JSON.stringify(l)});
+ h.login(user('A'));h.emit('iron',r);
+ const prep=h.api.prepareMerge('iron');h.reads[0].resolve(snapshot(r));await prep;
+ const apply=h.api.applyMerge('iron'),tx=h.transactions[0],attempt=h.attempt(tx);
+ const changed={...I.copy(l),revision:'local3'};h.map.set(I.KEY,JSON.stringify(changed));
+ tx.reads[0].resolve(snapshot(r));
+ let failure;try{await attempt;}catch(e){failure=e;}
+ assert.match(failure.message,/기기의 기록이 변경/);assert.equal(tx.writes.length,0);tx.reject(failure);await apply;
+ assert.equal(h.map.get(I.KEY),JSON.stringify(changed));
+});
