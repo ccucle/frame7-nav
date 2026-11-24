@@ -188,13 +188,13 @@ function ui(initial=M.empty(),options={}){
   backing.obj.setItem(M.KEY,options.raw??JSON.stringify(initial));
   const writes=[],originalSet=backing.obj.setItem;
   backing.obj.setItem=(key,value)=>{writes.push([key,value]);return originalSet(key,value);};
-  const listeners={},answers=[],prompts=[],fields=new Map();let markup='',pickerConfig=null,pickerActive=false;
+  const listeners={},answers=[],prompts=[],fields=new Map();let markup='',pickerConfig=null,pickerActive=false,modal=null;
   const banner={hidden:true,textContent:'',classList:{toggle(){}}};
   const globalWorkout={dataset:{indNav:'start'},attributes:{},classList:{toggle(){},remove(){}},setAttribute(name,value){this.attributes[name]=value;}};
   const host={
-    get innerHTML(){return markup;},
+    get innerHTML(){return markup+(modal?'<dialog id="'+modal.id+'">'+modal.innerHTML+'</dialog>':'');},
     set innerHTML(value){
-      markup=value;fields.clear();
+      markup=value;modal=null;fields.clear();
       if(value.includes('id="fi-banner"')){fields.set('#fi-banner',banner);banner.textContent=value.match(/id="fi-banner"[^>]*>([^<]*)/)?.[1]||'';}
       for(const id of ['fi-routine-name','fi-program-name']){
         const tag=value.match(new RegExp('<input[^>]*id="'+id+'"[^>]*>'))?.[0];
@@ -202,6 +202,8 @@ function ui(initial=M.empty(),options={}){
       }
     },
     querySelector(selector){
+      if(selector==='#fi-session-sheet')return modal;
+      if(modal&&selector==='#fi-banner')return banner;
       if(selector==='input[name=fi-mode]:checked')return {value:markup.includes('value="fixed" checked')?'fixed':'cycle'};
       return fields.get(selector)||null;
     },
@@ -209,10 +211,20 @@ function ui(initial=M.empty(),options={}){
       if(selector==='[data-fi-program-routine]')return [...markup.matchAll(/data-fi-program-routine="([^"]+)" ([^>]*)>/g)].map(m=>({dataset:{fiProgramRoutine:m[1]},checked:m[2].includes('checked')}));
       return [];
     },
-    addEventListener(){}
+    addEventListener(){},appendChild(child){modal=child;return child;}
   };
+  function dialog(){
+    let value='';
+    const element={id:'',className:'',dataset:{},open:false,style:{removeProperty(){},setProperty(){}},
+      get innerHTML(){return value;},set innerHTML(text){value=text;if(text.includes('id="fi-banner"'))banner.textContent=text.match(/id="fi-banner"[^>]*>([^<]*)/)?.[1]||'';},
+      setAttribute(name,value){this[name]=value;},addEventListener(){},contains(){return false;},
+      querySelector:selector=>selector==='#fi-banner'?banner:null,querySelectorAll:()=>[],
+      showModal(){this.open=true;},close(){this.open=false;},remove(){if(modal===this)modal=null;}};
+    return element;
+  }
   const calendar={innerHTML:'',hidden:true};
   const document={body:{dataset:{fdScreen:'home'}},
+    createElement:tag=>{assert.equal(tag,'dialog');return dialog();},
     getElementById:id=>id==='fd-ind-root'?host:id==='fd-iron-calendar'?calendar:id==='main-content'?{scrollIntoView(){}}:null,
     querySelector:()=>null,querySelectorAll:selector=>selector==='[data-ind-nav]'?[globalWorkout]:[],
     addEventListener:(type,fn,capture=false)=>(listeners[type]??=[]).push({fn,capture})};

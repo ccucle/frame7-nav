@@ -10,18 +10,18 @@ const W=require('../fitplan/workouts.js');
 const decode=value=>String(value).replace(/&(?:amp|lt|gt|quot|#39);/g,s=>({'&amp;':'&','&lt;':'<','&gt;':'>','&quot;':'"','&#39;':"'"}[s]));
 class Events{
   constructor(){this.events=new Map();}
-  addEventListener(type,callback,options=false){if(!this.events.has(type))this.events.set(type,[]);this.events.get(type).push({callback,capture:options===true||options?.capture===true});}
+  addEventListener(type,callback,options=false){if(!this.events.has(type))this.events.set(type,[]);this.events.get(type).push({callback,capture:options===true||options?.capture===true,once:options?.once===true});}
   removeEventListener(type,callback){this.events.set(type,(this.events.get(type)||[]).filter(item=>item.callback!==callback));}
   emit(type,details={}){
     const event={type,target:this,defaultPrevented:false,stopped:false,preventDefault(){this.defaultPrevented=true;},stopImmediatePropagation(){this.stopped=true;},...details};
-    for(const capture of [true,false])for(const item of this.events.get(type)||[]){if(item.capture===capture&&!event.stopped)item.callback(event);}
+    for(const capture of [true,false])for(const item of [...this.events.get(type)||[]]){if(item.capture===capture&&!event.stopped){item.callback(event);if(item.once)this.removeEventListener(type,item.callback);}}
     return event;
   }
 }
 class Element extends Events{
   constructor(tag,document){
     super();this.tagName=tag.toUpperCase();this.document=document;this.children=[];this.attributes=new Map();this.dataset={};this.parentElement=null;
-    this.value='';this.disabled=false;this.hidden=false;this.checked=false;this._text='';this._html='';this.renderCount=0;
+    this.value='';this.disabled=false;this.hidden=false;this.checked=false;this.open=false;this.scrollTop=0;this._text='';this._html='';this.renderCount=0;this.showModalCount=0;
     this.style={setProperty(){},removeProperty(){}};
     this.classList={contains:name=>(this.className||'').split(/\s+/).includes(name),add:(...names)=>{this.className=[...new Set((this.className||'').split(/\s+/).filter(Boolean).concat(names))].join(' ');},remove:(...names)=>{this.className=(this.className||'').split(/\s+/).filter(x=>!names.includes(x)).join(' ');},toggle:(name,force)=>{const enabled=force??!this.classList.contains(name);this.classList[enabled?'add':'remove'](name);return enabled;}};
   }
@@ -36,6 +36,8 @@ class Element extends Events{
   getAttribute(key){return this.attributes.get(key)??null;}
   removeAttribute(key){this.attributes.delete(key);if(['disabled','hidden','checked','open'].includes(key))this[key]=false;}
   appendChild(child){child.parentElement=this;this.children.push(child);return child;}
+  append(...children){for(const child of children)this.appendChild(child);}
+  remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(child=>child!==this);this.parentElement=null;}
   contains(node){return this===node||this.children.some(child=>child.contains(node));}
   get isConnected(){return this.document.body?.contains(this)===true;}
   matches(selector){
@@ -56,6 +58,11 @@ class Element extends Events{
   querySelector(selector){return this.querySelectorAll(selector)[0]||null;}
   focus(){this.document.activeElement=this;}
   scrollIntoView(){}
+  getBoundingClientRect(){return {left:0,top:36,right:390,bottom:844,width:390,height:808};}
+  setPointerCapture(){}
+  releasePointerCapture(){}
+  showModal(){this.open=true;this.showModalCount++;}
+  close(){if(!this.open)return;this.open=false;this.emit('close');}
   get textContent(){return this._text+this.children.map(child=>child.textContent).join('');}
   set textContent(value){this._text=String(value);for(const child of this.children)child.parentElement=null;this.children=[];}
   get innerHTML(){return this._html;}
@@ -79,15 +86,15 @@ function ui(){
   const main=document.body.appendChild(new Element('main',document));main.setAttribute('id','main-content');
   const host=main.appendChild(new Element('div',document));host.setAttribute('id','fd-ind-root');
   const calendar=main.appendChild(new Element('div',document));calendar.setAttribute('id','fd-iron-calendar');
-  const db=new Map(),root=new Events(),intervals=[];let failWrite=false,picker=null,pickerActive=false;
+  const db=new Map(),root=new Events(),intervals=[],timeouts=new Map();let failWrite=false,picker=null,pickerActive=false,timeoutId=0;
   root.localStorage={getItem:key=>db.get(key)??null,setItem:(key,value)=>{if(failWrite&&key==='formday_iron_independent_v1')throw Error('quota');db.set(key,value);},removeItem:key=>db.delete(key)};
   root.FormdayWorkouts=W;root.FormdayExerciseMedia={byName:{'벤치프레스':{src:'assets/exercises/bench.svg',alt:'벤치프레스 동작'},'스쿼트':{src:'assets/exercises/squat.svg',alt:'스쿼트 동작'}}};
   root.innerHeight=844;root.visualViewport=new Events();root.visualViewport.height=844;root.visualViewport.offsetTop=0;
   root.setInterval=fn=>{intervals.push(fn);return intervals.length;};root.clearInterval=()=>{};root.requestAnimationFrame=fn=>fn();root.dispatchEvent=event=>root.emit(event.type,event);
-  root.setTimeout=fn=>{fn();return 1;};root.clearTimeout=()=>{};root.scrollTo=()=>{};
+  root.setTimeout=(fn,delay=0)=>{timeouts.set(++timeoutId,{fn,at:now+delay});return timeoutId;};root.clearTimeout=id=>timeouts.delete(id);root.scrollTo=()=>{};
   const answers=[],prompts=[];root.confirm=text=>{prompts.push(text);return answers.shift()??false;};root.prompt=()=>null;
   root.FormdayExercisePicker={isOpen:()=>pickerActive,open:config=>{picker=config;pickerActive=true;return true;}};
-  const context=vm.createContext({window:root,document,Date:Clock,console,CustomEvent:class{constructor(type){this.type=type;}}});
+  const context=vm.createContext({window:root,document,Date:Clock,console,setTimeout:root.setTimeout,clearTimeout:root.clearTimeout,CustomEvent:class{constructor(type){this.type=type;}}});
   vm.runInContext(fs.readFileSync(require.resolve('../fitplan/iron-store.js'),'utf8'),context);root.FormdayIronStore=context.FormdayIronStore;
   vm.runInContext(fs.readFileSync(require.resolve('../fitplan/iron-independent.js'),'utf8'),context);
   const api=root.FormdayIndependent;
@@ -106,9 +113,9 @@ function ui(){
   const edit=(exerciseIndex,setIndex,name,value)=>{const input=field(exerciseIndex,setIndex,name);input.value=String(value);host.emit('input',{target:input});return input;};
   const complete=(exerciseIndex,setIndex=0)=>{const session=snapshot().sessions.find(s=>['ACTIVE','PAUSED','SAVED'].includes(s.status)),ex=session.exercises[exerciseIndex];return action('save-session-set',{ex:ex.id,id:ex.sets[setIndex].id});};
   const start=(names=['벤치프레스','스쿼트'])=>{api.open('home');action('start-free');assert.equal(choose(names),true);};
-  return {api,root,document,host,db,answers,prompts,snapshot,action,choose,row,field,edit,complete,start,
+  return {api,root,document,host,db,answers,prompts,snapshot,action,choose,row,field,edit,complete,start,sheet:()=>host.querySelector('#fi-session-sheet'),
     get picker(){return picker;},get pickerActive(){return pickerActive;},failStorage(value=true){failWrite=value;},
-    advance(ms){now+=ms;for(const fn of intervals)fn();},hide(){document.hidden=true;document.emit('visibilitychange');},show(){document.hidden=false;document.emit('visibilitychange');},
+    advance(ms){now+=ms;for(const [id,item]of [...timeouts])if(item.at<=now){timeouts.delete(id);item.fn();}for(const fn of intervals)fn();},hide(){document.hidden=true;document.emit('visibilitychange');},show(){document.hidden=false;document.emit('visibilitychange');},
     timer(){return host.querySelector('#fi-timer-number')?.textContent;}};
 }
 const active=view=>view.snapshot().sessions.find(s=>['ACTIVE','PAUSED','SAVED'].includes(s.status));
@@ -143,7 +150,7 @@ test('invalid repetitions retain every field and prevent pause or minimize',()=>
   view.action('minimize-session');assert.equal(view.document.body.dataset.fiSession,'true');assert.equal(view.field(1,0,'kg').value,'92.5');
 });
 test('minimizing saves edits and restores hub chrome while keeping the workout active',()=>{
-  const view=ui();view.start();assert.equal(view.document.body.dataset.fiSession,'true');view.edit(0,0,'kg',55);view.action('minimize-session');
+  const view=ui();view.start();assert.equal(view.document.body.dataset.fiSession,'true');view.edit(0,0,'kg',55);view.action('minimize-session');view.advance(180);
   assert.notEqual(view.document.body.dataset.fiSession,'true');assert.equal(active(view).status,'ACTIVE');assert.equal(active(view).exercises[0].sets[0].weight,55);
   view.action('inspect-session');assert.equal(view.document.body.dataset.fiSession,'true');assert.equal(view.field(0,0,'kg').value,'55');
 });
@@ -227,4 +234,31 @@ test('invalid input survives a phone interruption without counting hidden time, 
   const saved=active(view);assert.equal(saved.exercises[1].sets[0].reps,9);assert.equal(saved.exercises[1].sets[0].done,false);assert.equal(saved.activeMs,8000);
   assert.equal(saved.activeSince,new Date(Date.parse('2026-11-24T02:00:00.000Z')+128000).toISOString());
   view.advance(5000);assert.equal(view.host.querySelector('#fi-duration').textContent,'00:00:13');assert.equal(view.timer(),'0:47');
+});
+
+test('workout opens in one stable native dialog and preserves scroll when sets rerender',()=>{
+  const view=ui();view.start();const sheet=view.sheet();assert.ok(sheet);assert.equal(sheet.tagName,'DIALOG');assert.equal(sheet.open,true);assert.equal(sheet.showModalCount,1);
+  assert.equal(sheet.getAttribute('aria-label'),'진행 중인 운동 창');assert.equal(view.document.body.classList.contains('fs-sheet-open'),true);
+  const scroll=sheet.querySelector('.fs-scroll');assert.ok(scroll);scroll.scrollTop=137;view.edit(0,0,'kg',65);view.complete(0);
+  assert.equal(view.sheet(),sheet);assert.equal(sheet.open,true);assert.equal(sheet.showModalCount,1);assert.equal(sheet.querySelector('.fs-scroll').scrollTop,137);
+});
+test('Escape and backdrop dismissal preserve invalid or unsaved input when saving is blocked',()=>{
+  const view=ui();view.start();const sheet=view.sheet(),input=view.edit(0,0,'reps','');const canceled=sheet.emit('cancel');view.advance(250);
+  assert.equal(canceled.defaultPrevented,true);assert.equal(sheet.open,true);assert.equal(view.field(0,0,'reps'),input);assert.equal(input.value,'');
+  input.value='7';view.host.emit('input',{target:input});view.failStorage();sheet.emit('click',{target:sheet});view.advance(250);
+  assert.equal(sheet.open,true);assert.equal(view.field(0,0,'reps'),input);assert.equal(view.document.body.classList.contains('fs-sheet-open'),true);
+});
+test('Escape saves current entries and closes once after the slide transition without ending the workout',()=>{
+  const view=ui();view.start();const sheet=view.sheet();view.edit(0,0,'kg',83);sheet.emit('cancel');sheet.emit('cancel');
+  assert.equal(active(view).exercises[0].sets[0].weight,83);assert.equal(sheet.open,true);view.advance(179);assert.equal(sheet.open,true);view.advance(1);
+  assert.equal(sheet.open,false);assert.equal(view.document.body.classList.contains('fs-sheet-open'),false);assert.notEqual(view.document.body.dataset.fiSession,'true');assert.equal(active(view).status,'ACTIVE');
+  view.action('inspect-session');assert.equal(view.sheet().open,true);assert.equal(view.field(0,0,'kg').value,'83');
+});
+test('only a sufficiently downward swipe on the handle dismisses the workout sheet',()=>{
+  const view=ui();view.start();const sheet=view.sheet(),handle=sheet.querySelector('.fs-sheet-handle');assert.ok(handle);
+  const drag=(target,dx,dy)=>{view.host.emit('pointerdown',{target,pointerId:1,button:0,clientX:100,clientY:100});view.host.emit('pointermove',{target,pointerId:1,clientX:100+dx,clientY:100+dy});view.host.emit('pointerup',{target,pointerId:1,clientX:100+dx,clientY:100+dy});};
+  drag(view.field(0,0,'kg'),0,120);view.advance(200);assert.equal(sheet.open,true);
+  drag(handle,0,40);view.document.emit('click',{target:handle});view.advance(200);assert.equal(sheet.open,true);
+  drag(handle,120,90);view.advance(200);assert.equal(sheet.open,true);
+  view.edit(0,0,'kg',71);drag(handle,10,120);view.advance(180);assert.equal(sheet.open,false);assert.equal(active(view).exercises[0].sets[0].weight,71);assert.equal(active(view).status,'ACTIVE');
 });
