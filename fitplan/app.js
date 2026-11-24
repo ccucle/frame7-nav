@@ -451,6 +451,66 @@
       return true;
     }catch(error){toast(error.message,true);return false;}
   }
+  function openProgramRegistration(programId) {
+    try {
+      if(blockedLoad||externalChange||$('#modal-root').children.length)throw new Error('최신 캘린더 기록을 확인한 뒤 프로그램을 등록해 주세요.');
+      if(!K?.previewProgram)throw new Error('프로그램 연결 기능을 불러오지 못했습니다. 새로고침해 주세요.');
+      const snapshot=window.FormdayIndependent?.getCalendarSnapshot?.();
+      const program=snapshot?.programs.find(p=>p.id===programId);
+      if(!program)throw new Error('등록할 프로그램을 찾을 수 없습니다.');
+      const fixed=program.mode==='fixed',initialToday=iso(new Date());
+      const signature=training=>JSON.stringify({program:training.programs.find(p=>p.id===programId),routines:training.routines.filter(r=>program.routineIds.includes(r.id))});
+      const initialSignature=signature(snapshot);
+      let preview=null;
+      modal('캘린더에 프로그램 등록',
+        '<div class="fd-program-register-heading"><strong>'+esc(program.name)+'</strong><span>'+(fixed?'요일 고정형 · 해당 주 1회':'순환형 · 루틴 순서대로 1회')+'</span></div>'+
+        '<p class="fd-program-today" id="fd-program-today"></p>'+
+        '<div class="field">'+field(fixed?'등록할 주의 기준 날짜':'시작 날짜','fd-program-date','date',initialToday,'min="'+initialToday+'" required')+'</div>'+
+        '<div class="fd-program-date-actions"><button type="button" class="btn btn-outline btn-small" id="fd-program-this">'+(fixed?'이번 주':'오늘')+'</button><button type="button" class="btn btn-outline btn-small" id="fd-program-next">'+(fixed?'다음 주':'내일')+'</button></div>'+
+        '<div class="fields fd-program-time">'+field('시작 시간','fd-program-start','time','07:00','required')+field('종료 시간','fd-program-end','time','08:00','required')+'</div>'+
+        '<div id="fd-program-preview" aria-live="polite"></div>',
+        '<button type="button" class="btn btn-outline" id="fd-program-cancel">취소</button><button type="button" class="btn btn-primary" id="fd-program-apply" disabled>캘린더 등록</button>',
+        '오늘 이전 날짜와 이미 같은 루틴이 있는 날짜는 건너뜁니다. 기존 일정과 프로그램 원본은 변경하지 않습니다.');
+      $('.modal').classList.add('fd-routine-swap','fd-program-register');
+      function refreshPreview(){
+        const todayNow=iso(new Date()),dateInput=$('#fd-program-date'),apply=$('#fd-program-apply');
+        dateInput.min=todayNow;
+        $('#fd-program-today').textContent='오늘 · '+dayLabel(todayNow);
+        try{
+          preview=K.previewProgram(C,data,snapshot,programId,dateInput.value,todayNow,$('#fd-program-start').value,$('#fd-program-end').value);
+          const labels={new:'등록 예정',duplicate:'이미 등록',past:'지난 날짜 · 제외',rest:'휴식'};
+          $('#fd-program-preview').innerHTML='<div class="fd-program-preview-head"><b>'+esc(dayLabel(preview.first))+' ~ '+esc(dayLabel(preview.last))+'</b><span>'+preview.count+'개 등록 예정</span></div>'+
+            preview.rows.map(row=>'<div class="fd-program-preview-row" data-status="'+row.status+'"><span>'+esc(dayLabel(row.date))+'</span><strong>'+esc(row.title)+'</strong><small>'+labels[row.status]+'</small></div>').join('');
+          $('#form-error').classList.add('hide');
+          apply.disabled=!preview.count;
+          apply.textContent=preview.count?preview.count+'개 일정 등록':'등록할 일정 없음';
+        }catch(error){
+          preview=null;apply.disabled=true;apply.textContent='캘린더 등록';
+          $('#fd-program-preview').innerHTML='';formError(error);
+        }
+      }
+      const setDate=day=>{$('#fd-program-date').value=day;modalDirty=true;refreshPreview();};
+      $('#fd-program-this').onclick=()=>setDate(iso(new Date()));
+      $('#fd-program-next').onclick=()=>{const day=iso(new Date());setDate(moveDay(day,fixed?7-dateOf(day).getDay():1));};
+      for(const id of ['fd-program-date','fd-program-start','fd-program-end'])$('#'+id).onchange=refreshPreview;
+      $('#fd-program-cancel').onclick=()=>closeModal(true);
+      $('#fd-program-apply').onclick=()=>{
+        try{
+          if(!preview)return;
+          if(blockedLoad||externalChange)throw new Error('다른 기기에서 기록이 변경됐습니다. 최신 기록을 불러온 뒤 다시 등록해 주세요.');
+          const iron=window.FormdayIndependent?.getCalendarSnapshot?.();
+          if(!iron||signature(iron)!==initialSignature)throw new Error('프로그램 또는 루틴이 변경됐습니다. 등록 창을 닫고 다시 열어 주세요.');
+          const result=K.registerProgram(C,data,iron,programId,$('#fd-program-date').value,iso(new Date()),$('#fd-program-start').value,$('#fd-program-end').value,preview);
+          if(!result.count){refreshPreview();return;}
+          if(commit(result.next,result.count+'개 운동 일정을 캘린더에 등록했습니다.'))closeModal(true);
+          else formError(new Error('저장하지 못했습니다. 기존 일정은 유지되었습니다. 연결 상태를 확인한 후 다시 시도해 주세요.'));
+        }catch(error){formError(error);}
+      };
+      refreshPreview();modalDirty=false;
+      $('#modal-title').setAttribute('tabindex','-1');$('#modal-title').focus({preventScroll:true});
+      return true;
+    }catch(error){toast(error.message,true);return false;}
+  }
   function getWorkoutReflection(session) {
     const source=session?.calendarSource;
     if(!source)return {applied:false,message:''};
@@ -622,7 +682,7 @@ function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$
     openDayDetail,
     closeDayDetail,
     getVisibleTypes: () => [...visibleTypes],
-    getScheduledWorkouts, openRoutineSwap, getWorkoutReflection, reflectWorkoutSession,
+    getScheduledWorkouts, openRoutineSwap, openProgramRegistration, getWorkoutReflection, reflectWorkoutSession,
     prepareScheduledWorkout: (eventId,date) => {
       if(blockedLoad||externalChange)throw new Error('최신 캘린더 기록을 불러온 뒤 운동을 시작해 주세요.');
       if(!K)throw new Error('캘린더 연결 기능을 불러오지 못했습니다.');

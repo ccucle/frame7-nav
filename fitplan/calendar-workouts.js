@@ -63,5 +63,45 @@
     const options=event.repeat==='none'?{scope:'single'}:{scope:'occurrence',occurrenceDate:date};
     return C.upsert(state,updated,options);
   }
-  return Object.freeze({signature,prepareStart,applySession,replaceRoutine});
+  // One finite registration per selected cycle or calendar week.
+  // Pure projection: no storage writes, no changes to program progress.
+  function previewProgram(C,state,ironState,programId,anchor,today,start='07:00',end='08:00'){
+    must(C.validDate(today)&&C.validDate(anchor),'올바른 날짜를 선택해 주세요.');
+    must(anchor>=today,'과거 날짜에는 프로그램을 등록할 수 없습니다.');
+    must(C.validTime(start)&&C.validTime(end)&&end>start,'종료 시간은 시작 시간보다 늦어야 합니다.');
+    const training=iron().normalize(ironState),program=training.programs.find(p=>p.id===programId);
+    must(program,'등록할 프로그램을 찾을 수 없습니다.');
+    const current=C.normalizeState(state);
+    const first=program.mode==='fixed'?C.shiftDate(anchor,-C.dateOf(anchor).getDay()):anchor;
+    const rows=Array.from({length:program.mode==='fixed'?7:program.routineIds.length},(_,i)=>{
+      const date=C.shiftDate(first,i);
+      const rid=program.mode==='fixed'?program.weekdays[String(C.dateOf(date).getDay())]:program.routineIds[i];
+      const routine=training.routines.find(r=>r.id===rid);
+      if(!routine)return {date,routineId:null,title:'휴식',status:'rest'};
+      const row={date,routineId:rid,title:routine.name,status:'new'};
+      if(date<today)return {...row,status:'past'};
+      const same=C.dayEvents(current,date).find(e=>!e.isSample&&e.type==='strength'&&e.title===routine.name);
+      if(same)return {...row,status:'duplicate',existingId:same.id};
+      return row;
+    });
+    return {programId,programName:program.name,mode:program.mode,anchor,today,start,end,first,last:rows.at(-1).date,rows,
+      count:rows.filter(r=>r.status==='new').length};
+  }
+  function registerProgram(C,state,ironState,programId,anchor,today,start,end,expectedPreview){
+    const preview=previewProgram(C,state,ironState,programId,anchor,today,start,end);
+    must(!expectedPreview||JSON.stringify(preview)===JSON.stringify(expectedPreview),'등록할 날짜 또는 일정이 변경되었습니다. 미리보기를 다시 확인해 주세요.');
+    const training=iron().normalize(ironState),next=C.normalizeState(state);
+    const ids=new Set(next.events.map(e=>e.id));
+    for(const row of preview.rows.filter(r=>r.status==='new')){
+      must(row.date>=today,'과거 날짜에는 프로그램을 등록할 수 없습니다.');
+      const routine=training.routines.find(r=>r.id===row.routineId);
+      let id=C.uid();while(ids.has(id))id=C.uid();ids.add(id);
+      next.events.push({id,date:row.date,start,end,type:'strength',title:routine.name,repeat:'none',repeatUntil:null,completed:false,isSample:false,
+        detail:{notes:'',exercises:routine.exercises.map(ex=>({...copy(ex),id:C.uid(),sets:ex.sets.map(set=>({...copy(set),id:C.uid(),done:false}))}))}});
+    }
+    if(!preview.count)return {next:null,preview,count:0};
+    next.demo=false;
+    return {next:C.normalizeState(next),preview,count:preview.count};
+  }
+  return Object.freeze({signature,prepareStart,applySession,replaceRoutine,previewProgram,registerProgram});
 });
