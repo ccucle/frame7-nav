@@ -528,6 +528,8 @@ test('each date-specific registration action carries the selected date and cance
     app.document.querySelector('[data-day-create="' + type + '"]').click();
     assert.equal(app.get('f-date').value, '2026-11-26', type + ' defaults to the selected detail date');
     assert.equal(app.get('fd-day-sheet').open, false, 'the existing form is not hidden under a native dialog');
+    assert.equal(app.get('f-title-field').classList.contains('hide'), type !== 'strength');
+    assert.equal(app.document.activeElement, app.get(type === 'strength' ? 'f-title' : 'modal-title'));
     assert.ok(app.get('save-event'));
     app.get('cancel-event').click();
     assert.equal(app.get('modal-root').children.length, 0);
@@ -542,12 +544,13 @@ test('a cardio plan created from another day saves once in the existing calendar
   const raw = JSON.stringify(legacyState()), app = boot(raw), bridge = app.context.FormdayBridge;
   bridge.openDayDetail('2026-11-26');
   app.document.querySelector('[data-day-create="cardio"]').click();
-  app.get('f-title').value = '목요일 저녁 러닝';
+  app.get('f-cardio').value = '러닝';
   app.get('f-start').value = '19:00'; app.get('f-end').value = '19:40';
   app.get('f-minutes').value = '40'; app.get('f-distance').value = '5';
   app.get('save-event').click();
-  const saved = JSON.parse(app.map.get(C.STORE)), created = saved.events.find(event => event.title === '목요일 저녁 러닝');
+  const saved = JSON.parse(app.map.get(C.STORE)), created = saved.events.find(event => event.type === 'cardio');
   assert.ok(created);
+  assert.equal(created.title, '러닝');
   assert.equal(created.date, '2026-11-26');
   assert.equal(created.type, 'cardio');
   assert.equal(created.completed, false);
@@ -557,9 +560,9 @@ test('a cardio plan created from another day saves once in the existing calendar
   assert.deepEqual([...app.map.keys()].sort(), [C.STORE, C.STORE + '_previous'].sort());
   assert.equal(app.get('fd-day-sheet').open, true);
   assert.equal(bridge.getDetailDay(), '2026-11-26');
-  assert.match(app.get('agenda').innerHTML, /목요일 저녁 러닝/);
+  assert.match(app.get('agenda').innerHTML, /러닝/);
   bridge.closeDayDetail();
-  assert.doesNotMatch(app.get('agenda').innerHTML, /목요일 저녁 러닝/);
+  assert.doesNotMatch(app.get('agenda').innerHTML, /러닝/);
 });
 
 test('a failed date-specific weight save keeps its draft, date and original records until retry succeeds', () => {
@@ -579,6 +582,7 @@ test('a failed date-specific weight save keeps its draft, date and original reco
   app.get('save-event').click();
   const saved = JSON.parse(app.map.get(C.STORE)), weight = saved.events.find(event => event.type === 'weight');
   assert.equal(weight.date, '2026-11-22');
+  assert.equal(weight.title, '체중 측정');
   assert.equal(weight.detail.weight, 76.2);
   assert.equal(weight.completed, true);
   assert.equal(app.writes.filter(([key]) => key === C.STORE).length, 1);
@@ -587,15 +591,18 @@ test('a failed date-specific weight save keeps its draft, date and original reco
   assert.match(app.get('agenda').innerHTML, /76\.2kg/);
 });
 
-test('editing a repeated event from a date sheet changes only that occurrence and keeps other dates intact', () => {
+test('editing a repeated occurrence and then its series preserves their separate titles and recorded details', () => {
   const event = { id: 'daily-run', date: '2026-11-23', start: '07:00', end: '07:30', type: 'cardio', title: '매일 걷기', repeat: 'daily', completed: false,
-    detail: { cardio: '걷기', minutes: 30, distance: 2, intensity: '가벼움' } };
+    detail: { cardio: '걷기', minutes: 30, distance: 2, intensity: '가벼움' },
+    occurrences: { '2026-11-24': { date: '2026-11-24', start: '07:00', end: '07:30', type: 'cardio', title: '화요일 짧게 걷기', completed: false,
+      detail: { cardio: '걷기', minutes: 20, distance: 1, intensity: '가벼움' } } } };
   const raw = JSON.stringify(stateWith(event)), app = boot(raw), bridge = app.context.FormdayBridge;
   bridge.openDayDetail('2026-11-24');
   app.get('agenda').querySelector('[data-edit="daily-run"]').click();
   assert.equal(app.get('f-date').value, '2026-11-24');
   assert.equal(app.get('f-scope').value, 'occurrence');
-  app.get('f-title').value = '화요일 짧게 걷기';
+  assert.equal(app.get('f-title-field').classList.contains('hide'), true);
+  assert.equal(app.get('f-title').value, '');
   app.get('f-minutes').value = '15';
   app.get('f-completed').checked = true;
   app.get('save-event').click();
@@ -612,6 +619,18 @@ test('editing a repeated event from a date sheet changes only that occurrence an
   assert.equal(app.writes.filter(([key]) => key === C.STORE).length, 1);
   assert.equal(app.get('fd-day-sheet').open, true);
   assert.match(app.get('agenda').innerHTML, /화요일 짧게 걷기/);
+  app.get('agenda').querySelector('[data-edit="daily-run"]').click();
+  app.get('f-scope').value = 'series'; app.get('f-scope').onchange();
+  assert.equal(app.get('f-title').value, '');
+  app.get('f-minutes').value = '40'; app.get('save-event').click();
+  const revised = C.normalizeState(JSON.parse(app.map.get(C.STORE)));
+  assert.equal(revised.events[0].title, '매일 걷기');
+  assert.equal(revised.events[0].detail.minutes, 40);
+  assert.equal(C.dayEvents(revised, '2026-11-24')[0].title, '화요일 짧게 걷기');
+  assert.equal(C.dayEvents(revised, '2026-11-24')[0].detail.minutes, 15);
+  assert.equal(C.dayEvents(revised, '2026-11-25')[0].title, '매일 걷기');
+  assert.equal(C.dayEvents(revised, '2026-11-25')[0].detail.minutes, 40);
+  assert.equal(app.writes.filter(([key]) => key === C.STORE).length, 2);
 });
 
 test('moving an existing inline event to another day and back returns to the matching detail presentation', () => {
@@ -641,11 +660,11 @@ test('declining to discard a dirty date-specific form leaves the form active and
   const raw = JSON.stringify(legacyState()), app = boot(raw, { confirm: false }), bridge = app.context.FormdayBridge;
   bridge.openDayDetail('2026-11-26');
   app.document.querySelector('[data-day-create="cardio"]').click();
-  app.get('f-title').value = '아직 작성 중';
-  app.get('modal-root').oninput({ target: app.get('f-title') });
+  app.get('f-minutes').value = '45';
+  app.get('modal-root').oninput({ target: app.get('f-minutes') });
   app.get('cancel-event').click();
   assert.equal(app.confirmations.length, 1);
-  assert.equal(app.get('f-title').value, '아직 작성 중');
+  assert.equal(app.get('f-minutes').value, '45');
   assert.equal(app.get('f-date').value, '2026-11-26');
   assert.equal(app.get('fd-day-sheet').open, false);
   assert.equal(app.document.querySelector('.app').inert, true);
@@ -704,4 +723,55 @@ test('a completion-save failure stays visible inside the open date sheet and pre
   assert.equal(app.context.FormdayBridge.getState().events[0].completed, false);
   assert.equal(app.get('agenda').querySelector('[data-toggle="failed-check"]').classList.contains('checked'), false);
   assert.equal(app.writes.filter(([key]) => key === C.STORE).length, 0);
+});
+
+test('a workout title survives a category round trip but does not become a cardio title', () => {
+  const app = boot(JSON.stringify(stateWith()));
+  app.context.FormdayBridge.openDayDetail('2026-11-26');
+  app.document.querySelector('[data-day-create="strength"]').click();
+  app.get('f-title').value = '목요일 상체 훈련';
+  app.document.querySelector('[data-pick="cardio"]').click();
+  assert.equal(app.get('f-title-field').classList.contains('hide'), true);
+  app.document.querySelector('[data-pick="strength"]').click();
+  assert.equal(app.get('f-title-field').classList.contains('hide'), false);
+  assert.equal(app.get('f-title').value, '목요일 상체 훈련');
+  app.get('save-event').click();
+  const workout = JSON.parse(app.map.get(C.STORE)).events[0];
+  assert.equal(workout.type, 'strength');
+  assert.equal(workout.title, '목요일 상체 훈련');
+  app.get('agenda').querySelector('[data-edit="' + workout.id + '"]').click();
+  app.document.querySelector('[data-pick="cardio"]').click();
+  app.get('f-cardio').value = '걷기';
+  app.get('save-event').click();
+  const changed = JSON.parse(app.map.get(C.STORE));
+  assert.equal(changed.events.length, 1);
+  assert.equal(changed.events[0].id, workout.id);
+  assert.equal(changed.events[0].type, 'cardio');
+  assert.equal(changed.events[0].title, '걷기');
+  assert.equal(changed.events[0].date, '2026-11-26');
+});
+
+test('existing non-workout titles stay hidden and are not reused when their category becomes a workout', () => {
+  const cases = [
+    { type: 'cardio', title: '원래 아침 걷기', detail: { cardio: '걷기', minutes: 30, distance: 2, intensity: '가벼움' } },
+    { type: 'meal', title: '원래 점심 식사', detail: mealDetail(food()) },
+    { type: 'weight', title: '원래 아침 체중', detail: { weight: 75, bodyfat: null } }
+  ];
+  for (const source of cases) {
+    const event = { id: 'changed-' + source.type, date: '2026-11-23', start: '07:00', end: '07:30', repeat: 'none', completed: false, ...source };
+    const app = boot(JSON.stringify(stateWith(event)), { mealMount: dummyMealController });
+    app.get('agenda').querySelector('[data-edit="' + event.id + '"]').click();
+    assert.equal(app.get('f-title-field').classList.contains('hide'), true);
+    assert.equal(app.get('f-title').value, '');
+    app.document.querySelector('[data-pick="strength"]').click();
+    assert.equal(app.get('f-title-field').classList.contains('hide'), false);
+    assert.equal(app.get('f-title').value, '', source.type + ' title must not prefill the workout title');
+    app.get('save-event').click();
+    const changed = JSON.parse(app.map.get(C.STORE));
+    assert.equal(changed.events.length, 1);
+    assert.equal(changed.events[0].type, 'strength');
+    assert.equal(changed.events[0].title, '웨이트 트레이닝');
+    assert.equal(changed.events[0].id, event.id);
+    assert.equal(app.writes.filter(([key]) => key === C.STORE).length, 1);
+  }
 });

@@ -335,8 +335,10 @@
     const completionLabel=()=>currentType==='strength'?'모든 세트 완료':currentType==='meal'?'식사 완료':currentType==='weight'?'측정 완료':'운동 완료';
     const routines=edit?[]:(window.FormdayIndependent?.getSnapshot?.()?.routines||[]);
     const routinePicker=routines.length?`<div id="f-routine-field" class="field full ${currentType==='strength'?'':'hide'}">${selectField('저장한 루틴 불러오기','f-routine',[['','직접 구성'],...routines.map(r=>[r.id,r.name])],'')}<p class="helper">선택한 날짜의 운동 계획으로 가져옵니다. 원래 루틴은 유지됩니다.</p></div>`:'';
-    const controls=`${recurring?`<div class="repeat-scope">${selectField('적용 범위','f-scope',[['occurrence','이 날짜만'],['series','반복 기본 계획']],scope)}<p>${esc(repeatNote)}</p></div>`:''}<div class="type-choices" id="type-choices">${Object.entries(TYPES).map(([key,t])=>`<button class="type-choice ${key===currentType?'active':''}" style="${styl(key)}" data-pick="${key}" ${recurring?'disabled':''}><b>${t.emoji}</b>${t.name}</button>`).join('')}</div>${routinePicker}<div class="fields"><div class="field full"><label for="f-title">일정 제목</label><input id="f-title" value="${esc(item.title)}" placeholder="예: 상체 운동" maxlength="160"></div>${field(recurring?(scope==='series'?'반복 시작일':'기록 날짜'):'날짜','f-date','date',recurring&&scope==='series'?event.date:date,recurring?'disabled':'required')}${selectField('반복 일정','f-repeat',[['none','반복 안 함'],['daily','매일'],['weekly','매주 같은 요일']],item.repeat,recurring?'disabled':'')}${field('시작 시간','f-start','time',item.start,'required')}${field('종료 시간','f-end','time',item.end,'required')}<div id="until-field" class="field full ${item.repeat==='none'?'hide':''}"><label for="f-until">반복 종료일 · 선택</label><input id="f-until" type="date" value="${esc(event?.repeatUntil||'')}" ${recurring&&scope==='occurrence'?'disabled':''}></div></div><div class="separator"></div><div id="dynamic-details"></div><div class="separator"></div><label class="checkline ${recurring&&scope==='series'?'hide':''}"><input type="checkbox" id="f-completed" ${item.completed?'checked':''}><span id="completion-label">${completionLabel()}</span></label>${recurring&&scope==='series'?'<p class="helper">반복 기본 계획은 아직 기록하지 않은 날짜에 적용됩니다. 실제 수행·섭취·측정은 “이 날짜만”에서 기록하세요.</p>':''}`;
+    const controls=`${recurring?`<div class="repeat-scope">${selectField('적용 범위','f-scope',[['occurrence','이 날짜만'],['series','반복 기본 계획']],scope)}<p>${esc(repeatNote)}</p></div>`:''}<div class="type-choices" id="type-choices">${Object.entries(TYPES).map(([key,t])=>`<button class="type-choice ${key===currentType?'active':''}" style="${styl(key)}" data-pick="${key}" ${recurring?'disabled':''}><b>${t.emoji}</b>${t.name}</button>`).join('')}</div>${routinePicker}<div class="fields fd-event-fields"><div id="f-title-field" class="field full ${currentType==='strength'?'':'hide'}"><label for="f-title">일정 제목</label><input id="f-title" value="${esc(item.type==='strength'?item.title:'')}" placeholder="예: 상체 운동" maxlength="160"></div>${field(recurring?(scope==='series'?'반복 시작일':'기록 날짜'):'날짜','f-date','date',recurring&&scope==='series'?event.date:date,recurring?'disabled':'required')}${selectField('반복 일정','f-repeat',[['none','반복 안 함'],['daily','매일'],['weekly','매주 같은 요일']],item.repeat,recurring?'disabled':'')}${field('시작 시간','f-start','time',item.start,'required')}${field('종료 시간','f-end','time',item.end,'required')}<div id="until-field" class="field full ${item.repeat==='none'?'hide':''}"><label for="f-until">반복 종료일 · 선택</label><input id="f-until" type="date" value="${esc(event?.repeatUntil||'')}" ${recurring&&scope==='occurrence'?'disabled':''}></div></div><div class="separator"></div><div id="dynamic-details"></div><div class="separator"></div><label class="checkline ${recurring&&scope==='series'?'hide':''}"><input type="checkbox" id="f-completed" ${item.completed?'checked':''}><span id="completion-label">${completionLabel()}</span></label>${recurring&&scope==='series'?'<p class="helper">반복 기본 계획은 아직 기록하지 않은 날짜에 적용됩니다. 실제 수행·섭취·측정은 “이 날짜만”에서 기록하세요.</p>':''}`;
     modal(titleLabel,controls,`<div>${edit?`<button class="danger" id="delete-event">${recurring?(scope==='series'?'반복 전체 삭제':'이 날짜 삭제'):'일정 삭제'}</button>`:''}</div><div class="mini-buttons"><button class="btn btn-outline" id="cancel-event">취소</button><button class="btn btn-primary" id="save-event">${edit?'변경 저장':'일정 등록'}</button></div>`,recurring?repeatNote:'',currentType==='strength');
+    $('.modal').classList.add('fd-event-form');
+    $('#modal-title').setAttribute('tabindex','-1');
     mountDetails(currentType,item.detail,date,recurring?scope:'single');
     modalDirty=false;
     const drafts={[currentType]:item.detail};
@@ -354,6 +356,7 @@
       currentType=button.dataset.pick;
       $('.modal').classList.toggle('modal-workout',currentType==='strength');
       $('#f-routine-field')?.classList.toggle('hide',currentType!=='strength');
+      $('#f-title-field').classList.toggle('hide',currentType!=='strength');
       $$('[data-pick]').forEach(b=>b.classList.toggle('active',b===button));
       mountDetails(currentType,drafts[currentType]||{},date,'single');
       $('#f-completed').checked=false;$('#completion-label').textContent=completionLabel();modalDirty=true;
@@ -378,7 +381,9 @@
         if(!C.validDate(dateValue))throw new Error('올바른 날짜를 입력해 주세요.');
         if(!C.validTime(startValue)||!C.validTime(endValue)||endValue<=startValue)throw new Error('종료 시간은 같은 날짜의 시작 시간보다 늦어야 합니다.');
         const mealName=detail.items?.length?(detail.items[0].food.name+(detail.items.length>1?` 외 ${detail.items.length-1}가지`:'')):'식단 기록';
-        const title=$('#f-title').value.trim()||({strength:'웨이트 트레이닝',cardio:'유산소 운동',meal:mealName.slice(0,160),weight:'체중 측정'}[currentType]);
+        const automaticTitle={strength:'웨이트 트레이닝',cardio:(detail.cardio||'유산소 운동').slice(0,160),meal:mealName.slice(0,160),weight:'체중 측정'}[currentType];
+        // Preserve existing date-specific titles; hidden strength drafts never name another record type.
+        const title=currentType==='strength'?($('#f-title').value.trim()||automaticTitle):(edit&&currentType===item.type?item.title:automaticTitle);
         const completed=currentType==='strength'?(()=>{const s=W.summary(detail);return s.setCount>0&&s.completedSets===s.setCount;})():$('#f-completed').checked;
         const update={...item,id:edit?event.id:item.id,type:currentType,date:dateValue,start:startValue,end:endValue,title,repeat:recurring?event.repeat:$('#f-repeat').value,repeatUntil:$('#f-until').value||null,completed,detail,isSample:false};
         const next=C.upsert(data,update,{occurrenceDate:recurring?date:null,scope:recurring?scope:'single'});
@@ -389,7 +394,7 @@
         }
       }catch(error){formError(error);}
     };
-    $('#f-title').focus();
+    (currentType==='strength'?$('#f-title'):$('#modal-title')).focus({preventScroll:true});
   }
 
 function renderFilters(){let html='<button class="filter-chip active" id="all-filter">전체</button>';for(let [type,t] of Object.entries(TYPES))html+=`<button class="filter-chip ${visibleTypes.has(type)?'active':''}" data-filter="${type}"><span class="color-dot" style="--c:${t.color}"></span>${t.name}</button>`;$('#filters').innerHTML=html;$('#all-filter').classList.toggle('active',visibleTypes.size===4)}

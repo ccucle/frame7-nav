@@ -1,0 +1,133 @@
+/* Calendar event editors share one compact layout. Other dialogs stay unchanged. */
+.fd-event-form { max-width: 100%; letter-spacing: -.2px; }
+.fd-event-form *, .fd-event-form *::before, .fd-event-form *::after { box-sizing: border-box; }
+.fd-event-form #modal-title:focus { outline: none; }
+.fd-event-form .modal-body { min-width: 0; overflow-x: hidden; }
+.fd-event-form .fd-event-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; align-items: start; }
+.fd-event-form .fd-event-fields > .field { min-width: 0; width: 100%; max-width: 100%; gap: 6px; }
+.fd-event-form .fd-event-fields > .field.full { grid-column: 1 / -1; }
+.fd-event-form .field label { color: var(--fd-muted); font-size: 11px; font-weight: 700; line-height: 1.5; }
+.fd-event-form .field :is(input, select, textarea) { min-width: 0; max-width: 100%; width: 100%; font-size: 16px; }
+.fd-event-form .field :is(input:not([type="checkbox"]), select) { min-height: 46px; }
+.fd-event-form #f-title-field input { font-weight: 650; }
+.fd-event-form .field :is(input[type="date"], input[type="time"]) {
+  display: block;
+  width: 100%;
+  inline-size: 100%;
+  min-width: 0;
+  min-inline-size: 0;
+  max-width: 100%;
+  height: 46px;
+  padding: 9px 8px;
+  font-size: 16px;
+  line-height: 1.4;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.fd-event-form input::-webkit-date-and-time-value { min-width: 0; min-height: 1.4em; text-align: left; }
+.fd-event-form input::-webkit-datetime-edit { min-width: 0; padding: 0; }
+.fd-event-form input::-webkit-datetime-edit-fields-wrapper { padding: 0; }
+.fd-event-form input::-webkit-calendar-picker-indicator { margin: 0; padding: 0; flex: 0 0 auto; }
+.fd-event-form #f-routine-field { margin-bottom: 16px; padding: 12px; border: 1px solid var(--fd-border); border-radius: 11px; background: var(--fd-input); }
+.fd-event-form #f-routine-field > .field { gap: 6px; }
+.fd-event-form #f-routine-field .helper { margin: 6px 0 0; font-size: 10px; line-height: 1.6; }
+.fd-event-form .separator { margin: 20px 0; border-color: var(--fd-border); }
+.fd-event-form .fw-exercise, .fd-event-form .fw-set-row, .fd-event-form .fw-value, .fd-event-form .fw-kind { min-width: 0; max-width: 100%; }
+.fd-event-form .fw-exercises { gap: 14px; }
+.fd-event-form .fw-section-intro { gap: 10px; margin-bottom: 12px; }
+.fd-event-form .fw-section-intro > div { min-width: 0; }
+.fd-event-form .fw-section-intro h3 { margin-bottom: 4px; font-size: 16px; }
+.fd-event-form .fw-section-intro p { font-size: 11px; line-height: 1.6; }
+.fd-event-form .fw-stage-badge { font-size: 9px; white-space: nowrap; }
+.fd-event-form .fw-summary > div { gap: 6px; padding: 12px; }
+.fd-event-form .fw-summary span, .fd-event-form .fw-summary small { font-size: 10px; }
+.fd-event-form .fw-summary strong { font-size: 21px; }
+.fd-event-form .fw-volume-note { margin: 8px 0 15px; font-size: 10px; line-height: 1.6; }
+.fd-event-form .fw-exercise-name > span { font-size: 10px; }
+.fd-event-form .fw-exercise-name input { min-height: 46px; font-size: 16px; }
+.fd-event-form .fw-last-record { gap: 8px; font-size: 10px; line-height: 1.6; }
+.fd-event-form .fw-last-record p { margin: 0; }
+.fd-event-form .fw-value > span, .fd-event-form .fw-check > span { font-size: 10px; line-height: 1.4; }
+.fd-event-form .fw-value small { font-size: 9px; }
+.fd-event-form .fw-value input { min-height: 44px; height: 44px; font-size: 16px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.fd-event-form .fw-set-row { border-radius: 10px; }
+.fd-event-form .fw-set-row.is-done { background: var(--fd-accent-soft); border-color: #80505a; }
+.fd-event-form .fw-set-row.is-warmup { border-left-color: var(--fd-warning); }
+.fd-event-form .fw-check input { accent-color: var(--fd-accent); }
+.fd-event-form .fw-kind select { width: 100%; max-width: 100%; min-width: 0; min-height: 44px; color: var(--fd-muted); }
+.fd-event-form .fw-set-row.is-warmup .fw-kind select { color: var(--fd-warning); }
+.fd-event-form .fw-row-actions { min-width: 0; }
+.fd-event-form .fw-icon-button { min-width: 44px; min-height: 44px; border-radius: 8px; }
+.fd-event-form .fw-exercise-note > summary, .fd-event-form .fw-rpe-help > summary { min-height: 44px; font-size: 11px; }
+.fd-event-form .fw-workout-note > span { font-size: 11px; }
+.fd-event-form .fw-exercise-note textarea, .fd-event-form .fw-workout-note textarea { font-size: 16px; }
+
+@media (max-width: 730px) {
+  .fd-event-form .modal-head { padding: 13px 14px; gap: 10px; }
+  .fd-event-form .modal-head h2 { font-size: 18px; }
+  .fd-event-form .modal-head .circle-button { min-width: 44px; min-height: 44px; }
+  .fd-event-form .modal-body { padding: 16px 14px; }
+  .fd-event-form .type-choices { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-bottom: 16px; }
+  .fd-event-form .type-choice { min-width: 0; min-height: 58px; padding: 9px 3px; font-size: 11px; line-height: 1.4; }
+  .fd-event-form .type-choice b { font-size: 18px; }
+  .fd-event-form .fd-event-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
+  .fd-event-form .field :is(input, select) { min-height: 46px; padding: 9px 8px; font-size: 16px; }
+  .fd-event-form .field :is(input[type="date"], input[type="time"]) { padding-inline: 6px; height: 46px; }
+  .fd-event-form .fd-event-fields > .field label { font-size: 11px; }
+  .fd-event-form .separator { margin-block: 18px; }
+  .fd-event-form .modal-actions { gap: 8px; padding: 12px 14px; }
+  .fd-event-form .modal-actions .mini-buttons { min-width: 0; flex-wrap: wrap; gap: 7px; margin-left: auto; }
+  .fd-event-form .modal-actions .btn { min-height: 44px; }
+  .fd-event-form .modal-note { padding-inline: 14px; }
+  .fd-event-form .fw-section-intro { flex-wrap: wrap; align-items: flex-start; gap: 7px; }
+  .fd-event-form .fw-stage-badge { align-self: flex-start; }
+  .fd-event-form .fw-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .fd-event-form .fw-summary > div { padding: 11px 9px; }
+  .fd-event-form .fw-summary strong { font-size: 20px; }
+  .fd-event-form .fw-exercise-head { padding: 12px 10px 10px; gap: 7px; }
+  .fd-event-form .fw-exercise-index { width: 22px; height: 46px; font-size: 12px; }
+  .fd-event-form .fw-exercise-remove { align-self: flex-end; height: 46px; }
+  .fd-event-form .fw-last-record { margin: 0 10px 11px; padding: 9px; flex-wrap: wrap; gap: 3px 8px; }
+  .fd-event-form .fw-exercise-foot { padding: 4px 10px 12px; }
+}
+
+@media (max-width: 520px) {
+  .fd-event-form .fw-sets { padding-inline: 8px; }
+  /* Six tracks let the same DOM use four cells above and three groups below. */
+  .fd-event-form .fw-set-row {
+    grid-template-columns: 24px 30px minmax(0, 1fr) minmax(0, 1fr) 38px 44px;
+    grid-template-rows: auto auto;
+    align-items: end;
+    gap: 8px 6px;
+    margin-bottom: 9px;
+    padding: 9px 6px 8px;
+  }
+  .fd-event-form .fw-set-number { grid-column: 1; grid-row: 1; height: 44px; font-size: 12px; }
+  .fd-event-form .fw-value-weight { grid-column: 2 / 4; grid-row: 1; }
+  .fd-event-form .fw-value-reps { grid-column: 4 / 6; grid-row: 1; }
+  .fd-event-form .fw-check { grid-column: 6; grid-row: 1; min-width: 44px; min-height: 62px; width: 44px; gap: 4px; }
+  .fd-event-form .fw-check input { width: 28px; height: 28px; margin: 8px; }
+  .fd-event-form .fw-value-rpe { grid-column: 1 / 3; grid-row: 2; }
+  .fd-event-form .fw-set-controls { display: contents; }
+  .fd-event-form .fw-kind { grid-column: 3 / 5; grid-row: 2; display: block; align-self: end; }
+  .fd-event-form .fw-kind select {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    height: 44px;
+    min-height: 44px;
+    padding: 8px 2px;
+    border: 1px solid var(--fd-border-strong);
+    border-radius: 8px;
+    background: var(--fd-input);
+    font-size: 16px;
+    line-height: 1.4;
+  }
+  .fd-event-form .fw-row-actions { grid-column: 5 / -1; grid-row: 2; display: flex; gap: 0; align-self: end; }
+  .fd-event-form .fw-row-actions .fw-icon-button { flex: 0 0 44px; width: 44px; padding: 6px 2px; font-size: 10px !important; }
+  .fd-event-form .fw-value > span, .fd-event-form .fw-check > span { font-size: 10px; }
+  .fd-event-form .fw-value small { font-size: 9px; }
+  .fd-event-form .fw-value input { padding: 8px 3px; }
+  .fd-event-form .fw-value-rpe input { color: var(--fd-muted); font-weight: 500; }
+}
