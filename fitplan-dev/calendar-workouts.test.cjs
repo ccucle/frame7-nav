@@ -222,3 +222,59 @@ test('signature excludes marker and property order while tracking meaningful pla
   assert.notEqual(K.signature(altered),baseline);
   assert.deepEqual(JSON.parse(baseline).detail,actual.detail);
 });
+
+function programFixture(mode){
+  let iron=M.empty();const ids=[];
+  for(const name of ['가슴 루틴','등 루틴','하체 루틴']){
+    const r=M.createRoutine(iron,name,[M.newExercise('벤치프레스')]);iron=r.next;ids.push(r.routine.id);
+  }
+  const p=M.createProgram(iron,'테스트 프로그램',mode,ids,mode==='fixed'?{'1':ids[0],'2':ids[1],'4':ids[0],'6':ids[2]}:{});
+  return {iron:p.next,id:p.program.id,ids};
+}
+const programCalendar=()=>C.normalizeState({events:[],settings:{...C.defaults},demo:false});
+test('cycle program registration creates one finite ordered workout per day',()=>{
+  const {iron,id}=programFixture('cycle'),calendar=programCalendar(),before=JSON.stringify(iron);
+  const preview=K.previewProgram(C,calendar,iron,id,'2026-11-24','2026-11-24','09:00','10:00');
+  assert.deepEqual(preview.rows.map(x=>x.date),['2026-11-24','2026-11-25','2026-11-26']);
+  const result=K.registerProgram(C,calendar,iron,id,preview.anchor,preview.today,preview.start,preview.end,preview);
+  assert.equal(result.count,3);
+  assert.deepEqual(result.next.events.map(e=>e.title),['가슴 루틴','등 루틴','하체 루틴']);
+  assert.ok(result.next.events.every(e=>e.repeat==='none'&&!e.completed&&e.detail.exercises.every(ex=>ex.sets.every(s=>!s.done))));
+  assert.equal(JSON.stringify(iron),before);assert.equal(calendar.events.length,0);
+  assert.equal(K.prepareStart(C,result.next,result.next.events[0].id,'2026-11-24').label,'가슴 루틴');
+});
+test('fixed program respects selected Sunday-Saturday week, excludes past days and rest, permits repeated routine days',()=>{
+  const {iron,id}=programFixture('fixed'),calendar=programCalendar();
+  const p=K.previewProgram(C,calendar,iron,id,'2026-11-24','2026-11-24');
+  assert.equal(p.first,'2026-11-22');assert.equal(p.last,'2026-11-28');
+  assert.deepEqual(p.rows.map(r=>r.status),['rest','past','new','rest','new','rest','new']);
+  const result=K.registerProgram(C,calendar,iron,id,p.anchor,p.today,p.start,p.end,p);
+  assert.deepEqual(result.next.events.map(e=>e.date),['2026-11-24','2026-11-26','2026-11-28']);
+  const next=K.previewProgram(C,result.next,iron,id,'2026-11-29','2026-11-24');
+  assert.equal(next.count,4);assert.equal(next.first,'2026-11-29');assert.equal(next.last,'2026-12-05');
+});
+test('past dates are rejected at preview and registration, including when midnight passes',()=>{
+  const {iron,id}=programFixture('cycle'),calendar=programCalendar();
+  assert.throws(()=>K.previewProgram(C,calendar,iron,id,'2026-11-23','2026-11-24'),/과거 날짜/);
+  const preview=K.previewProgram(C,calendar,iron,id,'2026-11-24','2026-11-24');
+  assert.throws(()=>K.registerProgram(C,calendar,iron,id,preview.anchor,'2026-11-25',preview.start,preview.end,preview),/과거 날짜/);
+  assert.throws(()=>K.previewProgram(C,calendar,iron,id,'2026-11-24','2026-11-24','10:00','09:00'),/종료 시간/);
+  assert.equal(calendar.events.length,0);
+});
+test('duplicate registration skips existing routine dates without overwriting or changing program',()=>{
+  const {iron,id}=programFixture('cycle'),calendar=programCalendar();
+  const p=K.previewProgram(C,calendar,iron,id,'2026-11-24','2026-11-24');
+  const first=K.registerProgram(C,calendar,iron,id,p.anchor,p.today,p.start,p.end,p);
+  const retry=K.previewProgram(C,first.next,iron,id,p.anchor,p.today);
+  assert.equal(retry.count,0);assert.ok(retry.rows.every(r=>r.status==='duplicate'));
+  assert.equal(K.registerProgram(C,first.next,iron,id,retry.anchor,retry.today,retry.start,retry.end,retry).next,null);
+  assert.throws(()=>K.registerProgram(C,first.next,iron,id,p.anchor,p.today,p.start,p.end,p),/미리보기/);
+});
+test('fixed preview with only elapsed workout days creates no events',()=>{
+  const {iron,id}=programFixture('fixed'),calendar=programCalendar();
+  const p=K.previewProgram(C,calendar,iron,id,'2026-11-28','2026-11-28');
+  assert.equal(p.count,1);
+  const empty=M.updateProgram(iron,id,'월요일','fixed',[iron.routines[0].id],{'1':iron.routines[0].id}).next;
+  const e=K.previewProgram(C,calendar,empty,id,'2026-11-28','2026-11-28');
+  assert.equal(e.count,0);assert.equal(K.registerProgram(C,calendar,empty,id,e.anchor,e.today,e.start,e.end,e).next,null);
+});

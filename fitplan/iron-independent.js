@@ -321,7 +321,8 @@
         '<p>'+p.routineIds.map(id=>state.routines.find(x=>x.id===id)?.name||'삭제된 루틴').map(esc).join(' → ')+'</p>'+
         '<p class="fi-note">다음 운동: '+(r?esc(r.name):'오늘 배정 없음')+'</p>'+
         '<div class="fi-inline-actions fi-program-actions">'+(r?button('begin-program-routine','이 프로그램으로 운동 시작','primary','data-id="'+esc(p.id)+'"'):'')+
-        button('edit-program','프로그램 수정','outline','data-id="'+esc(p.id)+'"')+'</div></div>';
+        button('edit-program','프로그램 수정','outline','data-id="'+esc(p.id)+'"')+
+        button('register-program','캘린더 등록','outline','data-id="'+esc(p.id)+'"')+'</div></div>';
       }).join(''):'<div class="fi-panel fi-empty">저장된 프로그램이 없습니다. 먼저 루틴을 만든 뒤 프로그램을 구성하세요.</div>')+
       '<div class="fi-panel"><h3>루틴 보관함</h3>'+state.routines.map(r=>'<div class="fi-list-row"><div><b>'+esc(r.name)+'</b><small>'+r.exercises.length+'종목</small></div>'+
       button('edit-routine','편집','outline','data-id="'+esc(r.id)+'"')+'</div>').join('')+'</div></section>';
@@ -954,6 +955,13 @@
   function onAction(button){
     if(sheetClosing)return;
     const action=button.dataset.fiAction,id=button.dataset.id;
+    if(action==='register-program'){
+      if(beforeNavigate()){
+        if(!root.FormdayBridge?.openProgramRegistration)throw Error('프로그램 등록 기능을 불러오지 못했습니다. 새로고침해 주세요.');
+        root.FormdayBridge.openProgramRegistration(id);
+      }
+      return;
+    }
     if(action==='begin-calendar'){startCalendar(id,button.dataset.date||scheduledDay);return;}
     if(action==='swap-calendar'){
       if(beforeNavigate())root.FormdayBridge?.openRoutineSwap?.(id,button.dataset.date||scheduledDay);
