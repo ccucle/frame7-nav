@@ -32,3 +32,17 @@
 .fd-sync-faq p{color:#a5b1bd;font-size:11px;line-height:1.8}
 .fd-sync-faq a{color:#8cc9f5;text-decoration:underline}
 @media(max-width:600px){.fd-sync-body{padding:14px}.fd-sync-top{padding:18px 14px 13px}.fd-sync-header{flex-direction:column}.fd-sync-state{max-width:100%}.fd-sync-section{padding:13px}}
+
+.fd-merge-review{margin:12px 0;padding:12px;border:1px solid var(--fd-border,#53606c);border-radius:10px;overflow-wrap:anywhere}
+.fd-merge-review h3{font-size:15px;margin:0 0 8px}
+.fd-merge-conflict{padding:10px 0;border-top:1px solid var(--fd-border,#53606c)}
+.fd-merge-conflict>strong{font-size:13px}
+.fd-merge-conflict p,.fd-merge-conflict summary,.fd-sync-replace summary{font-size:11px;color:var(--fd-muted,#acb7c3);line-height:1.7}
+.fd-merge-choice{display:flex;align-items:flex-start;gap:9px;padding:11px 9px;margin:6px 0;border:1px solid var(--fd-border,#53606c);border-radius:8px;cursor:pointer}
+.fd-merge-choice input{margin:4px 0;accent-color:#cf3445;flex:none}
+.fd-merge-choice span{display:grid;gap:4px;min-width:0}
+.fd-merge-choice small{white-space:pre-line;overflow-wrap:anywhere;font-size:11px;color:var(--fd-muted,#acb7c3)}
+.fd-merge-conflict pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px;max-height:240px;overflow:auto}
+.fd-merge-review button,.fd-sync-replace button{width:100%}
+.fd-sync-section button:disabled{opacity:.45;cursor:not-allowed}
+.fd-sync-replace{margin:8px 0}

@@ -73,3 +73,48 @@ test('previous sync calendar backups are accepted only for the matching valid st
  assert.throws(()=>P.backupPayload('calendar',{events:[],settings:null},C,I));
  assert.throws(()=>P.backupPayload('iron',{sessions:[]},C,I));
 });
+
+test('merge retains both independent additions, deduplicates IDs and preserves input',()=>{
+ let base=I.createRoutine(I.empty(),'가슴',[I.newExercise('벤치프레스')]).next;
+ const local=I.createRoutine(base,'등',[I.newExercise('랫풀다운')]).next;
+ const remote=I.createRoutine(base,'하체',[I.newExercise('스쿼트')]).next;
+ const before=JSON.stringify({local,remote,base});
+ const out=P.mergeRecords('iron',local,remote,null,{},C,I);
+ assert.equal(out.conflicts.length,0);
+ assert.deepEqual(out.next.routines.map(x=>x.name),['가슴','등','하체']);
+ assert.equal(JSON.stringify({local,remote,base}),before);
+});
+test('same ID divergent routine requires explicit choice without a common base',()=>{
+ const base=I.createRoutine(I.empty(),'가슴',[I.newExercise('벤치프레스')]).next,id=base.routines[0].id;
+ const local=I.updateRoutine(base,id,'가슴 수정 1',base.routines[0].exercises).next;
+ const remote=I.updateRoutine(base,id,'가슴 수정 2',base.routines[0].exercises).next;
+ const out=P.mergeRecords('iron',local,remote,null,{},C,I);
+ assert.equal(out.next,null);assert.equal(out.conflicts.length,1);
+ const resolved=P.mergeRecords('iron',local,remote,null,{[out.conflicts[0].key]:'local'},C,I);
+ assert.equal(resolved.next.routines[0].name,'가슴 수정 1');
+});
+test('known common ancestor distinguishes independent edits and intentional removal',()=>{
+ let base=I.createRoutine(I.empty(),'가슴',[I.newExercise('벤치프레스')]).next;
+ base=I.createRoutine(base,'등',[I.newExercise('랫풀다운')]).next;
+ const local=I.updateRoutine(base,base.routines[0].id,'가슴 수정',base.routines[0].exercises).next;
+ const remote={...I.copy(base),routines:[base.routines[0]]};
+ const out=P.mergeRecords('iron',local,remote,base,{},C,I);
+ assert.equal(out.conflicts.length,0);
+ assert.deepEqual(out.next.routines.map(x=>x.name),['가슴 수정']);
+});
+test('identical content is recognized independently of transport revision',()=>{
+ const base=I.createRoutine(I.empty(),'가슴',[I.newExercise('벤치프레스')]).next;
+ assert.equal(P.equivalent('iron',{...base,revision:'a'},{...base,revision:'b'},C,I),true);
+});
+test('merge refuses two distinct unfinished sessions',()=>{
+ const local=I.start(I.empty(),{}).next,remote=I.start(I.empty(),{}).next;
+ const out=P.mergeRecords('iron',local,remote,null,{},C,I);
+ assert.equal(out.next,null);assert.match(out.error,/진행 중인 운동/);
+});
+test('calendar merge preserves events and resolves separately changed goal fields',()=>{
+ const base=C.normalizeState({settings:{...C.defaults},events:[]});
+ const l=C.upsert({...base,settings:{...base.settings,protein:160}},{id:'l',date:'2026-11-24',start:'07:00',end:'08:00',type:'weight',title:'체중',repeat:'none',completed:true,detail:{weight:80}}).events;
+ const r=C.upsert({...base,settings:{...base.settings,carbs:210}},{id:'r',date:'2026-11-25',start:'07:00',end:'08:00',type:'weight',title:'체중',repeat:'none',completed:true,detail:{weight:81}}).events;
+ const out=P.mergeRecords('calendar',{...base,events:l,settings:{...base.settings,protein:160}},{...base,events:r,settings:{...base.settings,carbs:210}},base,{},C,I);
+ assert.equal(out.next.events.length,2);assert.equal(out.next.settings.protein,160);assert.equal(out.next.settings.carbs,210);
+});
