@@ -87,7 +87,7 @@
   function home(){
     const {a,independent}=dataset();
     const dayList=a.currentWorkout;
-    const strength=dayList[0]||null;
+    const strength=dayList.find(event=>!event.completed&&!event.workoutSessionId&&!independent?.sessions?.some(s=>s.calendarSource?.eventId===event.id&&s.calendarSource.date===event.date&&['COMPLETED','PARTIAL'].includes(s.status)))||null;
     const unfinished=independent?.sessions?.find(s=>['ACTIVE','PAUSED','SAVED'].includes(s.status));
     const routines=independent?.routines||[];
     let trainingTitle='오늘의 웨이트를 시작하세요',trainingNote='자유 운동을 시작하거나 사용할 루틴을 선택하세요.',trainingAction='resume-workout',trainingLabel='운동 시작';
@@ -95,14 +95,14 @@
       trainingTitle=unfinished.label;
       trainingNote=unfinished.date+' · '+({ACTIVE:'운동 진행 중',PAUSED:'일시정지',SAVED:'임시 보관'})[unfinished.status]+' · 이어서 기록할 수 있습니다.';
       trainingLabel='운동 이어하기';
+    }else if(strength){
+      trainingTitle=strength.title;
+      trainingNote='오늘 예정된 운동 · '+strength.detail.exercises.map(x=>x.name).slice(0,3).join(' · ');
+      trainingAction='scheduled-workout';trainingLabel='이 일정으로 운동 시작';
     }else if(routines.length){
       trainingTitle='저장한 루틴으로 시작';
       trainingNote=routines.length+'개 루틴 · '+routines.slice(0,2).map(r=>r.name).join(' · ');
       trainingAction='choose-routine';trainingLabel='루틴 선택';
-    }else if(strength){
-      trainingTitle=strength.title;
-      trainingNote='오늘의 기존 웨이트 일정 · '+strength.detail.exercises.map(x=>x.name).slice(0,3).join(' · ');
-      trainingAction='open-legacy';trainingLabel='기존 일정 열기';
     }
     const best=a.bestPR;
     const imageCredit='<a class="fd-photo-credit" target="_blank" rel="noopener noreferrer" href="https://unsplash.com/license">운동 분위기 사진 · Unsplash</a>';
@@ -276,6 +276,7 @@
     if(action==='resume-workout'){openWorkout('session');return;}
     if(action==='choose-routine'){openWorkout('routines');return;}
     if(action==='retry-workout'){root.location.reload();return;}
+    if(action==='scheduled-workout'){openWorkout('calendar',{eventId:button.dataset.fdWorkout,date:bridge.getToday()});return;}
     if(action==='open-legacy'){bridge.editStrength(button.dataset.fdWorkout,bridge.getToday());return;}
     if(action==='add-exercise'){openWorkout('start',{exercise:button.dataset.fdName});return;}
     if(action==='new-strength'){bridge.openStrength(null,bridge.getToday());return;}

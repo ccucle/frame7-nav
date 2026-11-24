@@ -59,6 +59,17 @@
     return {id:raw.id,name:text(raw.name,100),mode:raw.mode,routineIds:[...new Set(raw.routineIds)],
       weekdays:fixed,nextIndex,active:raw.active!==false};
   }
+  function normalizeCalendarSource(raw,date){
+    must(obj(raw)&&typeof raw.eventId==='string'&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/.test(raw.eventId),'연결할 캘린더 일정이 올바르지 않습니다.');
+    must(dateOk(raw.date)&&raw.date===date,'연결된 운동과 일정의 날짜가 다릅니다.');
+    must(typeof raw.baseline==='string'&&raw.baseline.length>0&&raw.baseline.length<=1000000,'운동을 시작할 때의 일정 정보가 올바르지 않습니다.');
+    let baseline;
+    try{baseline=JSON.parse(raw.baseline);}catch(e){throw Error('운동을 시작할 때의 일정 정보가 올바르지 않습니다.');}
+    must(obj(baseline)&&baseline.id===raw.eventId&&baseline.date===raw.date&&baseline.type==='strength'&&
+      typeof baseline.completed==='boolean'&&obj(baseline.detail)&&Array.isArray(baseline.detail.exercises)&&
+      JSON.stringify(baseline)===raw.baseline,'운동을 시작할 때의 일정 정보가 올바르지 않습니다.');
+    return {eventId:raw.eventId,date:raw.date,baseline:raw.baseline};
+  }
   function normalizeSession(raw){
     must(obj(raw)&&idOk(raw.id),'세션 식별자가 올바르지 않습니다.');
     must(SESSION_STATES.includes(raw.status),'운동 진행 상태를 확인해 주세요.');
@@ -75,7 +86,8 @@
     return {id:raw.id,programId:raw.programId??null,routineId:raw.routineId??null,
       label:text(raw.label,100),status:raw.status,date:raw.date,startedAt:raw.startedAt,
       activeSince,activeMs,lastSavedAt,endedAt:finished?raw.endedAt:null,
-      exercises,notes:typeof raw.notes==='string'?raw.notes.slice(0,4000):''};
+      exercises,notes:typeof raw.notes==='string'?raw.notes.slice(0,4000):'',
+      ...(raw.calendarSource===undefined?{}:{calendarSource:normalizeCalendarSource(raw.calendarSource,raw.date)})};
   }
   function normalize(raw){
     must(obj(raw)&&raw.version===VERSION,'지원하지 않는 IRON MODE 기록 형식입니다.');
@@ -183,6 +195,19 @@
     // First free-session exercise is an editable placeholder, not a completed set.
     const valid=normalizeSession(session);next.sessions.push(valid);
     return {next,session:valid};
+  }
+  function startCalendar(data,plan,date=new Date()){
+    const next=normalize(data);
+    must(!getUnfinished(next),'먼저 진행 중인 운동을 처리해 주세요.');
+    must(obj(plan),'캘린더 운동 계획을 먼저 불러와 주세요.');
+    const calendarSource=normalizeCalendarSource({eventId:plan.eventId,date:plan.date,baseline:plan.baseline},plan.date);
+    must(!next.sessions.some(s=>s.calendarSource?.eventId===calendarSource.eventId&&s.calendarSource.date===calendarSource.date),'이 일정에서 이미 시작한 운동이 있습니다. 기존 운동 기록을 확인해 주세요.');
+    const label=text(plan.label,300).slice(0,100);
+    const session=normalizeSession({id:uid(),routineId:null,programId:null,label,status:'ACTIVE',date:plan.date,
+      startedAt:nowIso(date),activeSince:nowIso(date),lastSavedAt:nowIso(date),activeMs:0,endedAt:null,
+      exercises:copy(plan.exercises),notes:plan.notes,calendarSource});
+    next.sessions.push(session);
+    return {next,session};
   }
   function modify(data,sessionId,apply,date=new Date()){
     const next=normalize(data),session=next.sessions.find(x=>x.id===sessionId);
@@ -359,5 +384,5 @@
     }
     return {completedSets,volume:Math.round(volume*100)/100,exercises,minutes:Math.round(s.activeMs/60000)};
   }
-  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,getUnfinished,start,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,recordSummary});
+  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,recordSummary});
 });

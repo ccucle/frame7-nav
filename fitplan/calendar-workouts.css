@@ -1,0 +1,58 @@
+/* Calendar plans and workout execution share an occurrence, not a new store. */
+.fi-scheduled { margin: 0 0 18px; }
+.fi-scheduled .fi-section-head { flex-wrap: wrap; gap: 10px; align-items: center; }
+.fi-scheduled .fi-section-head h3 { margin: 4px 0 0; font-size: 19px; }
+.fi-plan-date { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.fi-plan-date input { width: 153px; min-width: 0; min-height: 44px; padding: 8px 10px; border: 1px solid var(--fd-border); border-radius: 10px; color: var(--fd-text); background: var(--fd-input); font-size: 16px; font-family: inherit; color-scheme: dark; }
+.fi-plan-date input::-webkit-date-and-time-value { text-align: center; }
+.fi-plan-date .fi-btn { min-height: 44px; padding-inline: 12px; }
+.fi-scheduled-list { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin: 14px 0 12px; }
+.fi-planned-card { min-width: 0; padding: 15px; border: 1px solid var(--fd-border); border-radius: 13px; background: var(--fd-input); }
+.fi-planned-heading { display: flex; gap: 10px; align-items: center; justify-content: space-between; }
+.fi-planned-heading > div { min-width: 0; }
+.fi-planned-heading small { color: var(--fd-subtle); font-size: 11px; line-height: 1.5; }
+.fi-planned-heading h4 { margin: 4px 0 0; color: var(--fd-text); font-size: 17px; line-height: 1.4; letter-spacing: -.4px; overflow-wrap: anywhere; }
+body .fd-plan-swap { display: inline-grid; place-items: center; flex: 0 0 44px; width: 44px; min-width: 44px; min-height: 44px; padding: 0; border: 1px solid var(--fd-border); border-radius: 12px; background: var(--fd-surface-raised); color: var(--fd-muted); }
+.fd-plan-swap svg { width: 21px; height: 21px; pointer-events: none; }
+.fd-plan-swap:hover:not(:disabled) { color: var(--fd-accent-text); border-color: var(--fd-accent-text); }
+.fd-plan-swap:disabled { opacity: .38; cursor: not-allowed; }
+.fi-plan-summary { margin: 10px 0 0; color: var(--fd-muted); font-size: 12px; line-height: 1.65; overflow-wrap: anywhere; }
+.fi-plan-sets { margin: 4px 0 10px; color: var(--fd-muted); font-size: 12px; }
+.fi-plan-sets summary { display: list-item; cursor: pointer; padding: 10px 0; min-height: 40px; }
+.fi-plan-sets > div { display: grid; gap: 4px; padding: 8px 0; border-top: 1px solid var(--fd-border); line-height: 1.7; overflow-wrap: anywhere; }
+.fi-plan-sets b { font-weight: 650; color: var(--fd-text); }
+.fi-planned-card > .fi-btn { width: 100%; min-height: 44px; }
+.fi-calendar-reflection { margin: 12px 0; padding: 12px; border: 1px solid var(--fd-warning-border,var(--fd-border)); border-radius: 10px; background: var(--fd-warning-bg); color: var(--fd-text); }
+.fi-calendar-reflection p { margin: 0; font-size: 12px; line-height: 1.65; }
+.fi-calendar-reflection .fi-btn { margin-top: 10px; }
+.fi-calendar-reflection[data-applied="true"] { color: var(--fd-success); background: var(--fd-success-bg); border-color: var(--fd-success-border); }
+.fd-day-detail .agenda-card:has(.fd-agenda-workout-actions) { flex-wrap: wrap; }
+.fd-agenda-workout-actions { display: flex; align-items: center; justify-content: flex-end; gap: 7px; flex: 1 0 100%; padding-top: 5px; }
+.fd-agenda-workout-actions .btn { min-height: 44px; padding: 8px 14px; }
+.fd-routine-swap { width: min(540px,100%); max-height: 90vh; max-height: 90dvh; }
+.fd-routine-swap-context { display: grid; gap: 5px; margin: 0 0 16px; font-size: 13px; line-height: 1.6; }
+.fd-routine-swap-context span { color: var(--fd-muted); overflow-wrap: anywhere; }
+.fd-routine-choices { display: grid; gap: 9px; }
+.fd-routine-choice { display: flex; gap: 12px; justify-content: space-between; align-items: center; width: 100%; min-width: 0; padding: 14px; border: 1px solid var(--fd-border); border-radius: 12px; color: var(--fd-text); background: var(--fd-input); text-align: left; cursor: pointer; font-family: inherit; }
+.fd-routine-choice-copy { display: grid; gap: 4px; min-width: 0; }
+.fd-routine-choice strong { font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
+.fd-routine-choice small { color: var(--fd-accent-text); font-size: 11px; }
+.fd-routine-choice-copy > span { color: var(--fd-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.fd-routine-choice-check { display: grid; place-items: center; flex: 0 0 26px; height: 26px; border: 1px solid var(--fd-border-strong); border-radius: 50%; color: transparent; }
+.fd-routine-choice[aria-pressed="true"] { background: var(--fd-accent-soft); border-color: var(--fd-accent-text); }
+.fd-routine-choice[aria-pressed="true"] .fd-routine-choice-check { background: var(--fd-accent); color: #fff; border-color: var(--fd-accent); }
+.fd-routine-swap .modal-actions { justify-content: space-between; gap: 10px; }
+.fd-routine-swap .modal-actions .btn { min-height: 44px; }
+.fd-routine-swap .modal-note { font-size: 11px; line-height: 1.7; }
+@media(max-width:730px) {
+  .fi-scheduled-list { grid-template-columns: minmax(0,1fr); }
+  .fi-planned-card { padding: 13px; }
+  .fi-scheduled .fi-section-head h3 { font-size: 18px; }
+  .fi-scheduled > .fi-note { font-size: 11px; line-height: 1.7; }
+  .fd-routine-swap { align-self: flex-end; width: 100%; max-width: 100%; margin: 0; border-radius: 20px 20px 0 0; animation: fd-routine-slide-up 220ms cubic-bezier(.22,1,.36,1); }
+  #overlay:has(.fd-routine-swap) { align-items: flex-end; padding: 0; }
+  .fd-routine-swap .modal-body { padding: 16px; }
+  .fd-routine-swap .modal-actions { padding-bottom: max(16px,env(safe-area-inset-bottom,0px)); }
+}
+@keyframes fd-routine-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media(prefers-reduced-motion:reduce) { .fd-routine-swap { animation: none; } }

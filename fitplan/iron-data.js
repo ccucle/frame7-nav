@@ -1,10 +1,11 @@
 /* FORMDAY IRON MODE · exercise directory and read-only training analytics */
 (function(root,factory){
   'use strict';
-  const api=factory();
+  const calendarWorkouts=typeof module==='object'&&module.exports?require('./calendar-workouts.js'):root.FormdayCalendarWorkouts;
+  const api=factory(calendarWorkouts);
   if(typeof module==='object'&&module.exports)module.exports=api;
   root.FormdayIronData=api;
-})(typeof globalThis!=='undefined'?globalThis:this,function(){
+})(typeof globalThis!=='undefined'?globalThis:this,function(calendarWorkouts){
   'use strict';
   const PHOTOS=Object.freeze({
     hero:'https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=1200&auto=format&fit=crop&q=76',
@@ -76,18 +77,46 @@
     const result=new Map();
     for(const session of independent?.sessions||[]){
       if(!['COMPLETED','PARTIAL'].includes(session.status)||session.isSample||!core.validDate(session.date))continue;
-      // Store identity is the only safe deduplication key. Matching names or
-      // weights may belong to two legitimate workouts and must not be merged.
+      // Matching names or weights may belong to two legitimate workouts.
+      // Only an explicit, date-specific calendar source can join both stores.
       const key='iron:'+session.id;
+      const source=session.calendarSource;
+      const calendarKey=source&&typeof source.eventId==='string'&&/^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/.test(source.eventId)&&
+        source.date===session.date&&typeof source.baseline==='string'&&source.baseline.length>0
+        ?'calendar:'+source.eventId+':'+source.date:null;
       result.set(key,{id:session.id,date:session.date,start:'',end:'',type:'strength',
         title:session.label,completed:true,isSample:false,source:'iron',recordKey:key,
-        status:session.status,detail:{exercises:session.exercises||[]}});
+        status:session.status,calendarKey,calendarBaseline:calendarKey?source.baseline:null,detail:{exercises:session.exercises||[]}});
     }
     return [...result.values()];
   }
+  function combineRecords(calendar,independent){
+    const sources=new Map(),represented=new Set();
+    for(const record of independent){
+      if(!record.calendarKey)continue;
+      const matches=sources.get(record.calendarKey)||[];
+      matches.push(record);sources.set(record.calendarKey,matches);
+    }
+    const entries=calendar.filter(record=>{
+      if(record.type!=='strength')return true;
+      const sessions=sources.get(record.recordKey);
+      if(!sessions?.length)return true;
+      const reflected=sessions.find(session=>record.workoutSessionId===session.id);
+      if(reflected){represented.add(reflected.recordKey);return true;}
+      // The session is saved before its calendar reflection. Suppress only an
+      // unchanged source while reflection is pending. Conflicting actual edits
+      // or another session's marker remain separate until explicitly resolved.
+      if(record.workoutSessionId||!calendarWorkouts?.signature)return true;
+      try{
+        const signature=calendarWorkouts.signature(record);
+        return !sessions.some(session=>session.calendarBaseline===signature);
+      }catch(error){return true;}
+    });
+    return [...entries,...independent.filter(record=>!represented.has(record.recordKey))];
+  }
   function records(core,state,independent){
     // Read-only projection: no migration, storage writes or routine targets.
-    return [...calendarRecords(core,state),...independentRecords(core,independent)];
+    return combineRecords(calendarRecords(core,state),independentRecords(core,independent));
   }
   function strengthSummary(detail,includeActual=true){
     let setCount=0,completedSets=0,volume=0;
@@ -103,7 +132,7 @@
   }
   function daySummary(core,state,independent,day,clock){
     const today=core.iso(clock||new Date());
-    const entries=[...calendarRecords(core,state,day),...independentRecords(core,independent).filter(e=>e.date===day&&e.date<=today)];
+    const entries=combineRecords(calendarRecords(core,state,day),independentRecords(core,independent).filter(e=>e.date===day&&e.date<=today));
     const workouts=entries.filter(e=>e.type==='strength'||e.type==='cardio');
     const result={workoutCount:workouts.length,completedWorkouts:0,strengthSessions:0,cardioSessions:0,setCount:0,completedSets:0,volume:0};
     for(const record of workouts){

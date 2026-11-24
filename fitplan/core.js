@@ -92,6 +92,12 @@
     return { start: raw.start, end: raw.end };
   }
 
+  function workoutLink(raw, type) {
+    if (raw.workoutSessionId === undefined) return {};
+    if (type !== 'strength') fail('운동 연결 표식은 웨이트 일정에만 저장할 수 있습니다.');
+    return { workoutSessionId: recordId(raw.workoutSessionId, '연결 운동', false) };
+  }
+
   function normalizeStrength(detail, legacyCompleted) {
     if (!plain(detail)) fail('웨이트 상세 기록이 올바르지 않습니다.');
     let exercises;
@@ -174,7 +180,7 @@
     if (!baseRule(event, day, false)) fail('반복 일정 범위를 벗어난 날짜별 기록입니다.');
     if (raw.type !== event.type) fail('날짜별 기록의 종류가 반복 일정과 다릅니다.');
     const completed = booleanValue(raw.completed, '완료', false);
-    return { date: day, ...times(raw), type: event.type, title: textValue(raw.title, '일정 제목', 300, false), detail: normalizeDetail(event.type, raw.detail, completed), completed };
+    return { date: day, ...times(raw), type: event.type, title: textValue(raw.title, '일정 제목', 300, false), detail: normalizeDetail(event.type, raw.detail, completed), completed, ...workoutLink(raw, event.type) };
   }
 
   function normalizeEvent(raw, counts) {
@@ -183,7 +189,8 @@
     if (!validDate(raw.date)) fail('일정 날짜가 올바르지 않습니다.');
     if (!TYPES.includes(raw.type) || !REPEATS.includes(raw.repeat)) fail('일정 종류 또는 반복 설정이 올바르지 않습니다.');
     const completed = booleanValue(raw.completed, '완료', false);
-    const event = { id, date: raw.date, ...times(raw), type: raw.type, title: textValue(raw.title, '일정 제목', 300, false), repeat: raw.repeat, repeatUntil: null, completed, detail: normalizeDetail(raw.type, raw.detail, completed), occurrences: {}, excludedDates: [], isSample: booleanValue(raw.isSample, '샘플', false) };
+    const link = workoutLink(raw, raw.type);
+    const event = { id, date: raw.date, ...times(raw), type: raw.type, title: textValue(raw.title, '일정 제목', 300, false), repeat: raw.repeat, repeatUntil: null, completed, detail: normalizeDetail(raw.type, raw.detail, completed), occurrences: {}, excludedDates: [], isSample: booleanValue(raw.isSample, '샘플', false), ...(raw.repeat === 'none' ? link : {}) };
     if (raw.repeatUntil !== undefined && raw.repeatUntil !== null && raw.repeatUntil !== '') {
       if (!validDate(raw.repeatUntil) || raw.repeatUntil < event.date) fail('반복 종료일은 시작일 이후여야 합니다.');
       event.repeatUntil = raw.repeatUntil;
@@ -276,7 +283,7 @@
       if (event.type === 'strength') detail = markStrength(detail, false);
       if (event.type === 'weight') detail = { weight: null, bodyfat: null };
     }
-    return { id: event.id, date: day, start: source.start, end: source.end, type: source.type, title: source.title, repeat: event.repeat, repeatUntil: event.repeatUntil || null, detail, completed, isSample: !!event.isSample, seriesDate: event.date };
+    return { id: event.id, date: day, start: source.start, end: source.end, type: source.type, title: source.title, repeat: event.repeat, repeatUntil: event.repeatUntil || null, detail, completed, isSample: !!event.isSample, seriesDate: event.date, ...(event.repeat === 'none' || snapshot ? workoutLink(source, source.type) : {}) };
   }
 
   function dayEvents(state, day) {
@@ -320,7 +327,7 @@
   }
 
   function snapshotFrom(updated, event, day) {
-    return normalizeSnapshot({ date: day, start: updated.start, end: updated.end, type: updated.type, title: updated.title, detail: updated.detail, completed: updated.completed }, event, day);
+    return normalizeSnapshot({ date: day, start: updated.start, end: updated.end, type: updated.type, title: updated.title, detail: updated.detail, completed: updated.completed, ...workoutLink(updated, updated.type) }, event, day);
   }
 
   function upsert(state, updated, options) {

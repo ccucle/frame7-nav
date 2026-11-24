@@ -20,7 +20,7 @@
   const TIME_LIMIT_MS=24*60*60*1000;
   let store,blocked='',state=null,screen='home',editingRoutine=null,draft=null,programDraft=null,
       draftBaseline='',programBaseline='',pickerOpen=false,
-      focusedSession=null,message='',error=false,revisionConflict=false,clockTick=Date.now(),timerSecs=90,timerEnd=0,
+      focusedSession=null,scheduledDay=iso(new Date()),message='',error=false,revisionConflict=false,clockTick=Date.now(),timerSecs=90,timerEnd=0,
       timerVisible=false,timerAutoPaused=false,sessionDirty=false,sessionViewMode='all',sessionExerciseIndex=0,
       timerTargetSecs=90,timerTotalSecs=90,timerSource=null,timerGeneration=0,timerEnterPending=false,
       timerClosing=false,timerPresetOpen=false,timerSoundEnabled=true,timerAlerted=false,restAudioContext=null,
@@ -60,6 +60,17 @@
   function editable(){
     if(blocked||!state)throw Error(blocked||'운동 기록을 먼저 불러와 주세요.');
     if(revisionConflict)throw Error('다른 탭에서 데이터가 변경되었습니다. 먼저 최신 기록을 불러와 주세요.');
+  }
+  function getCalendarSnapshot(){
+    editable();
+    const latest=store.load();
+    if(latest.error)throw Error(latest.error);
+    if(latest.data.revision!==state.revision){
+      revisionConflict=true;
+      const message='다른 탭에서 운동 기록이 변경됐습니다. 운동 탭에서 최신 기록을 불러온 뒤 다시 시도해 주세요.';
+      setMessage(message,true);throw Error(message);
+    }
+    return M.copy(state);
   }
   function commit(result,success,refresh=true){
     if(blocked||revisionConflict){setMessage(blocked||'다른 탭에서 데이터가 변경되었습니다. 먼저 기록을 다시 불러와 주세요.',true);if(refresh)render();else paintMessage();return false;}
@@ -116,6 +127,11 @@
     try{
       if(!beforeNavigate())return false;
       if(blocked||!state){go('home');return false;}
+      if((page==='calendar'||page==='calendar-swap')&&extra?.eventId){
+        scheduledDay=extra.date||iso(new Date());
+        if(page==='calendar')return startCalendar(extra.eventId,scheduledDay);
+        go('home');return root.FormdayBridge?.openRoutineSwap?.(extra.eventId,scheduledDay)===true;
+      }
       if(page==='start'&&extra?.exercise){
         if(current()){
           const s=current();
@@ -168,12 +184,32 @@
   function home(){
     const history=completed().slice().reverse();
     return '<section class="fi-view" aria-label="오늘의 운동">'+
-      banner()+'<div class="fi-stats"><div><span>저장된 루틴</span><strong>'+state.routines.length+'</strong></div><div><span>훈련 프로그램</span><strong>'+state.programs.length+'</strong></div><div><span>확정한 운동</span><strong>'+history.length+'</strong></div></div>'+
+      banner()+scheduledWorkouts()+'<div class="fi-stats"><div><span>저장된 루틴</span><strong>'+state.routines.length+'</strong></div><div><span>훈련 프로그램</span><strong>'+state.programs.length+'</strong></div><div><span>확정한 운동</span><strong>'+history.length+'</strong></div></div>'+
       '<div class="fi-hub-start"><div><h3>어떻게 운동할까요?</h3><p>자유 운동에서는 검색과 즐겨찾기로 여러 종목을 한 번에 고를 수 있습니다.</p></div><div class="fi-action-grid">'+
       button('start-free','＋ 종목 골라 운동 시작')+button('routine-list','저장한 루틴으로 시작','outline')+'</div></div>'+
       (state.programs.some(p=>p.active)?'<div class="fi-panel"><div class="fi-section-head"><h3>프로그램의 다음 운동</h3>'+button('program-list','프로그램 보기','subtle')+'</div>'+programStarts()+'</div>':'')+
       '<div class="fi-panel"><div class="fi-section-head"><h3>최근 운동</h3>'+button('show-history','기록 전체 →','subtle')+'</div>'+
       (!history.length?'<p class="fi-empty">아직 확정된 운동 기록이 없습니다.</p>':history.slice(0,4).map(s=>recordCard(s)).join(''))+'</div></section>';
+  }
+  function scheduledWorkouts(){
+    const items=root.FormdayBridge?.getScheduledWorkouts?.(scheduledDay)||[];
+    const swap='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4"/></svg>';
+    return '<section class="fi-panel fi-scheduled" aria-labelledby="fi-scheduled-title"><div class="fi-section-head"><div><span class="fi-kicker">CALENDAR PLAN</span><h3 id="fi-scheduled-title">예정된 운동</h3></div><div class="fi-plan-date"><label class="sr-only" for="fi-calendar-date">예정된 운동 날짜</label><input id="fi-calendar-date" type="date" value="'+esc(scheduledDay)+'">'+button('calendar-today','오늘','subtle')+'</div></div>'+
+      (items.length?'<div class="fi-scheduled-list">'+items.map(({event,session,canReplace})=>{
+        const final=session&&['COMPLETED','PARTIAL'].includes(session.status),done=!session&&(event.completed||event.workoutSessionId);
+        const label=final?'운동 기록 보기':session?'운동 이어하기':done?'완료한 일정':'이 일정으로 시작';
+        const metadata='data-id="'+esc(event.id)+'" data-date="'+esc(event.date)+'"';
+        return '<article class="fi-planned-card"><div class="fi-planned-heading"><div><small>'+esc(event.start)+'–'+esc(event.end)+(event.repeat!=='none'?' · 반복 일정':'')+'</small><h4>'+esc(event.title)+'</h4></div>'+button('swap-calendar',swap,'outline fd-plan-swap',metadata+' aria-label="'+esc(event.title)+' 루틴 교체" title="'+(canReplace?'이 날짜의 루틴 교체':'시작하거나 기록한 운동은 교체할 수 없습니다')+'" '+(canReplace?'':'disabled'))+'</div>'+
+          '<p class="fi-plan-summary">'+event.detail.exercises.length+'종목 · '+event.detail.exercises.reduce((n,e)=>n+e.sets.length,0)+'세트 · '+esc(event.detail.exercises.map(e=>e.name).join(' · '))+'</p>'+
+          '<details class="fi-plan-sets"><summary>세트 미리보기</summary>'+event.detail.exercises.map(ex=>'<div><b>'+esc(ex.name)+'</b><span>'+ex.sets.map(set=>(set.warmup?'W · ':'')+fmt(set.weight)+'kg × '+set.reps+'회').join(' / ')+'</span></div>').join('')+'</details>'+
+          button('begin-calendar',label,'primary',metadata+(done?' disabled':''))+'</article>';
+      }).join('')+'</div>':'<p class="fi-empty">이 날짜에 등록된 웨이트 일정이 없습니다.</p>')+
+      '<p class="fi-note">캘린더의 종목과 세트로 시작합니다. ↔ 아이콘으로 이 날짜의 루틴을 바꿀 수 있습니다.</p></section>';
+  }
+  function reflectionNotice(session){
+    if(!session.calendarSource)return '';
+    const status=root.FormdayBridge?.getWorkoutReflection?.(session)||{applied:false,message:'캘린더 연결 상태를 확인해 주세요.'};
+    return '<div class="fi-calendar-reflection" data-applied="'+status.applied+'"><p>'+esc(status.message|| (status.applied?'캘린더에 반영됨':'캘린더 반영 대기'))+'</p>'+(!status.applied?button('retry-calendar','캘린더에 다시 반영','outline','data-id="'+esc(session.id)+'"'):'')+'</div>';
   }
   function routines(){
     return '<section class="fi-view" aria-label="내 루틴"><div class="fi-view-toolbar"><span class="fi-note">'+state.routines.length+'개 루틴</span>'+button('new-routine','＋ 새 루틴')+'</div>'+
@@ -390,6 +426,7 @@
       '<div class="fi-panel">'+(records.length?records.map(s=>recordCard(s)).join(''):'<p class="fi-empty">완료된 운동 세션이 없습니다.</p>')+'</div>'+
       (selected?'<div class="fi-panel"><div class="fi-section-head"><h3>'+esc(selected.label)+'</h3><span>'+ (selected.status==='PARTIAL'?'부분 완료':'정상 완료')+'</span></div>'+
       '<p class="fi-note">'+esc(selected.date)+' · 운동 '+timeLabel(Math.floor(selected.activeMs/1000))+'</p>'+
+      reflectionNotice(selected)+
       (selected.notes?'<p class="fi-history-note">'+esc(selected.notes)+'</p>':'')+
       selected.exercises.map(ex=>'<div class="fi-history-ex"><b>'+esc(ex.name)+'</b><small>'+(ex.sets.filter(s=>s.done).map(s=>fmt(s.weight)+'kg × '+s.reps+'회'+(s.warmup?' (워밍업)':'')).join(' · ')||'완료 세트 없음')+'</small>'+(ex.notes?'<p class="fi-history-note">'+esc(ex.notes)+'</p>':'')+'</div>').join('')+
       '<p class="fi-note">이 화면에서는 확정 기록이 읽기 전용입니다. 루틴을 변경해도 이 기록은 유지됩니다.</p>'+
@@ -405,7 +442,7 @@
   function renderCalendar(){
     if(!calendar||!state)return;
     const selected=root.FormdayBridge?.getDetailDay?.()||root.FormdayBridge?.getSelectedDay?.()||iso(new Date());
-    const s=completed().filter(x=>x.date===selected);
+    const s=completed().filter(x=>x.date===selected&&(!x.calendarSource||!root.FormdayBridge?.getWorkoutReflection?.(x)?.applied));
     calendar.innerHTML=s.length?'<div class="fi-calendar-head"><b>완료한 운동</b><small>'+s.length+'건</small></div>'+s.map(x=>recordCard(x,true)).join(''):'';
     calendar.hidden=!s.length;
   }
@@ -508,6 +545,33 @@
     const result=changed(()=>M.start(state,{routineId,programId,exerciseNames}),'새 운동을 시작했습니다. 실제 세트 기록만 완료 처리하세요.');
     if(result){resetRest();backgroundStoppedAt=null;sessionDirty=false;sessionExerciseIndex=0;go('session');}
     return result;
+  }
+  function startCalendar(eventId,date){
+    if(!beforeNavigate())return false;
+    const linked=state.sessions.find(s=>s.calendarSource?.eventId===eventId&&s.calendarSource.date===date);
+    if(linked){
+      if(['COMPLETED','PARTIAL'].includes(linked.status)){focusedSession=linked.id;return go('history');}
+      if(linked.status!=='ACTIVE'&&!changed(()=>M.changeState(state,linked.id,linked.status==='SAVED'?'resumeSaved':'resume'),'예정된 운동을 재개했습니다.'))return false;
+      resumeRest();prepareRestAudio();
+      return go('session');
+    }
+    if(current()){setMessage('진행 중인 운동을 완료하거나 보관된 운동을 취소한 뒤 다른 일정을 시작해 주세요.',true);go('session');return false;}
+    const started=changed(()=>{
+      const plan=root.FormdayBridge?.prepareScheduledWorkout?.(eventId,date);
+      if(!plan)throw Error('선택한 캘린더 일정을 불러오지 못했습니다.');
+      return M.startCalendar(state,plan);
+    },'캘린더의 종목과 세트를 불러왔습니다.');
+    if(started){resetRest();backgroundStoppedAt=null;sessionDirty=false;sessionExerciseIndex=0;go('session');}
+    return started;
+  }
+  function reflectCalendar(session){
+    if(!session?.calendarSource)return true;
+    let result;
+    try{result=root.FormdayBridge?.reflectWorkoutSession?.(session);}
+    catch(e){result={ok:false,error:e.message};}
+    if(result?.ok){setMessage('운동 기록과 해당 날짜의 캘린더에 반영했습니다.');return true;}
+    setMessage('운동 기록은 저장됐습니다. '+(result?.error||'캘린더 반영을 다시 시도해 주세요.'),true);
+    return false;
   }
   function selectedNames(names,limit){
     if(!Array.isArray(names)||names.length<1||names.length>limit)throw Error('선택할 운동 종목 수를 확인해 주세요.');
@@ -740,6 +804,7 @@
     if(!done){setMessage('완료한 세트가 없습니다. 먼저 기록하거나 임시 보관해 주세요.',true);render();return;}
     if(!root.confirm((kind==='PARTIAL'?'부분 완료':'운동 완료')+'로 확정할까요? 완료한 '+done+'세트만 반영하며, 이후 같은 세션을 이어할 수 없습니다.'))return;
     if(changed(()=>M.finish(state,s.id,kind),'운동 기록을 확정했습니다. 캘린더에도 표시됩니다.')){
+      reflectCalendar(state.sessions.find(x=>x.id===s.id));
       resetRest();backgroundStoppedAt=null;sessionDirty=false;focusedSession=s.id;go('history');
       if(kind==='COMPLETED'&&root.confirm('이번 운동 구성을 새 루틴으로 저장할까요? (선택하지 않아도 운동 기록은 유지됩니다.)')){
         saveFromHistory(s.id);
@@ -862,6 +927,17 @@
   function onAction(button){
     if(sheetClosing)return;
     const action=button.dataset.fiAction,id=button.dataset.id;
+    if(action==='begin-calendar'){startCalendar(id,button.dataset.date||scheduledDay);return;}
+    if(action==='swap-calendar'){
+      if(beforeNavigate())root.FormdayBridge?.openRoutineSwap?.(id,button.dataset.date||scheduledDay);
+      return;
+    }
+    if(action==='calendar-today'){scheduledDay=iso(new Date());render();return;}
+    if(action==='retry-calendar'){
+      const saved=completed().find(s=>s.id===id);
+      if(saved)reflectCalendar(saved);
+      render();return;
+    }
     if(screen==='session'&&['pause','stash','resume','minimize-session','toggle-session-view','toggle-set-settings','session-prev','session-next','add-session-set','remove-session-set','load-previous','complete-exercise','rest-exercise'].includes(action)&&!saveSessionInputs())return;
     if(action==='minimize-session'){
       if(button.classList?.contains('fs-sheet-handle')&&Date.now()<suppressHandleClickUntil)return;
@@ -1025,6 +1101,11 @@
     if(screen==='session'&&event.target?.closest?.('input,textarea')){sessionDirty=true;paintMessage();}
   });
   host.addEventListener('change',event=>{
+    if(event.target.id==='fi-calendar-date'){
+      const value=event.target.value;
+      if(/^\d{4}-\d{2}-\d{2}$/.test(value)){scheduledDay=value;render();}
+      return;
+    }
     if(screen==='builder')readDraft();
     if(screen==='programBuilder')readProgram();
     if(screen==='session'&&event.target.closest?.('input,textarea')){saveSessionInputs();return;}
@@ -1035,7 +1116,10 @@
       importBackup(event.target.files[0]);event.target.value='';
     }
   });
-  root.addEventListener('formday:changed',renderCalendar);
+  root.addEventListener('formday:changed',()=>{
+    if(document.body.dataset.fdScreen==='independent'&&['home','history'].includes(screen))render();
+    else renderCalendar();
+  });
   root.addEventListener('storage',event=>{
     if(event.key!==M.KEY&&event.key!==null)return;
     revisionConflict=true;setMessage('다른 탭에서 독립 웨이트 기록을 변경했습니다. 충돌을 피하려면 최신 기록을 불러오세요.',true);
@@ -1097,10 +1181,10 @@
   host.addEventListener('pointerup',finishSheetDrag);
   host.addEventListener('pointercancel',finishSheetDrag);
   root.setInterval(()=>{clockTick=Date.now();paintTimer();},1000);
-  root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,getSnapshot:()=>state?M.copy(state):null,
-    canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current()&&!pickerOpen&&!root.FormdayExercisePicker?.isOpen?.(),
+  root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,getSnapshot:()=>state?M.copy(state):null,getCalendarSnapshot,
+    canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current()&&!pickerOpen&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.(),
     cloudReload:()=>{
-      if(blocked||revisionConflict||draft||programDraft||current()||pickerOpen||root.FormdayExercisePicker?.isOpen?.())return false;
+      if(blocked||revisionConflict||draft||programDraft||current()||pickerOpen||root.FormdayExercisePicker?.isOpen?.()||root.FormdayBridge?.isRoutineSwapOpen?.())return false;
       const latest=store.load();
       if(latest.error){blocked=latest.error;setMessage(blocked,true);render();return false;}
       state=latest.data;setMessage('다른 기기의 최신 웨이트 기록을 반영했습니다.');
