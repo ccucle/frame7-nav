@@ -137,8 +137,8 @@
     const title=document.querySelector('.page-title');
     const sub=document.querySelector('.page-sub');
     const crumb=document.querySelector('.crumb');
-    if(title)title.textContent=({home:'오늘의 운동',routines:'내 루틴',builder:'루틴 만들기',programs:'훈련 프로그램',session:'오늘의 운동',history:'운동 기록',programBuilder:'프로그램 만들기'})[screen]||'오늘의 운동';
-    if(sub)sub.textContent='종목 선택부터 루틴, 운동 기록까지 한곳에서 관리하세요.';
+    if(title)title.textContent=({home:'오늘의 운동',routines:'내 루틴',builder:editingRoutine?'루틴 수정':'루틴 만들기',programs:'훈련 프로그램',session:'오늘의 운동',history:'운동 기록',programBuilder:'프로그램 만들기'})[screen]||'오늘의 운동';
+    if(sub)sub.textContent=({home:'종목을 선택하거나 저장한 루틴으로 운동을 시작하세요.',routines:'자주 하는 종목과 목표 세트를 함께 관리하세요.',builder:'종목과 목표 세트, 휴식 시간을 설정하세요.',programs:'루틴을 요일별 또는 순서대로 배치하세요.',session:'종목을 선택하거나 저장한 루틴으로 운동을 시작하세요.',history:'완료한 운동의 세트와 운동량을 확인하세요.',programBuilder:'루틴을 선택하고 반복 방식을 설정하세요.'})[screen]||'';
     if(crumb?.firstChild)crumb.firstChild.textContent=(({routines:'ROUTINES',builder:'ROUTINE BUILDER',programs:'PROGRAMS',history:'WORKOUT LOG',programBuilder:'PROGRAM BUILDER'})[screen]||'WORKOUT')+'  ';
     document.querySelectorAll('[data-ind-nav]').forEach(b=>{
       const selected=b.dataset.indNav==='start';
@@ -167,17 +167,17 @@
   }
   function home(){
     const history=completed().slice().reverse();
-    return '<section class="fi-view"><div class="fi-hub-hero"><span class="fi-kicker">YOUR WORKOUT</span><h2>오늘의 운동을 시작하세요.</h2><p>종목을 선택해 바로 시작하거나, 저장한 루틴을 실행하세요.</p></div>'+
+    return '<section class="fi-view" aria-label="오늘의 운동">'+
       banner()+'<div class="fi-stats"><div><span>저장된 루틴</span><strong>'+state.routines.length+'</strong></div><div><span>훈련 프로그램</span><strong>'+state.programs.length+'</strong></div><div><span>확정한 운동</span><strong>'+history.length+'</strong></div></div>'+
-      '<div class="fi-hub-start"><div><span class="fi-kicker">START TRAINING</span><h3>어떻게 운동할까요?</h3><p>자유 운동에서는 검색과 즐겨찾기로 여러 종목을 한 번에 고를 수 있습니다.</p></div><div class="fi-action-grid">'+
+      '<div class="fi-hub-start"><div><h3>어떻게 운동할까요?</h3><p>자유 운동에서는 검색과 즐겨찾기로 여러 종목을 한 번에 고를 수 있습니다.</p></div><div class="fi-action-grid">'+
       button('start-free','＋ 종목 골라 운동 시작')+button('routine-list','저장한 루틴으로 시작','outline')+'</div></div>'+
       (state.programs.some(p=>p.active)?'<div class="fi-panel"><div class="fi-section-head"><h3>프로그램의 다음 운동</h3>'+button('program-list','프로그램 보기','subtle')+'</div>'+programStarts()+'</div>':'')+
       '<div class="fi-panel"><div class="fi-section-head"><h3>최근 운동</h3>'+button('show-history','기록 전체 →','subtle')+'</div>'+
       (!history.length?'<p class="fi-empty">아직 확정된 운동 기록이 없습니다.</p>':history.slice(0,4).map(s=>recordCard(s)).join(''))+'</div></section>';
   }
   function routines(){
-    return '<section class="fi-view"><div class="fi-section-head"><div><span class="fi-kicker">MY ROUTINES</span><h2>내 루틴 <small>'+state.routines.length+'</small></h2><p class="fi-note">자주 하는 종목과 목표 세트를 묶어 두세요.</p></div>'+button('new-routine','＋ 새 루틴')+'</div>'+
-      (!state.routines.length?'<div class="fi-panel fi-hub-empty"><h3>첫 루틴을 만들어 보세요.</h3><p>종목을 고르고 목표 중량, 횟수와 휴식 시간을 저장할 수 있습니다.</p>'+button('new-routine','종목을 골라 루틴 만들기')+'</div>':
+    return '<section class="fi-view" aria-label="내 루틴"><div class="fi-view-toolbar"><span class="fi-note">'+state.routines.length+'개 루틴</span>'+button('new-routine','＋ 새 루틴')+'</div>'+
+      (!state.routines.length?'<div class="fi-panel fi-hub-empty"><h3>첫 루틴을 만들어 보세요.</h3>'+button('new-routine','종목을 골라 루틴 만들기')+'</div>':
       '<div class="fi-routine-list">'+state.routines.map(r=>'<article class="fi-panel fi-routine-card"><div><span class="fi-kicker">'+r.exercises.length+'종목 · '+r.exercises.reduce((n,x)=>n+x.sets.length,0)+'세트</span><h3>'+esc(r.name)+'</h3><p>'+esc(r.exercises.map(ex=>ex.name).join(' · '))+'</p></div><div class="fi-inline-actions">'+
        button('begin-routine','이 루틴으로 운동','primary','data-id="'+esc(r.id)+'"')+button('edit-routine','루틴 편집','outline','data-id="'+esc(r.id)+'"')+'</div></article>').join('')+'</div>')+'</section>';
   }
@@ -216,7 +216,7 @@
   }
   function builder(){
     if(!draft)resetDraft();
-    return '<section class="fi-view"><div class="fi-section-head"><div><span class="fi-kicker">PROGRAM BUILDER / ROUTINE</span><h2>'+ (editingRoutine?'루틴 수정':'새 루틴 제작')+'</h2></div>'+
+    return '<section class="fi-view" aria-label="루틴 편집"><div class="fi-view-toolbar">'+
       button('routine-list','← 루틴 목록','outline')+'</div><div class="fi-panel"><label class="fi-label" for="fi-routine-name">루틴 이름</label>'+
       '<input class="fi-text-input" id="fi-routine-name" maxlength="100" placeholder="예: 가슴 · 삼두" value="'+esc(draft.name)+'">'+
       '<p class="fi-note">루틴은 목표 계획만 저장합니다. 과거 실제 운동 기록과 완료 여부는 변경하지 않습니다.</p></div>'+
@@ -253,7 +253,7 @@
       programDraft={name:'새 훈련 프로그램',mode:'cycle',selected:state.routines.map(x=>x.id).slice(0,3),weekdays:{}};
       programBaseline=JSON.stringify(programDraft);
     }
-    return '<section class="fi-view"><div class="fi-section-head"><div><span class="fi-kicker">TRAINING PROGRAM</span><h2>새 프로그램 만들기</h2></div>'+
+    return '<section class="fi-view" aria-label="프로그램 만들기"><div class="fi-view-toolbar">'+
       button('program-list','뒤로','outline')+'</div><div class="fi-panel"><label class="fi-label">프로그램 이름</label><input id="fi-program-name" class="fi-text-input" maxlength="100" value="'+esc(programDraft.name)+'">'+
       '<div class="fi-mode-row"><label><input type="radio" name="fi-mode" value="cycle" '+(programDraft.mode==='cycle'?'checked':'')+'> 순환형</label>'+
       '<label><input type="radio" name="fi-mode" value="fixed" '+(programDraft.mode==='fixed'?'checked':'')+'> 요일 고정형</label></div>'+
@@ -265,8 +265,8 @@
       '</div><div class="fi-sticky-actions">'+button('save-program','프로그램 저장')+button('program-list','취소','outline')+'</div></section>';
   }
   function programs(){
-    return '<section class="fi-view"><div class="fi-section-head"><div><span class="fi-kicker">TRAINING PROGRAMS</span><h2>프로그램 관리</h2></div>'+
-      button('new-program','＋ 프로그램','primary')+'</div><p class="fi-note">요일 고정형과 순환형을 모두 지원합니다. 자유 운동은 프로그램 순서를 변경하지 않습니다.</p>'+
+    return '<section class="fi-view" aria-label="훈련 프로그램"><div class="fi-view-toolbar"><span class="fi-note">'+state.programs.length+'개 프로그램</span>'+
+      button('new-program','＋ 프로그램','primary')+'</div><p class="fi-note">자유 운동은 프로그램 순서를 변경하지 않습니다.</p>'+
       (state.programs.length?state.programs.map(p=>{
         const rid=programNext(p),r=state.routines.find(x=>x.id===rid);
         return '<div class="fi-panel"><div class="fi-section-head"><h3>'+esc(p.name)+'</h3><span>'+ (p.mode==='cycle'?'순환형':'요일 고정형')+'</span></div>'+
@@ -385,7 +385,7 @@
   function historyView(){
     const records=completed().slice().sort((a,b)=>b.startedAt.localeCompare(a.startedAt));
     const selected=records.find(x=>x.id===focusedSession);
-    return '<section class="fi-view"><div class="fi-section-head"><div><span class="fi-kicker">WORKOUT HISTORY</span><h2>확정된 운동 기록</h2></div>'+
+    return '<section class="fi-view" aria-label="운동 기록"><div class="fi-view-toolbar"><span class="fi-note">'+records.length+'회 기록</span>'+
       button('back-home','웨이트 홈','outline')+'</div>'+
       '<div class="fi-panel">'+(records.length?records.map(s=>recordCard(s)).join(''):'<p class="fi-empty">완료된 운동 세션이 없습니다.</p>')+'</div>'+
       (selected?'<div class="fi-panel"><div class="fi-section-head"><h3>'+esc(selected.label)+'</h3><span>'+ (selected.status==='PARTIAL'?'부분 완료':'정상 완료')+'</span></div>'+

@@ -257,7 +257,7 @@ test('the rendered progress link opens its view and respects an independent draf
   assert.equal(app.body.dataset.fdScreen,'progress');assert.equal(app.progressRenders(),2);
 });
 
-test('hero and resume buttons hand session navigation to the independent workout runtime',()=>{
+test('dashboard workout links and resume buttons hand session navigation to the independent workout runtime',()=>{
   const snapshot=independentState(independentSession('paused','2026-11-25',60,10,{status:'PAUSED'}));
   const before=JSON.stringify(snapshot),app=bootDashboard(snapshot);
   app.press('data-fd-route','session');
@@ -280,7 +280,7 @@ test('routine selection opens routines and exercise-library start forwards the s
   assert.equal(app.legacyStarts.length,0);
 });
 
-test('missing workout runtime shows an actionable notice from hero and global workout entry',()=>{
+test('missing workout runtime shows an actionable notice from dashboard and global workout entry',()=>{
   const app=bootDashboard(independentState());app.dropRuntime();
   app.press('data-fd-route','session');
   assert.equal(app.notice.hidden,false);
