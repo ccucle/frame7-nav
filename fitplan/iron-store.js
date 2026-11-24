@@ -89,10 +89,23 @@
     const sessions=raw.sessions.map(normalizeSession);
     ids.clear();for(const item of sessions){must(!ids.has(item.id),'세션 ID 중복입니다.');ids.add(item.id);}
     must(sessions.filter(s=>UNFINISHED.includes(s.status)).length<=1,'진행 중인 운동은 최대 1개입니다.');
+    const favorites=raw.favoriteExercises===undefined?[]:raw.favoriteExercises;
+    must(Array.isArray(favorites)&&favorites.length<=500,'즐겨찾기는 최대 500개까지 저장할 수 있습니다.');
+    const favoriteExercises=favorites.map(name=>text(name,80));
+    must(new Set(favoriteExercises).size===favoriteExercises.length,'즐겨찾기 운동 이름이 중복되었습니다.');
     const revision=typeof raw.revision==='string'&&idOk(raw.revision)?raw.revision:'';
-    return {version:VERSION,revision,programs,routines,sessions};
+    return {version:VERSION,revision,programs,routines,sessions,favoriteExercises};
   }
-  function empty(){return {version:VERSION,revision:'',programs:[],routines:[],sessions:[]};}
+  function empty(){return {version:VERSION,revision:'',programs:[],routines:[],sessions:[],favoriteExercises:[]};}
+  function toggleFavorite(data,name,selected){
+    must(typeof selected==='boolean','즐겨찾기 상태를 확인해 주세요.');
+    const next=normalize(data),value=text(name,80);
+    if(selected&&!next.favoriteExercises.includes(value)){
+      must(next.favoriteExercises.length<500,'즐겨찾기는 최대 500개까지 저장할 수 있습니다.');
+      next.favoriteExercises.push(value);
+    }else if(!selected)next.favoriteExercises=next.favoriteExercises.filter(x=>x!==value);
+    return {next};
+  }
   function parseBackup(value){
     must(obj(value),'IRON MODE 백업 파일이 아닙니다.');
     const standard=value.app==='formday-iron'&&value.version===VERSION;
@@ -153,19 +166,20 @@
     return createRoutine(data,source.name+' 복사본',exercises,date);
   }
   function getUnfinished(data){return data.sessions.find(s=>UNFINISHED.includes(s.status))||null;}
-  function start(data,{routineId=null,programId=null,label=null},date=new Date()){
+  function start(data,{routineId=null,programId=null,label=null,exerciseNames=null},date=new Date()){
     const next=normalize(data);
     must(!getUnfinished(next),'먼저 진행 중인 운동을 처리해 주세요.');
     const routine=next.routines.find(x=>x.id===routineId);
     if(routineId)must(!!routine,'선택한 루틴을 찾을 수 없습니다.');
     const program=next.programs.find(x=>x.id===programId);
     if(programId)must(!!program && !!routine && program.routineIds.includes(routineId),'프로그램 루틴이 올바르지 않습니다.');
+    if(exerciseNames!==null)must(!routineId&&Array.isArray(exerciseNames)&&exerciseNames.length>=1&&exerciseNames.length<=30,'자유 운동 종목은 1~30개를 선택하세요.');
+    const exercises=routine?copy(routine.exercises):(exerciseNames||['벤치프레스']).map(name=>newExercise(text(name,80)));
     const session={id:uid(),routineId:routine?.id||null,programId:program?.id||null,
       label:label?text(label,100):(routine?.name||'자유 운동'),status:'ACTIVE',
       date:date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0'),
       startedAt:nowIso(date),activeSince:nowIso(date),lastSavedAt:nowIso(date),activeMs:0,endedAt:null,
-      exercises:routine?copy(routine.exercises).map(ex=>({...ex,sets:ex.sets.map(s=>({...s,done:false}))})):
-        [newExercise('벤치프레스')].map(ex=>({...ex,sets:ex.sets.map(s=>({...s,done:false}))})),notes:''};
+      exercises:exercises.map(ex=>({...ex,sets:ex.sets.map(s=>({...s,done:false}))})),notes:''};
     // First free-session exercise is an editable placeholder, not a completed set.
     const valid=normalizeSession(session);next.sessions.push(valid);
     return {next,session:valid};
@@ -190,14 +204,16 @@
       Object.assign(set,candidate);
     },date);
   }
-  function addExercise(data,sessionId,name,date=new Date()){
+  function addExercises(data,sessionId,names,date=new Date()){
+    must(Array.isArray(names)&&names.length>=1&&names.length<=30,'추가할 운동 종목을 1~30개 선택하세요.');
+    const selected=names.map(name=>text(name,80));
     return modify(data,sessionId,s=>{
-      must(s.exercises.length<30,'한 세션에서 종목은 최대 30개입니다.');
-      const exercise=newExercise(text(name,80));
-      exercise.sets=exercise.sets.map(set=>({...set,done:false}));
-      s.exercises.push(exercise);
+      must(s.exercises.length+selected.length<=30,'한 세션에서 종목은 최대 30개입니다.');
+      const exercises=selected.map(name=>newExercise(name)).map(ex=>({...ex,sets:ex.sets.map(set=>({...set,done:false}))}));
+      s.exercises.push(...exercises);
     },date);
   }
+  function addExercise(data,sessionId,name,date=new Date()){return addExercises(data,sessionId,[name],date);}
   function addSet(data,sessionId,exerciseId,date=new Date()){
     return modify(data,sessionId,s=>{
       const ex=s.exercises.find(x=>x.id===exerciseId);must(!!ex&&ex.sets.length<50,'종목 또는 세트 수를 확인해 주세요.');
@@ -252,5 +268,5 @@
     }
     return {completedSets,volume:Math.round(volume*100)/100,exercises,minutes:Math.round(s.activeMs/60000)};
   }
-  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,getUnfinished,start,modify,setValue,addExercise,addSet,changeState,finish,cancel,resumeAfterReload,recordSummary});
+  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,getUnfinished,start,modify,setValue,addExercise,addExercises,addSet,changeState,finish,cancel,resumeAfterReload,recordSummary});
 });

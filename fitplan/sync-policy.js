@@ -30,7 +30,8 @@
     (Array.isArray(data.customFoods)&&data.customFoods.length>0);
   if(slot==='iron')return (Array.isArray(data.sessions)&&data.sessions.length>0)||
     (Array.isArray(data.routines)&&data.routines.length>0)||
-    (Array.isArray(data.programs)&&data.programs.length>0);
+    (Array.isArray(data.programs)&&data.programs.length>0)||
+    (Array.isArray(data.favoriteExercises)&&data.favoriteExercises.length>0);
   return false;
  }
  function docValid(doc){

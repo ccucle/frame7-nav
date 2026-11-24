@@ -4,6 +4,21 @@ const assert = require('node:assert/strict');
 const C = require('../fitplan/core.js');
 
 const empty = () => ({ events: [], settings: { ...C.defaults }, demo: false });
+
+test('optional weight goals preserve old backups and round-trip without changing measured records', () => {
+  const original = { ...empty(), events: [{ id: 'weight-goal-check', date: '2026-11-23', start: '07:00', end: '07:05', type: 'weight', title: '체중', repeat: 'none', completed: true, detail: { weight: 80 } }] };
+  const old = C.normalizeState(original);
+  assert.equal(old.settings.targetWeight, null);
+  const withGoal = C.normalizeState({ ...old, settings: { ...old.settings, targetWeight: 75.5 } });
+  assert.equal(withGoal.settings.targetWeight, 75.5);
+  assert.deepEqual(withGoal.events, old.events);
+  assert.deepEqual(C.normalizeState(JSON.parse(JSON.stringify(withGoal))), withGoal);
+  assert.equal(C.normalizeState({ ...withGoal, settings: { ...withGoal.settings, targetWeight: null } }).settings.targetWeight, null);
+  for (const targetWeight of [0, -1, 500.1, NaN, Infinity, 'invalid']) {
+    assert.throws(() => C.normalizeState({ ...old, settings: { ...old.settings, targetWeight } }), /목표 체중/);
+  }
+  assert.equal(original.settings.targetWeight, undefined);
+});
 const legacy = (extra = {}) => ({ id: 'event1', date: '2026-11-23', start: '07:00', end: '08:00', type: 'strength', title: '운동', repeat: 'none', completed: false, detail: { exercise: '벤치프레스', sets: 3, weight: 60, reps: 10, notes: '기존 메모' }, ...extra });
 const stateOf = (...events) => C.normalizeState({ ...empty(), events });
 const weight = (extra = {}) => legacy({ type: 'weight', title: '체중', detail: { weight: 80, bodyfat: null }, ...extra });

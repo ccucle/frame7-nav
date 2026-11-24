@@ -34,6 +34,14 @@ test('Documents must be typed and size-limited',()=>{
 test('Cloud calendar and iron snapshots remain separate kinds',()=>{
  assert.deepEqual(P.slots,['calendar','iron']);
 });
+test('favorite-only exercise data is protected during first pairing and survives backup import',()=>{
+ const data=I.toggleFavorite(I.empty(),'벤치프레스',true).next;
+ assert.equal(P.isUserData('iron',data,true),true);
+ assert.equal(P.decide({meta:null,local:P.isUserData('iron',data,true),localRevision:'favorite-rev',remote:true,remoteRevision:'remote-rev'}),'review');
+ const file=JSON.parse(JSON.stringify(P.backupPayload('iron',data,C,I)));
+ assert.deepEqual(I.normalize(file.data).favoriteExercises,['벤치프레스']);
+ assert.equal(I.normalize(file.data).sessions.length,0);
+});
 test('sync calendar backup round-trips through the existing importer without changing records',()=>{
  const data=C.normalizeState({events:[{id:'backup-weight',date:'2026-11-23',start:'07:00',end:'07:05',title:'체중',type:'weight',repeat:'none',completed:true,detail:{weight:80,bodyfat:20}}],settings:{...C.defaults},revision:'calendar-rev'});
  const original=JSON.stringify(data);
