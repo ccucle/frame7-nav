@@ -30,7 +30,7 @@ export const APPEND_DESCRIPTIONS={
  formday_preview_routine:'Preview adding an existing routine as an uncompleted calendar strength plan. Supply an exact local date and times. Does not start or complete an IRON session. Returns a short-lived previewToken; no write occurs.',
  formday_preview_program:'Preview creating an IRON program from existing routine IDs. Weekdays use 0=Sunday, 1=Monday through 6=Saturday. No write occurs.',
  formday_preview_meal:'Preview adding a consumed meal. Interpret the user photo in ChatGPT; send food names and portions, never image URLs or credentials. Mark photo_estimate explicitly; omit unavailable nutrition rather than inventing zeros. Clarify ambiguous foods/portions before saving. No write occurs.',
- formday_commit_append:'Save the exact previewed addition when it matches the user request. Never claim saved until saved or already_saved is returned. Use the SAME previewToken after an uncertain response; on conflict fetch a new preview. Cannot edit or delete existing records.'
+ formday_commit_append:'Save the exact previewed addition when it matches the user request. Returns saved or already_saved only after reading the exact addition from the server. Use the SAME previewToken after an uncertain response; never create a new preview until the saved records have been checked. Cannot edit or delete existing records.'
 };
 function check(ok,code){if(!ok)throw Error(code);}
 const digest=value=>createHash('sha256').update(JSON.stringify(value)).digest('base64url');
@@ -87,17 +87,25 @@ export function createAppendDispatcher({uid,scope,resource,loadDocument,commitDo
    check(Number.isFinite(preview.expiresAt),'Invalid preview expiry');
    check(['calendar','iron'].includes(preview.kind),'Invalid preview target');
    const {doc,data}=await read(preview.kind);
-   const prior=data[preview.kind==='iron'?'programs':'events'].find(x=>x.id===preview.entity.id);
-   if(prior){check(isDeepStrictEqual(prior,preview.entity),'Existing addition changed; no write performed');
-    return {status:'already_saved',id:prior.id,kind:preview.kind};}
+   const prior=data[preview.kind==='iron'?'programs':'events'].filter(x=>x.id===preview.entity.id);
+   if(prior.length){check(prior.length===1&&isDeepStrictEqual(prior[0],preview.entity),'Existing addition changed or duplicated; no write performed');
+    return {status:'already_saved',id:prior[0].id,kind:preview.kind,revision:doc.revision,readBackVerified:true};}
    check(clock()<preview.expiresAt,'Preview expired without a matching saved entry; review records before creating a new preview');
    check(doc.updateTime===preview.updateTime&&doc.revision===preview.revision&&digest(doc.payload)===preview.payloadHash,
     'Cloud records changed; create a new preview');
    const next=append(data,preview.kind,preview.entity,'connect_'+randomUUID().replaceAll('-',''));
-   // Firestore commit acknowledgement is authoritative; a failed network reply
-   // is never treated as success. Reusing this preview finds the existing ID.
+   // A write acknowledgement alone does not satisfy the save-and-read contract.
+   // An uncertain POST is not resent here: the same preview reconciles its ID.
    await commitDocument(path(preview.kind),next,doc.updateTime);
-   return {status:'saved',id:preview.entity.id,kind:preview.kind,revision:next.revision};
+   let confirmed;
+   try{confirmed=await read(preview.kind);}
+   catch{throw Error('Save acknowledged but verification unavailable; retry the SAME previewToken to check saved records before any further write');}
+   const matches=confirmed.data[preview.kind==='iron'?'programs':'events'].filter(x=>x.id===preview.entity.id);
+   check(matches.length===1&&isDeepStrictEqual(matches[0],preview.entity),
+    'Save acknowledged but exact saved addition could not be verified; review saved records before creating a new preview');
+   // Other writers may have advanced the document while preserving this entry.
+   // Return the observed revision and never replace that later document.
+   return {status:'saved',id:preview.entity.id,kind:preview.kind,revision:confirmed.doc.revision,readBackVerified:true};
   }
   const kind=name==='formday_preview_program'?'iron':'calendar';
   const {doc,data}=await read(kind);

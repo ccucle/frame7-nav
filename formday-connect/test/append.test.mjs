@@ -64,7 +64,10 @@ test('routine preview writes nothing; commit preserves history and copies an unc
  const f=fixture(),originalIron=f.docs.iron.payload;
  const p=await f.dispatch('formday_preview_routine',routineInput);
  assert.equal(f.commits(),0);assert.equal(p.entry.type,'strength');
- const r=await commit(f,p);assert.equal(r.status,'saved');
+ const r=await commit(f,p);assert.equal(r.status,'saved');assert.equal(r.readBackVerified,true);
+ assert.deepEqual(f.calls.slice(-2).map(c=>c.options.method),['POST','GET']);
+ assert.equal(f.calls.at(-1).target.split('/').at(-1),'calendar');
+ assert.equal(r.revision,f.docs.calendar.revision);
  const data=JSON.parse(f.docs.calendar.payload);
  assert.deepEqual(data.events[0],f.calendar.events[0]);assert.equal(data.customSetting,'keep');
  assert.equal(data.events[1].completed,false);assert.equal(data.events[1].detail.exercises[0].sets[0].done,false);
@@ -97,9 +100,83 @@ test('supplied estimates remain labelled; unknown or incomplete label nutrition 
 test('repeat commit is idempotent, including reply lost after successful save',async()=>{
  const f=fixture(),p=await f.dispatch('formday_preview_meal',mealInput);
  f.loseReply();await assert.rejects(commit(f,p),/outcome unknown/);
- assert.equal((await commit(f,p)).status,'already_saved');assert.equal(f.commits(),1);
+ const reconciled=await commit(f,p);
+ assert.equal(reconciled.status,'already_saved');assert.equal(reconciled.readBackVerified,true);assert.equal(f.commits(),1);
+ assert.equal(f.calls.filter(c=>c.options.method==='POST').length,1);
+ assert.equal(f.calls.at(-1).options.method,'GET');
  f.expire();assert.equal((await commit(f,p)).status,'already_saved');assert.equal(f.commits(),1);
  assert.equal((await commit(f,p)).status,'already_saved');assert.equal(f.commits(),1);
+});
+test('an acknowledged commit with unavailable read-back is not reported saved or resent',async()=>{
+ const f=fixture(),p=await f.dispatch('formday_preview_meal',mealInput);
+ const load=createUserScopedFirestoreReader({principal,fetchImpl:f.fetchImpl});
+ const guarded=f.make({loadDocument:async path=>{
+  if(f.commits()>0)throw Error('simulated read permission or network failure');
+  return load(path);
+ }});
+ await assert.rejects(guarded('formday_commit_append',{previewToken:p.previewToken}),/verification unavailable.*SAME previewToken/);
+ assert.equal(f.commits(),1);assert.equal(f.calls.filter(c=>c.options.method==='POST').length,1);
+ const retry=await commit(f,p);assert.equal(retry.status,'already_saved');assert.equal(retry.readBackVerified,true);
+ assert.equal(f.commits(),1);
+});
+test('retry never confirms a corrupted snapshot containing duplicate addition IDs',async()=>{
+ for(const [tool,input,kind,collection] of [
+  ['formday_preview_meal',mealInput,'calendar','events'],
+  ['formday_preview_program',programInput,'iron','programs']
+ ]){
+  const f=fixture(),p=await f.dispatch(tool,input);await commit(f,p);
+  const data=JSON.parse(f.docs[kind].payload);data[collection].push(structuredClone(p.entry));
+  f.docs[kind].payload=JSON.stringify(data);
+  await assert.rejects(commit(f,p),/중복|duplicated/);
+  assert.equal(f.commits(),1);assert.equal(f.calls.filter(c=>c.options.method==='POST').length,1);
+ }
+});
+test('an acknowledged commit whose entry is missing on read-back is not reported saved',async()=>{
+ const f=fixture(),p=await f.dispatch('formday_preview_meal',mealInput);
+ const load=createUserScopedFirestoreReader({principal,fetchImpl:f.fetchImpl});
+ const guarded=f.make({loadDocument:async path=>{
+  if(f.commits()>0){
+   const data=JSON.parse(f.docs.calendar.payload);data.events=data.events.filter(e=>e.id!==p.entry.id);
+   data.revision='site_after_save';
+   f.docs.calendar={...f.docs.calendar,revision:data.revision,payload:JSON.stringify(data),updateTime:'2026-11-24T02:05:00Z'};
+  }
+  return load(path);
+ }});
+ await assert.rejects(guarded('formday_commit_append',{previewToken:p.previewToken}),/exact saved addition could not be verified/);
+ assert.equal(f.commits(),1);
+ await assert.rejects(commit(f,p),/records changed/);assert.equal(f.commits(),1);
+});
+test('an acknowledged commit whose entry changed before read-back is not reported saved',async()=>{
+ const f=fixture(),p=await f.dispatch('formday_preview_meal',mealInput);
+ const load=createUserScopedFirestoreReader({principal,fetchImpl:f.fetchImpl});
+ const guarded=f.make({loadDocument:async path=>{
+  if(f.commits()>0){
+   const data=JSON.parse(f.docs.calendar.payload);data.events.find(e=>e.id===p.entry.id).title='사이트에서 수정한 제목';
+   data.revision='site_after_save';
+   f.docs.calendar={...f.docs.calendar,revision:data.revision,payload:JSON.stringify(data),updateTime:'2026-11-24T02:05:00Z'};
+  }
+  return load(path);
+ }});
+ await assert.rejects(guarded('formday_commit_append',{previewToken:p.previewToken}),/exact saved addition could not be verified/);
+ assert.equal(f.commits(),1);
+ await assert.rejects(commit(f,p),/Existing addition changed/);assert.equal(f.commits(),1);
+});
+test('read-back confirms the addition while preserving a later unrelated site edit',async()=>{
+ const f=fixture(),p=await f.dispatch('formday_preview_program',programInput);
+ const load=createUserScopedFirestoreReader({principal,fetchImpl:f.fetchImpl});
+ const guarded=f.make({loadDocument:async path=>{
+  if(f.commits()>0){
+   const data=JSON.parse(f.docs.iron.payload);data.favoriteExercises=['bench'];data.revision='site_after_save';
+   f.docs.iron={...f.docs.iron,revision:data.revision,payload:JSON.stringify(data),updateTime:'2026-11-24T02:05:00Z'};
+  }
+  return load(path);
+ }});
+ const result=await guarded('formday_commit_append',{previewToken:p.previewToken});
+ assert.equal(result.status,'saved');assert.equal(result.readBackVerified,true);assert.equal(result.revision,'site_after_save');
+ assert.deepEqual(JSON.parse(f.docs.iron.payload).favoriteExercises,['bench']);
+ assert.deepEqual(JSON.parse(f.docs.iron.payload).programs[0],p.entry);assert.equal(f.commits(),1);
+ assert.deepEqual(f.calls.slice(-2).map(c=>c.options.method),['POST','GET']);
+ assert.equal(f.calls.at(-1).target.split('/').at(-1),'iron');
 });
 test('a deleted addition is not recreated by retrying its old preview',async()=>{
  const f=fixture(),p=await f.dispatch('formday_preview_meal',mealInput);await commit(f,p);
