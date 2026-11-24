@@ -231,7 +231,7 @@ function programFixture(mode){
   const p=M.createProgram(iron,'테스트 프로그램',mode,ids,mode==='fixed'?{'1':ids[0],'2':ids[1],'4':ids[0],'6':ids[2]}:{});
   return {iron:p.next,id:p.program.id,ids};
 }
-const programCalendar=()=>C.normalizeState({events:[]});
+const programCalendar=()=>C.normalizeState({events:[],settings:{...C.defaults},demo:false});
 test('cycle program registration creates one finite ordered workout per day',()=>{
   const {iron,id}=programFixture('cycle'),calendar=programCalendar(),before=JSON.stringify(iron);
   const preview=K.previewProgram(C,calendar,iron,id,'2026-11-24','2026-11-24','09:00','10:00');

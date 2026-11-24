@@ -1022,3 +1022,75 @@ test('a saved routine changed after selection must be selected again before repl
   assert.equal(app.context.FormdayIndependent.getCalendarSnapshot().routines[0].exercises[0].sets[1].weight, 95);
   assert.equal(bridge.isRoutineSwapOpen(), true);
 });
+
+function calendarProgramFixture(mode){
+  let iron=routineFixture();
+  const upper=I.createRoutine(iron,'가슴 루틴',[I.newExercise('벤치프레스')]);iron=upper.next;
+  const lower=iron.routines[0].id,upperId=upper.routine.id;
+  const made=I.createProgram(iron,'테스트 프로그램',mode,[lower,upperId],mode==='fixed'?{'0':lower,'1':upperId,'3':lower,'6':upperId}:{});
+  return {iron:made.next,id:made.program.id};
+}
+test('program registration dialog previews and saves a cycle atomically on existing calendar',()=>{
+  const {iron,id}=calendarProgramFixture('cycle'),initial=legacyState(),raw=JSON.stringify(initial);
+  const app=boot(raw,{iron}),bridge=app.context.FormdayBridge;
+  const originalIron=JSON.stringify(iron);
+  assert.equal(bridge.openProgramRegistration(id),true);
+  assert.equal(app.get('fd-program-date').value,'2026-11-23');
+  assert.equal(app.get('fd-program-date').min,'2026-11-23');
+  assert.equal(bridge.canCloudApply(),false);
+  assert.match(app.get('fd-program-preview').innerHTML,/2개 등록 예정/);
+  assert.equal(app.writes.length,0);
+  app.get('fd-program-next').click();
+  assert.equal(app.get('fd-program-date').value,'2026-11-24');
+  app.get('fd-program-start').value='09:00';app.get('fd-program-end').value='10:00';
+  app.get('fd-program-end').onchange();
+  app.get('fd-program-apply').click();
+  const saved=C.normalizeState(JSON.parse(app.map.get(C.STORE)));
+  assert.equal(saved.events.length,3);
+  assert.deepEqual(saved.events.slice(1).map(e=>[e.date,e.title,e.start,e.end]),[['2026-11-24','하체 루틴','09:00','10:00'],['2026-11-25','가슴 루틴','09:00','10:00']]);
+  assert.equal(saved.events[0].title,initial.events[0].title);
+  assert.equal(app.writes.filter(([key])=>key===C.STORE).length,1);
+  assert.equal(JSON.stringify(iron),originalIron);
+  assert.equal(bridge.getScheduledWorkouts('2026-11-24').length,1);
+  assert.equal(bridge.prepareScheduledWorkout(saved.events[1].id,'2026-11-24').label,'하체 루틴');
+  assert.equal(app.get('fd-program-apply'),null);
+});
+test('fixed program registration recognizes this week and next week and blocks past date',()=>{
+  const {iron,id}=calendarProgramFixture('fixed'),raw=JSON.stringify(legacyState()),app=boot(raw,{iron}),bridge=app.context.FormdayBridge;
+  assert.equal(bridge.openProgramRegistration(id),true);
+  assert.match(app.get('fd-program-preview').innerHTML,/지난 날짜 · 제외/);
+  assert.match(app.get('fd-program-preview').innerHTML,/3개 등록 예정/);
+  app.get('fd-program-date').value='2026-11-22';app.get('fd-program-date').onchange();
+  assert.equal(app.get('fd-program-apply').disabled,true);
+  assert.match(app.get('form-error').textContent,/과거 날짜/);
+  assert.equal(app.writes.length,0);
+  app.get('fd-program-next').click();
+  assert.equal(app.get('fd-program-date').value,'2026-11-29');
+  assert.match(app.get('fd-program-preview').innerHTML,/4개 등록 예정/);
+  app.get('fd-program-apply').click();
+  const saved=C.normalizeState(JSON.parse(app.map.get(C.STORE)));
+  assert.deepEqual(saved.events.slice(1).map(e=>e.date),['2026-11-29','2026-11-30','2026-12-02','2026-12-05']);
+});
+test('program registration retains preview on storage failure and retry does not duplicate',()=>{
+  const {iron,id}=calendarProgramFixture('cycle'),raw=JSON.stringify(legacyState()),app=boot(raw,{iron}),bridge=app.context.FormdayBridge;
+  bridge.openProgramRegistration(id);app.failWrites();
+  app.get('fd-program-apply').click();
+  assert.equal(app.map.get(C.STORE),raw);
+  assert.match(app.get('form-error').textContent,/저장하지 못했습니다/);
+  assert.match(app.get('fd-program-preview').innerHTML,/2개 등록 예정/);
+  app.failWrites(false);app.get('fd-program-apply').click();
+  const saved=app.map.get(C.STORE),count=app.writes.length;
+  assert.equal(bridge.openProgramRegistration(id),true);
+  assert.equal(app.get('fd-program-apply').disabled,true);
+  assert.match(app.get('fd-program-preview').innerHTML,/이미 등록/);
+  app.get('fd-program-apply').click();
+  assert.equal(app.map.get(C.STORE),saved);assert.equal(app.writes.length,count);
+});
+test('changed routine or program while registration is open prevents stale batch writes',()=>{
+  const {iron,id}=calendarProgramFixture('cycle'),raw=JSON.stringify(legacyState()),app=boot(raw,{iron}),bridge=app.context.FormdayBridge;
+  bridge.openProgramRegistration(id);
+  const latest=I.copy(iron);latest.routines[0].name='새 하체 루틴';app.setIronSnapshot(latest);
+  app.get('fd-program-apply').click();
+  assert.match(app.get('form-error').textContent,/프로그램 또는 루틴이 변경/);
+  assert.equal(app.map.get(C.STORE),raw);assert.equal(app.writes.length,0);
+});

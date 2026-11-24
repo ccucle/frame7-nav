@@ -465,7 +465,7 @@
       modal('캘린더에 프로그램 등록',
         '<div class="fd-program-register-heading"><strong>'+esc(program.name)+'</strong><span>'+(fixed?'요일 고정형 · 해당 주 1회':'순환형 · 루틴 순서대로 1회')+'</span></div>'+
         '<p class="fd-program-today" id="fd-program-today"></p>'+
-        '<div class="field">'+field(fixed?'등록할 주의 기준 날짜':'시작 날짜','fd-program-date','date',initialToday,'min="'+initialToday+'" required')+'</div>'+
+        field(fixed?'등록할 주의 기준 날짜':'시작 날짜','fd-program-date','date',initialToday,'min="'+initialToday+'" required')+
         '<div class="fd-program-date-actions"><button type="button" class="btn btn-outline btn-small" id="fd-program-this">'+(fixed?'이번 주':'오늘')+'</button><button type="button" class="btn btn-outline btn-small" id="fd-program-next">'+(fixed?'다음 주':'내일')+'</button></div>'+
         '<div class="fields fd-program-time">'+field('시작 시간','fd-program-start','time','07:00','required')+field('종료 시간','fd-program-end','time','08:00','required')+'</div>'+
         '<div id="fd-program-preview" aria-live="polite"></div>',
