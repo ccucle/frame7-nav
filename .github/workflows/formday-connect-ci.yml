@@ -1,0 +1,43 @@
+name: FORMDAY Connect safety tests
+on:
+  push:
+    branches:
+      - formday-connect-oauth-20261123
+    paths:
+      - 'formday-connect/**'
+      - 'fitplan/core.js'
+      - 'fitplan/nutrition.js'
+      - 'fitplan/iron-store.js'
+      - 'fitplan/data.js'
+      - '.github/workflows/formday-connect-ci.yml'
+  pull_request:
+    branches:
+      - formday-connect-firebase-rest-20261123
+    paths:
+      - 'formday-connect/**'
+      - 'fitplan/core.js'
+      - 'fitplan/nutrition.js'
+      - 'fitplan/iron-store.js'
+      - 'fitplan/data.js'
+      - '.github/workflows/formday-connect-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 7
+    strategy:
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Install test dependencies (no scripts, no credentials)
+        working-directory: formday-connect
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run unit and security tests
+        working-directory: formday-connect
+        run: npm test
