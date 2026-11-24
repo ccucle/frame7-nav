@@ -188,13 +188,18 @@ function ui(initial=M.empty(),options={}){
   backing.obj.setItem(M.KEY,options.raw??JSON.stringify(initial));
   const writes=[],originalSet=backing.obj.setItem;
   backing.obj.setItem=(key,value)=>{writes.push([key,value]);return originalSet(key,value);};
-  const listeners={},answers=[],prompts=[],fields=new Map();let markup='',pickerConfig=null,pickerActive=false,modal=null;
+  const listeners={},hostListeners={},answers=[],prompts=[],fields=new Map(),dayFields=new Map();let markup='',pickerConfig=null,pickerActive=false,modal=null,modeField=null;
   const banner={hidden:true,textContent:'',classList:{toggle(){}}};
   const globalWorkout={dataset:{indNav:'start'},attributes:{},classList:{toggle(){},remove(){}},setAttribute(name,value){this.attributes[name]=value;}};
   const host={
     get innerHTML(){return markup+(modal?'<dialog id="'+modal.id+'">'+modal.innerHTML+'</dialog>':'');},
     set innerHTML(value){
-      markup=value;modal=null;fields.clear();
+      markup=value;modal=null;fields.clear();dayFields.clear();
+      modeField=value.includes('name="fi-mode"')?{value:value.includes('value="fixed" checked')?'fixed':'cycle'}:null;
+      for(const match of value.matchAll(/<select data-fi-weekday="([0-6])">([\s\S]*?)<\/select>/g)){
+        const selected=[...match[2].matchAll(/<option value="([^"]*)" ([^>]*)>/g)].find(m=>m[2].includes('selected'));
+        dayFields.set(match[1],{dataset:{fiWeekday:match[1]},value:selected?.[1]||''});
+      }
       if(value.includes('id="fi-banner"')){fields.set('#fi-banner',banner);banner.textContent=value.match(/id="fi-banner"[^>]*>([^<]*)/)?.[1]||'';}
       for(const id of ['fi-routine-name','fi-program-name']){
         const tag=value.match(new RegExp('<input[^>]*id="'+id+'"[^>]*>'))?.[0];
@@ -204,14 +209,15 @@ function ui(initial=M.empty(),options={}){
     querySelector(selector){
       if(selector==='#fi-session-sheet')return modal;
       if(modal&&selector==='#fi-banner')return banner;
-      if(selector==='input[name=fi-mode]:checked')return {value:markup.includes('value="fixed" checked')?'fixed':'cycle'};
+      if(selector==='input[name=fi-mode]:checked')return modeField;
       return fields.get(selector)||null;
     },
     querySelectorAll(selector){
       if(selector==='[data-fi-program-routine]')return [...markup.matchAll(/data-fi-program-routine="([^"]+)" ([^>]*)>/g)].map(m=>({dataset:{fiProgramRoutine:m[1]},checked:m[2].includes('checked')}));
+      if(selector==='[data-fi-weekday]')return [...dayFields.values()];
       return [];
     },
-    addEventListener(){},appendChild(child){modal=child;return child;}
+    addEventListener(type,fn){(hostListeners[type]??=[]).push(fn);},appendChild(child){modal=child;return child;}
   };
   function dialog(){
     let value='';
@@ -251,7 +257,10 @@ function ui(initial=M.empty(),options={}){
     choose(names){const accepted=pickerConfig.onConfirm(names);if(accepted){pickerActive=false;pickerConfig.onClose?.({reason:'confirmed'});}return accepted;},
     closePicker(){pickerActive=false;pickerConfig.onClose?.({reason:'cancel'});},
     action:(action,extra={},clickOptions={})=>click({fiAction:action,...extra},clickOptions),navigate:route=>click({fdRoute:route}),
-    subnav:page=>click({fiNav:page}),workout:clickOptions=>click({indNav:'start'},clickOptions)};
+    subnav:page=>click({fiNav:page}),workout:clickOptions=>click({indNav:'start'},clickOptions),
+    setMode(value){modeField.value=value;const event={target:{name:'fi-mode',value}};for(const fn of hostListeners.input||[])fn(event);for(const fn of hostListeners.change||[])fn(event);},
+    setWeekday(day,value){const field=dayFields.get(String(day));assert.ok(field);field.value=value;const event={target:field};for(const fn of hostListeners.input||[])fn(event);for(const fn of hostListeners.change||[])fn(event);},
+    getWeekday(day){return dayFields.get(String(day))?.value;}};
 }
 test('canceling an untouched routine draft releases cloud apply without prompting',()=>{
   const view=ui();
@@ -575,4 +584,51 @@ test('editing existing program can be canceled without saving or losing the stor
   view.answers.push(true);view.action('program-list');
   assert.deepEqual(view.backing.store.load().data.programs,p.next.programs);
   assert.equal(view.api.canCloudApply(),true);
+});
+
+test('fixed program editor only displays weekday assignment and all routines directly',()=>{
+  let data=routine(M.empty(),'가슴').next;data=routine(data,'등').next;
+  const [a,b]=data.routines.map(r=>r.id);
+  const p=M.createProgram(data,'기존 요일','fixed',[a],{'1':a});
+  const view=ui(p.next);
+  view.api.open('programs');view.action('edit-program',{id:p.program.id});
+  assert.doesNotMatch(view.host.innerHTML,/포함할 루틴과 순서|data-fi-program-routine|data-fi-action="program-move-up"/);
+  assert.match(view.host.innerHTML,/요일별 루틴 배치/);
+  assert.equal(view.getWeekday(1),a);
+  assert.equal(view.host.innerHTML.split('<option value="'+b+'"').length-1,7);
+  view.setWeekday(1,b);view.setWeekday(3,b);view.setWeekday(5,a);
+  view.action('save-program');
+  const saved=view.backing.store.load().data.programs;
+  assert.equal(saved.length,1);assert.equal(saved[0].id,p.program.id);
+  assert.deepEqual(saved[0].routineIds,[b,a]);
+  assert.deepEqual(saved[0].weekdays,{'1':b,'3':b,'5':a});
+});
+test('switching fixed and cycle keeps each draft and only displays relevant controls',()=>{
+  let data=routine(M.empty(),'가슴').next;data=routine(data,'등').next;data=routine(data,'하체').next;
+  const [a,b,c]=data.routines.map(r=>r.id);
+  const p=M.createProgram(data,'순환','cycle',[c,a]);
+  const view=ui(p.next);view.api.open('programs');view.action('edit-program',{id:p.program.id});
+  assert.match(view.host.innerHTML,/포함할 루틴과 순서/);
+  assert.doesNotMatch(view.host.innerHTML,/data-fi-weekday/);
+  view.setMode('fixed');
+  assert.doesNotMatch(view.host.innerHTML,/포함할 루틴과 순서/);
+  view.setWeekday(2,b);
+  view.setMode('cycle');
+  assert.match(view.host.innerHTML,/포함할 루틴과 순서/);
+  assert.doesNotMatch(view.host.innerHTML,/data-fi-weekday/);
+  view.action('program-move-up',{id:a});
+  view.setMode('fixed');assert.equal(view.getWeekday(2),b);
+  view.setMode('cycle');view.action('save-program');
+  const saved=view.backing.store.load().data.programs[0];
+  assert.deepEqual(saved.routineIds,[a,c]);assert.deepEqual(saved.weekdays,{});
+});
+test('new fixed program needs at least one weekday and can save directly without routine checkboxes',()=>{
+  const data=routine(M.empty(),'가슴').next,a=data.routines[0].id;
+  const view=ui(data);view.api.open('programs');view.action('new-program');view.setMode('fixed');
+  view.action('save-program');
+  assert.equal(view.backing.store.load().data.programs.length,0);
+  assert.match(view.host.innerHTML,/하루 이상 운동을 지정/);
+  view.setWeekday(4,a);view.action('save-program');
+  const saved=view.backing.store.load().data.programs[0];
+  assert.equal(saved.mode,'fixed');assert.deepEqual(saved.routineIds,[a]);assert.deepEqual(saved.weekdays,{'4':a});
 });
