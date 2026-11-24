@@ -22,7 +22,7 @@ class Element extends Events{
   constructor(tag,document){
     super();this.tagName=tag.toUpperCase();this.document=document;this.children=[];this.attributes=new Map();this.dataset={};this.parentElement=null;
     this.value='';this.disabled=false;this.hidden=false;this.checked=false;this.open=false;this.scrollTop=0;this._text='';this._html='';this.renderCount=0;this.showModalCount=0;
-    this.style={setProperty(){},removeProperty(){}};
+    this.style={setProperty(key,value){this[key]=String(value);},removeProperty(key){delete this[key];}};
     this.classList={contains:name=>(this.className||'').split(/\s+/).includes(name),add:(...names)=>{this.className=[...new Set((this.className||'').split(/\s+/).filter(Boolean).concat(names))].join(' ');},remove:(...names)=>{this.className=(this.className||'').split(/\s+/).filter(x=>!names.includes(x)).join(' ');},toggle:(name,force)=>{const enabled=force??!this.classList.contains(name);this.classList[enabled?'add':'remove'](name);return enabled;}};
   }
   setAttribute(key,value){
@@ -74,11 +74,11 @@ class Element extends Events{
       if(!token.startsWith('<')){stack.at(-1)._text+=decode(token);continue;}
       const tag=token.match(/^<([a-z\d-]+)/i)?.[1];if(!tag)continue;
       const child=new Element(tag,this.document);for(const match of token.slice(tag.length+1,-1).matchAll(/([\w:-]+)(?:="([^"]*)")?/g))child.setAttribute(match[1],decode(match[2]||''));
-      stack.at(-1).appendChild(child);if(!['input','img','br','hr','meta','link','source','wbr'].includes(tag))stack.push(child);
+      stack.at(-1).appendChild(child);if(!['input','img','br','hr','meta','link','source','wbr'].includes(tag)&&!token.endsWith('/>'))stack.push(child);
     }
   }
 }
-function ui(){
+function ui(options={}){
   let now=Date.parse('2026-11-24T02:00:00.000Z');
   class Clock extends Date{constructor(...args){super(...(args.length?args:[now]));}static now(){return now;}}
   const document=new Events();document.hidden=false;document.body=new Element('body',document);document.body.dataset.fdScreen='home';
@@ -92,6 +92,14 @@ function ui(){
   root.innerHeight=844;root.visualViewport=new Events();root.visualViewport.height=844;root.visualViewport.offsetTop=0;
   root.setInterval=fn=>{intervals.push(fn);return intervals.length;};root.clearInterval=()=>{};root.requestAnimationFrame=fn=>fn();root.dispatchEvent=event=>root.emit(event.type,event);
   root.setTimeout=(fn,delay=0)=>{timeouts.set(++timeoutId,{fn,at:now+delay});return timeoutId;};root.clearTimeout=id=>timeouts.delete(id);root.scrollTo=()=>{};
+  const audioEvents=[];
+  if(options.audio)root.AudioContext=class{
+    constructor(){this.currentTime=0;this.state='running';this.destination={};audioEvents.push('context');}
+    resume(){this.state='running';return Promise.resolve();}
+    close(){this.state='closed';return Promise.resolve();}
+    createGain(){return {gain:{setValueAtTime(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){}},connect(){},disconnect(){}};}
+    createOscillator(){return {frequency:{setValueAtTime(){},linearRampToValueAtTime(){}},connect(){},disconnect(){},start(){audioEvents.push('start');},stop(){audioEvents.push('stop');}};}
+  };
   const answers=[],prompts=[];root.confirm=text=>{prompts.push(text);return answers.shift()??false;};root.prompt=()=>null;
   root.FormdayExercisePicker={isOpen:()=>pickerActive,open:config=>{picker=config;pickerActive=true;return true;}};
   const context=vm.createContext({window:root,document,Date:Clock,console,setTimeout:root.setTimeout,clearTimeout:root.clearTimeout,CustomEvent:class{constructor(type){this.type=type;}}});
@@ -113,7 +121,7 @@ function ui(){
   const edit=(exerciseIndex,setIndex,name,value)=>{const input=field(exerciseIndex,setIndex,name);input.value=String(value);host.emit('input',{target:input});return input;};
   const complete=(exerciseIndex,setIndex=0)=>{const session=snapshot().sessions.find(s=>['ACTIVE','PAUSED','SAVED'].includes(s.status)),ex=session.exercises[exerciseIndex];return action('save-session-set',{ex:ex.id,id:ex.sets[setIndex].id});};
   const start=(names=['벤치프레스','스쿼트'])=>{api.open('home');action('start-free');assert.equal(choose(names),true);};
-  return {api,root,document,host,db,answers,prompts,snapshot,action,choose,row,field,edit,complete,start,sheet:()=>host.querySelector('#fi-session-sheet'),
+  return {api,root,document,host,db,answers,prompts,snapshot,action,choose,row,field,edit,complete,start,audioEvents,sheet:()=>host.querySelector('#fi-session-sheet'),
     get picker(){return picker;},get pickerActive(){return pickerActive;},failStorage(value=true){failWrite=value;},
     advance(ms){now+=ms;for(const [id,item]of [...timeouts])if(item.at<=now){timeouts.delete(id);item.fn();}for(const fn of intervals)fn();},hide(){document.hidden=true;document.emit('visibilitychange');},show(){document.hidden=false;document.emit('visibilitychange');},
     timer(){return host.querySelector('#fi-timer-number')?.textContent;}};
@@ -139,8 +147,10 @@ test('numeric change saves without replacing the field or turning it into a comp
 });
 test('storage failure keeps edited values and completion state available for a successful retry',()=>{
   const view=ui();view.start();const original=JSON.stringify(view.snapshot()),input=view.edit(0,0,'kg',77.5),rendered=view.host.renderCount;
+  assert.equal(view.host.querySelector('.fs-rest').hidden,true);
   view.failStorage();view.complete(0);
   assert.equal(JSON.stringify(view.snapshot()),original);assert.equal(view.host.renderCount,rendered);assert.equal(view.field(0,0,'kg'),input);assert.equal(input.value,'77.5');
+  assert.equal(view.host.querySelector('.fs-rest').hidden,true);
   assert.match(view.host.querySelector('#fi-banner')?.textContent||'',/저장|입력/);
   view.failStorage(false);view.complete(0);assert.equal(active(view).exercises[0].sets[0].weight,77.5);assert.equal(active(view).exercises[0].sets[0].done,true);
 });
@@ -158,7 +168,7 @@ test('pause persists unblurred input and freezes the rest timer until resume',()
   const view=ui();view.start();view.edit(0,0,'rest',60);view.complete(0);view.advance(10000);const remaining=view.timer();
   view.edit(1,0,'kg',102.5);view.action('pause');assert.equal(active(view).status,'PAUSED');assert.equal(active(view).exercises[1].sets[0].weight,102.5);
   view.advance(30000);assert.equal(view.timer(),remaining);view.action('resume');view.advance(10000);assert.notEqual(view.timer(),remaining);
-  assert.match(view.timer()||'',/40|0:40/);
+  assert.equal(view.timer(),'00:40');
 });
 test('phone visibility transition saves visible fields before pausing and retains them on return',()=>{
   const view=ui();view.start();view.edit(0,1,'kg',67.5);view.edit(1,2,'reps',11);view.hide();
@@ -233,7 +243,7 @@ test('invalid input survives a phone interruption without counting hidden time, 
   invalid.value='9';view.host.emit('input',{target:invalid});view.host.emit('change',{target:invalid});
   const saved=active(view);assert.equal(saved.exercises[1].sets[0].reps,9);assert.equal(saved.exercises[1].sets[0].done,false);assert.equal(saved.activeMs,8000);
   assert.equal(saved.activeSince,new Date(Date.parse('2026-11-24T02:00:00.000Z')+128000).toISOString());
-  view.advance(5000);assert.equal(view.host.querySelector('#fi-duration').textContent,'00:00:13');assert.equal(view.timer(),'0:47');
+  view.advance(5000);assert.equal(view.host.querySelector('#fi-duration').textContent,'00:00:13');assert.equal(view.timer(),'00:47');
 });
 
 test('workout opens in one stable native dialog and preserves scroll when sets rerender',()=>{
@@ -261,4 +271,69 @@ test('only a sufficiently downward swipe on the handle dismisses the workout she
   drag(handle,0,40);view.document.emit('click',{target:handle});view.advance(200);assert.equal(sheet.open,true);
   drag(handle,120,90);view.advance(200);assert.equal(sheet.open,true);
   view.edit(0,0,'kg',71);drag(handle,10,120);view.advance(180);assert.equal(sheet.open,false);assert.equal(active(view).exercises[0].sets[0].weight,71);assert.equal(active(view).status,'ACTIVE');
+});
+
+test('completing a set opens a countdown with configured duration and finite progress',()=>{
+  const view=ui();view.start();assert.equal(view.host.querySelector('.fs-rest').hidden,true);
+  view.edit(0,0,'rest',60);view.complete(0);const rest=view.host.querySelector('.fs-rest');
+  assert.equal(rest.hidden,false);assert.equal(rest.dataset.state,'running');assert.equal(view.timer(),'01:00');assert.equal(view.host.querySelector('#fi-timer-label').textContent,'휴식 1:00');
+  view.advance(3000);assert.equal(view.timer(),'00:57');const progress=Number.parseFloat(view.host.querySelector('#fi-rest-progress').style.width);
+  assert.ok(Number.isFinite(progress)&&progress>=0&&progress<=100);view.advance(3000);assert.notEqual(Number.parseFloat(view.host.querySelector('#fi-rest-progress').style.width),progress);
+});
+test('plus and minus ten seconds adjust remaining time and retain an explicitly paused timer',()=>{
+  const view=ui();view.start();view.edit(0,0,'rest',60);view.complete(0);view.advance(3000);view.action('timer-add');assert.equal(view.timer(),'01:07');
+  view.action('timer-subtract');assert.equal(view.timer(),'00:57');view.action('timer-toggle');assert.equal(view.host.querySelector('.fs-rest').dataset.state,'paused');
+  view.action('timer-add');assert.equal(view.timer(),'01:07');view.action('timer-subtract');assert.equal(view.timer(),'00:57');view.advance(20000);assert.equal(view.timer(),'00:57');
+  view.action('pause');view.action('resume');view.advance(10000);assert.equal(view.timer(),'00:57');assert.equal(view.host.querySelector('.fs-rest').dataset.state,'paused');
+  view.hide();view.show();view.action('resume');view.advance(10000);assert.equal(view.timer(),'00:57');
+});
+test('rest adjustments clamp at ten minutes and zero without negative countdowns',()=>{
+  const view=ui();view.start();view.edit(0,0,'rest',600);view.complete(0);view.action('timer-add');assert.equal(view.timer(),'10:00');view.action('timer-toggle');
+  for(let i=0;i<61;i++)view.action('timer-subtract');assert.equal(view.timer(),'00:00');assert.equal(view.host.querySelector('.fs-rest').dataset.state,'done');view.advance(5000);assert.equal(view.timer(),'00:00');
+});
+test('undoing another set keeps the current rest timer, while undoing its triggering set dismisses it',()=>{
+  const view=ui();view.start();view.edit(0,0,'rest',30);view.complete(0,0);view.edit(0,1,'rest',90);view.complete(0,1);view.advance(10000);
+  view.complete(0,0);assert.equal(view.host.querySelector('.fs-rest').hidden,false);assert.equal(view.timer(),'01:20');
+  view.complete(0,1);view.advance(180);assert.equal(view.host.querySelector('.fs-rest').hidden,true);assert.ok(active(view).exercises[0].sets.every(set=>!set.done));
+});
+test('bulk completion starts one rest timer and undo dismisses it without changing entered targets',()=>{
+  const view=ui();view.start(['벤치프레스']);const ex=active(view).exercises[0];view.edit(0,2,'rest',90);view.action('complete-exercise',{id:ex.id});
+  assert.equal(view.timer(),'01:30');view.advance(10000);view.action('toggle-session-view');view.advance(10000);assert.equal(view.timer(),'01:10');
+  view.action('complete-exercise',{id:ex.id});view.advance(180);assert.equal(view.host.querySelector('.fs-rest').hidden,true);assert.ok(active(view).exercises[0].sets.every(set=>!set.done));assert.equal(active(view).exercises[0].sets[2].restSec,90);
+});
+test('rest settings do not replace unfinished inputs or change recorded workout values',()=>{
+  const view=ui();view.start();view.edit(0,0,'rest',60);view.complete(0);const before=JSON.stringify(view.snapshot()),field=view.edit(1,0,'reps','');
+  view.action('timer-add');view.action('timer-subtract');view.action('timer-sound');view.action('timer-presets');assert.equal(view.host.querySelector('.fs-rest-presets').hidden,false);
+  view.action('timer-preset',{seconds:30});assert.equal(view.timer(),'00:30');assert.equal(view.host.querySelector('.fs-rest').dataset.state,'running');
+  assert.equal(view.field(1,0,'reps'),field);assert.equal(field.value,'');assert.equal(JSON.stringify(view.snapshot()),before);
+  view.action('timer-skip');view.advance(180);assert.equal(view.host.querySelector('.fs-rest').hidden,true);assert.equal(view.field(1,0,'reps'),field);assert.equal(JSON.stringify(view.snapshot()),before);
+});
+test('closing an old rest timer never hides a new timer started during its exit animation',()=>{
+  const view=ui();view.start();view.edit(0,0,'rest',60);view.complete(0);const before=JSON.stringify(view.snapshot());view.action('timer-skip');
+  assert.equal(view.host.querySelector('.fs-rest').dataset.closing,'true');assert.equal(JSON.stringify(view.snapshot()),before);view.advance(100);
+  view.edit(0,1,'rest',120);view.complete(0,1);view.advance(180);assert.equal(view.host.querySelector('.fs-rest').hidden,false);assert.equal(view.host.querySelector('.fs-rest').dataset.state,'running');assert.equal(view.timer(),'02:00');
+});
+test('rest entry animation finishes once and unrelated session rerenders keep the timer and dialog stable',()=>{
+  const view=ui();view.start();view.edit(0,0,'rest',60);view.complete(0);const dialog=view.sheet();assert.equal(view.host.querySelector('.fs-rest').dataset.entering,'true');
+  view.advance(240);assert.notEqual(view.host.querySelector('.fs-rest').dataset.entering,'true');view.action('toggle-session-view');
+  assert.equal(view.sheet(),dialog);assert.equal(dialog.showModalCount,1);assert.notEqual(view.host.querySelector('.fs-rest').dataset.entering,'true');view.advance(2000);assert.equal(view.timer(),'00:58');
+});
+test('rest expiry sounds once, mute suppresses the next alert, and reopening does not replay an expired alert',()=>{
+  const view=ui({audio:true});view.start();view.edit(0,0,'rest',1);view.complete(0);const started=view.audioEvents.filter(event=>event==='start').length;
+  view.advance(1000);const sounded=view.audioEvents.filter(event=>event==='start').length;assert.equal(sounded-started,2);assert.equal(view.timer(),'00:00');assert.equal(view.host.querySelector('.fs-rest').dataset.state,'done');assert.equal(view.host.querySelector('#fi-timer-label').textContent,'휴식 완료');
+  view.advance(5000);view.action('toggle-session-view');assert.equal(view.audioEvents.filter(event=>event==='start').length,sounded);
+  view.action('timer-sound');view.action('timer-presets');view.action('timer-preset',{seconds:30});view.advance(30000);assert.equal(view.audioEvents.filter(event=>event==='start').length,sounded);
+  view.action('timer-sound');view.action('timer-presets');view.action('timer-preset',{seconds:30});view.action('minimize-session');view.advance(180);view.advance(35000);const offscreenCount=view.audioEvents.filter(event=>event==='start').length;
+  view.action('inspect-session');view.advance(2000);assert.equal(view.audioEvents.filter(event=>event==='start').length,offscreenCount);assert.equal(view.timer(),'00:00');
+});
+test('set settings toggle preserves edits and uses accessible vector completion controls',()=>{
+  const view=ui();view.start();const ex=active(view).exercises[0];view.edit(0,0,'kg',67.5);view.action('toggle-set-settings',{id:ex.id});
+  assert.equal(view.host.querySelector('[data-fi-ex="'+ex.id+'"]').classList.contains('fs-settings-open'),true);view.edit(0,0,'rest',75);view.action('toggle-set-settings',{id:ex.id});
+  assert.equal(view.host.querySelector('[data-fi-ex="'+ex.id+'"]').classList.contains('fs-settings-open'),false);assert.equal(active(view).exercises[0].sets[0].weight,67.5);assert.equal(active(view).exercises[0].sets[0].restSec,75);
+  for(const action of ['save-session-set','complete-exercise']){const button=view.host.querySelector('[data-fi-action="'+action+'"]');assert.ok(button.querySelector('svg.fs-symbol'));assert.ok(button.getAttribute('aria-label'));}
+});
+test('failed pagehide persistence freezes exercise and rest time until a safe retry',()=>{
+  const view=ui();view.start();view.edit(0,0,'rest',60);view.complete(0);view.advance(8000);view.failStorage();view.root.emit('pagehide');view.advance(120000);
+  assert.equal(view.host.querySelector('#fi-duration').textContent,'00:00:08');assert.equal(view.timer(),'00:52');view.failStorage(false);const input=view.edit(1,0,'reps',9);view.host.emit('change',{target:input});
+  assert.equal(active(view).activeMs,8000);view.advance(5000);assert.equal(view.host.querySelector('#fi-duration').textContent,'00:00:13');assert.equal(view.timer(),'00:47');
 });
