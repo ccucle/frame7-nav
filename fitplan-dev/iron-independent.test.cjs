@@ -750,3 +750,32 @@ test('deletion confirmation is tied to the stored revision and cannot overwrite 
  assert.equal(view.backing.store.load().data.revision,saved.revision);
  assert.match(view.host.innerHTML,/다른 탭/);
 });
+
+test('history excludes zero-completion, future and explicitly marked sample sessions but keeps originals for review',()=>{
+ const b=M.start(M.empty(),{},clock),ex=b.session.exercises[0];
+ let data=M.setValue(b.next,b.session.id,ex.id,ex.sets[0].id,{done:true},advance(1)).next;
+ data=M.finish(data,b.session.id,'COMPLETED',advance(2)).next;
+ const actual=data.sessions[0];
+ const invalid={...M.copy(actual),id:'bad-record',label:'완료 세트 없음',exercises:actual.exercises.map(e=>({...e,sets:e.sets.map(s=>({...s,done:false}))}))};
+ const future={...M.copy(actual),id:'future-record',label:'미래 기록',date:'9999-12-31'};
+ const sample={...M.copy(actual),id:'sample-record',label:'샘플 기록',isSample:true};
+ const view=ui(M.normalize({...data,sessions:[actual,invalid,future,sample]}));
+ view.api.open('history');
+ assert.match(view.host.innerHTML,/전체 1회 기록/);
+ assert.match(view.host.innerHTML,/확인 필요 기록 3건/);
+ assert.match(view.host.innerHTML,/실제 완료 세트 없음/);
+ assert.match(view.host.innerHTML,/미래 날짜/);
+ assert.match(view.host.innerHTML,/체험용으로 표시된 기록/);
+ assert.equal(view.api.getSnapshot().sessions.length,4);
+ assert.equal(view.writes.length,0);
+});
+test('test-named confirmed records are visibly flagged without deleting or assuming non-performance',()=>{
+ const b=M.start(M.empty(),{label:'[TEST] 확인 대상'},clock),ex=b.session.exercises[0];
+ let data=M.setValue(b.next,b.session.id,ex.id,ex.sets[0].id,{done:true},advance(1)).next;
+ data=M.finish(data,b.session.id,'COMPLETED',advance(2)).next;
+ const view=ui(data);view.api.open('history');
+ assert.match(view.host.innerHTML,/테스트 이름 · 수행 여부 확인 필요/);
+ view.action('record-detail',{id:b.session.id});
+ assert.match(view.host.innerHTML,/기록 ID/);assert.match(view.host.innerHTML,/시작 시각/);
+ assert.equal(view.api.getSnapshot().sessions.length,1);assert.equal(view.writes.length,0);
+});

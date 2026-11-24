@@ -385,6 +385,7 @@
         // Preserve existing date-specific titles; hidden strength drafts never name another record type.
         const title=currentType==='strength'?($('#f-title').value.trim()||automaticTitle):(edit&&currentType===item.type?item.title:automaticTitle);
         const completed=currentType==='strength'?(()=>{const s=W.summary(detail);return s.setCount>0&&s.completedSets===s.setCount;})():$('#f-completed').checked;
+        if(currentType==='strength'&&(recurring?date:dateValue)>iso(new Date())&&detail.exercises.some(ex=>ex.sets.some(s=>s.done===true)))throw new Error('미래 날짜의 운동에는 완료 세트를 저장할 수 없습니다.');
         const update={...item,id:edit?event.id:item.id,type:currentType,date:dateValue,start:startValue,end:endValue,title,repeat:recurring?event.repeat:$('#f-repeat').value,repeatUntil:$('#f-until').value||null,completed,detail,isSample:false};
         if(item.workoutSessionId && (currentType!=='strength'||dateValue!==item.date))throw new Error('완료한 운동과 연결된 일정은 날짜와 종류를 바꿀 수 없습니다. 다른 날짜에는 새 일정을 등록해 주세요.');
         const next=C.upsert(data,update,{occurrenceDate:recurring?date:null,scope:recurring?scope:'single'});
@@ -411,10 +412,10 @@
     const item=getScheduledWorkouts(date).find(x=>x.event.id===event.id);
     if(!item)return '';
     const final=item.session&&['COMPLETED','PARTIAL'].includes(item.session.status);
-    const disabled=!item.session&&(event.completed||!!event.workoutSessionId);
+    const future=date>iso(new Date()),disabled=future||(!item.session&&(event.completed||!!event.workoutSessionId));
     const label=final?'운동 기록':item.session?'이어하기':'운동 시작';
     const swap='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4"/></svg>';
-    return `<div class="fd-agenda-workout-actions"><button class="fd-plan-swap" type="button" data-calendar-swap="${esc(event.id)}" data-occdate="${date}" aria-label="${esc(event.title)} 루틴 교체" title="${item.canReplace?'이 날짜의 루틴 교체':'시작하거나 기록한 운동은 교체할 수 없습니다'}" ${item.canReplace?'':'disabled'}>${swap}</button><button class="btn btn-small btn-outline" type="button" data-calendar-start="${esc(event.id)}" data-occdate="${date}" ${disabled?'disabled':''}>${disabled?'완료됨':label}</button></div>`;
+    return `<div class="fd-agenda-workout-actions"><button class="fd-plan-swap" type="button" data-calendar-swap="${esc(event.id)}" data-occdate="${date}" aria-label="${esc(event.title)} 루틴 교체" title="${item.canReplace?'이 날짜의 루틴 교체':'시작하거나 기록한 운동은 교체할 수 없습니다'}" ${item.canReplace?'':'disabled'}>${swap}</button><button class="btn btn-small btn-outline" type="button" data-calendar-start="${esc(event.id)}" data-occdate="${date}" ${disabled?'disabled':''}>${future?'예정':disabled?'완료됨':label}</button></div>`;
   }
   function openRoutineSwap(eventId,date) {
     try {
@@ -576,6 +577,11 @@ function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$
   }
   function toggleDone(id,day) {
     const event=data.events.find(e=>e.id===id),actual=event&&C.occurrence(event,day);
+    if(actual?.type==='strength'&&!actual.completed){
+      if(actual.isSample){toast('체험용 운동은 실제 기록으로 완료할 수 없습니다. 내 운동을 먼저 등록해 주세요.',true);return;}
+      if(day>iso(new Date())){toast('미래 날짜의 운동은 완료할 수 없습니다.',true);return;}
+      if(!confirm('이 일정의 모든 세트를 실제로 완료했나요? 계획 중량과 횟수가 모두 완료 기록으로 저장됩니다.'))return;
+    }
     if(actual?.type==='weight' && actual.detail.weight==null){openEvent({event,date:day});toast('측정값을 입력한 뒤 측정 완료를 체크해 주세요.');return;}
     try {commit(C.toggleComplete(data,id,day),'완료 상태를 저장했습니다.');}catch(error){toast(error.message,true);}
   }
@@ -718,6 +724,8 @@ function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$
         if(!Number.isFinite(kg)||kg<0||kg>2000||!Number.isInteger(count)||count<1||count>1000||
            (effort!==null&&(!Number.isFinite(effort)||effort<1||effort>10))||typeof done!=='boolean')
           throw new Error('중량·횟수·RPE 입력값을 확인해 주세요.');
+        if(done&&date>iso(new Date()))throw new Error('미래 날짜의 운동은 완료할 수 없습니다.');
+        if(done&&actual.isSample)throw new Error('체험용 운동은 실제 완료 기록으로 저장할 수 없습니다.');
         set.weight=kg;set.reps=count;set.rpe=effort;set.done=done;
         W.validate(detail);
         const summary=W.summary(detail);

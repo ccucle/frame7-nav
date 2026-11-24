@@ -182,3 +182,63 @@ test('data refresh and keyboard selection update only the progress host, without
   assert.equal(prevented,true);assert.ok(focuses>0);assert.match(detail.innerHTML,/2026-11-20/);
   assert.equal(JSON.stringify(state),original);
 });
+
+const A=require('../fitplan/iron-data.js');
+const I=require('../fitplan/iron-store.js');
+const W=require('../fitplan/workouts.js');
+const K=require('../fitplan/calendar-workouts.js');
+function trainingEvent(id,date,name,sets,extra={}){
+ return {id,date,start:'07:00',end:'08:00',type:'strength',title:name,repeat:'none',completed:false,detail:{exercises:[{id:id+'-exercise',name,sets:sets.map((s,i)=>({id:id+'-set-'+i,rpe:null,warmup:false,done:true,...s})),notes:''}],notes:''},...extra};
+}
+const trainingBuild=(state,independent,range='7')=>D.buildTraining(C,W,A,state,independent,{range,today});
+test('body-part charts aggregate actual main sets and kg times reps, not plans, warmups, samples or future dates',()=>{
+ const events=[trainingEvent('chest',today,'벤치프레스',[{weight:60,reps:10},{weight:65,reps:8},{weight:20,reps:15,warmup:true},{weight:999,reps:10,done:false}]),
+ trainingEvent('back','2026-11-23','랫풀다운',[{weight:40,reps:10}]),
+ trainingEvent('body',today,'푸시업',[{weight:0,reps:20}]),
+ trainingEvent('other',today,'사용자 운동',[{weight:10,reps:5}]),
+ trainingEvent('sample',today,'스쿼트',[{weight:100,reps:10}],{isSample:true}),
+ trainingEvent('future','2026-11-25','스쿼트',[{weight:100,reps:10}]),
+ trainingEvent('plan',today,'스쿼트',[{weight:100,reps:10,done:false}])];
+ const state=stateOf(events),before=JSON.stringify(state),model=trainingBuild(state,null);
+ const g=name=>model.groups.find(x=>x.group===name);
+ assert.deepEqual(g('가슴'),{group:'가슴',sets:3,volume:1120,maxWeight:65});
+ assert.deepEqual(g('등'),{group:'등',sets:1,volume:400,maxWeight:40});
+ assert.deepEqual(g('하체'),{group:'하체',sets:0,volume:0,maxWeight:null});
+ assert.equal(g('기타').volume,50);assert.equal(model.totalSets,5);assert.equal(model.totalVolume,1570);
+ const series=D.trainingSeries(model,'가슴','sets');
+ assert.equal(series.buckets.at(-1).sets,3);assert.equal(series.buckets.at(-2).sets,null);
+ assert.equal(JSON.stringify(state),before);
+});
+test('linked workout reflection contributes one record to body-part graphs and independent-only records remain available',()=>{
+ const plan=trainingEvent('linked',today,'벤치프레스',[{weight:40,reps:10,done:false}]);
+ let state=stateOf([plan]),begun=I.startCalendar(I.empty(),K.prepareStart(C,state,'linked',today),new Date(today+'T09:00:00Z'));
+ const s=begun.session,ex=s.exercises[0];
+ let actual=I.setValue(begun.next,s.id,ex.id,ex.sets[0].id,{weight:55,done:true},new Date(today+'T09:10:00Z')).next;
+ actual=I.finish(actual,s.id,'COMPLETED',new Date(today+'T09:20:00Z')).next;
+ assert.equal(trainingBuild(state,actual).totalVolume,550);
+ state=K.applySession(C,state,actual.sessions[0]).next;
+ assert.equal(trainingBuild(state,actual).totalVolume,550);
+ assert.equal(trainingBuild(state,actual).totalSets,1);
+ assert.equal(trainingBuild(stateOf([]),actual).totalVolume,550);
+});
+test('all-time training buckets sum volume and sets while maximum weight remains a maximum',()=>{
+ const events=Array.from({length:240},(_,i)=>trainingEvent('long'+i,D.dateAt(D.dayNumber(today)-239+i),'스쿼트',[{weight:i+1,reps:2}]));
+ const model=trainingBuild(stateOf(events),null,'all');
+ assert.equal(model.bucketDays,2);assert.equal(model.totalSets,240);assert.equal(model.totalVolume,57840);
+ const series=D.trainingSeries(model,'하체','maxWeight');assert.equal(series.buckets[0].maxWeight,2);
+ const volume=D.trainingSeries(model,'하체','volume');assert.equal(volume.buckets[0].volume,6);
+ assert.equal(volume.buckets.at(-1).values.sets,2);
+ assert.match(V.trainingSection(model,{trainingGroup:'하체',trainingMetric:'maxWeight',width:320}),/부위별 운동 기록/);
+ assert.match(V.trainingSection(model,{trainingGroup:'하체',trainingMetric:'maxWeight',width:320}),/최고 중량/);
+ assert.match(V.trainingSection(model,{width:320}),/부위별 세트 수/);
+});
+test('training charts omit invalid confirmed sessions and preserve genuine zero-weight sets',()=>{
+ const base=I.start(I.empty(),{exerciseNames:['푸시업']},new Date(today+'T07:00:00Z'));
+ const e=base.session.exercises[0];let data=I.setValue(base.next,base.session.id,e.id,e.sets[0].id,{done:true},new Date(today+'T07:01:00Z')).next;
+ data=I.finish(data,base.session.id,'PARTIAL',new Date(today+'T07:02:00Z')).next;
+ const invalid={...I.copy(data.sessions[0]),id:'invalid',exercises:data.sessions[0].exercises.map(e=>({...e,sets:e.sets.map(s=>({...s,done:false}))}))};
+ const sample={...I.copy(data.sessions[0]),id:'sample',isSample:true};
+ const model=trainingBuild(stateOf([]),{...data,sessions:[...data.sessions,invalid,sample]});
+ assert.equal(model.totalSets,1);assert.equal(model.totalVolume,0);
+ assert.equal(D.trainingSeries(model,'가슴','maxWeight').buckets.at(-1).maxWeight,0);
+});

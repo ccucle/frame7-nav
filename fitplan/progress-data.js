@@ -107,5 +107,64 @@
         partialCalorieDays:daily.filter(day=>day.partial).length,
         calorieGoalPercent:averageKcal!==null&&Number.isFinite(kcal)&&kcal>0?round(averageKcal/kcal*100):null}}
   }
-  return Object.freeze({RANGES,MAX_BINS,dayNumber,dateAt,actualRecords,dailyRecords,build});
+  const TRAINING_GROUPS=Object.freeze(['가슴','등','어깨','하체','팔','코어','전신','기타']);
+  const TRAINING_METRICS=Object.freeze(['volume','sets','maxWeight']);
+  const totals=()=>({volume:0,sets:0,maxWeight:null});
+  function addSet(target,set){
+    target.volume+=set.weight*set.reps;target.sets++;
+    target.maxWeight=target.maxWeight===null?set.weight:Math.max(target.maxWeight,set.weight);
+  }
+  function addTotal(target,source){
+    target.volume+=source.volume;target.sets+=source.sets;
+    if(source.maxWeight!==null)target.maxWeight=target.maxWeight===null?source.maxWeight:Math.max(target.maxWeight,source.maxWeight);
+  }
+  function rounded(row){return {...row,volume:round(row.volume),maxWeight:row.maxWeight===null?null:round(row.maxWeight)};}
+  function buildTraining(core,workouts,ironData,state,independent,options={}){
+    const today=options.today||core.iso(new Date()),range=String(options.range||'30');
+    if(!core.validDate(today)||!RANGES.includes(range))throw Error('운동 그래프 기간을 확인해 주세요.');
+    if(!ironData?.records||!Array.isArray(workouts?.catalog))throw Error('운동 기록 모듈을 확인해 주세요.');
+    const lookup=new Map(workouts.catalog.map(ex=>[ex.name,ex.group]));
+    const days=new Map();
+    for(const record of ironData.records(core,state,independent)){
+      if(record.type!=='strength'||record.isSample||!core.validDate(record.date)||record.date>today)continue;
+      for(const ex of record.detail?.exercises||[]){
+        const candidate=lookup.get(ex.name),group=TRAINING_GROUPS.includes(candidate)?candidate:'기타';
+        for(const set of ex.sets||[]){
+          if(set.warmup||!ironData.isPerformedSet(set))continue;
+          if(!days.has(record.date))days.set(record.date,{date:record.date,groups:Object.fromEntries(TRAINING_GROUPS.map(g=>[g,totals()]))});
+          addSet(days.get(record.date).groups[group],set);
+        }
+      }
+    }
+    const all=[...days.values()].sort((a,b)=>a.date.localeCompare(b.date));
+    const endIndex=dayNumber(today);
+    const start=range==='all'?(all[0]?.date||today):dateAt(Math.max(dayNumber('0000-01-01'),endIndex-Number(range)+1));
+    const dayCount=endIndex-dayNumber(start)+1,bucketDays=Math.max(1,Math.ceil(dayCount/MAX_BINS));
+    const daily=all.filter(day=>day.date>=start);
+    const aggregate=Object.fromEntries(TRAINING_GROUPS.map(g=>[g,totals()]));
+    const buckets=Array.from({length:Math.ceil(dayCount/bucketDays)},(_,index)=>{
+      const first=dayNumber(start)+index*bucketDays,last=Math.min(endIndex,first+bucketDays-1);
+      return {index,start:dateAt(first),end:dateAt(last),days:last-first+1,groups:Object.fromEntries(TRAINING_GROUPS.map(g=>[g,totals()]))};
+    });
+    for(const day of daily){
+      const bin=buckets[Math.floor((dayNumber(day.date)-dayNumber(start))/bucketDays)];
+      for(const group of TRAINING_GROUPS){addTotal(bin.groups[group],day.groups[group]);addTotal(aggregate[group],day.groups[group]);}
+    }
+    const groups=TRAINING_GROUPS.map(group=>({group,...rounded(aggregate[group])}));
+    return {range,start,end:today,dayCount,bucketDays,groups,totalSets:groups.reduce((n,g)=>n+g.sets,0),
+      totalVolume:round(groups.reduce((n,g)=>n+g.volume,0)),daily,buckets};
+  }
+  function trainingSeries(model,group,metric){
+    if(![...TRAINING_GROUPS,'전체'].includes(group)||!TRAINING_METRICS.includes(metric))throw Error('운동 그래프 항목을 확인해 주세요.');
+    const valueFor=bin=>{
+      const sum=totals();
+      for(const key of group==='전체'?TRAINING_GROUPS:[group])addTotal(sum,bin.groups[key]);
+      return sum.sets?rounded(sum):null;
+    };
+    return {...model,targets:{[metric]:null},buckets:model.buckets.map(bin=>{
+      const values=valueFor(bin);
+      return {index:bin.index,start:bin.start,end:bin.end,days:bin.days,[metric]:values?.[metric]??null,values};
+    })};
+  }
+  return Object.freeze({RANGES,MAX_BINS,TRAINING_GROUPS,TRAINING_METRICS,dayNumber,dateAt,actualRecords,dailyRecords,build,buildTraining,trainingSeries});
 });

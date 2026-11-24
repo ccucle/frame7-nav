@@ -669,3 +669,8 @@ dialog.fi-delete-confirm::backdrop{background:#06080cbd}
 .fd-ind-root .fi-delete-actions>.fi-btn{width:100%;min-width:0;min-height:48px;margin:0;padding:10px 6px;text-align:center;white-space:normal;font-size:13px}
 .fd-ind-root .fi-delete-actions>.fi-delete-danger{color:white;background:var(--fd-accent,#cf3445);border:1px solid var(--fd-accent,#cf3445)}
 @media(max-width:380px){.fi-delete-content{padding:18px;gap:10px}}
+
+.fi-history-source{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 12px;margin:12px 0;padding:12px;background:var(--fd-input);border:1px solid var(--fd-border);border-radius:8px;font-size:12px;line-height:1.6;min-width:0}
+.fi-history-source span{color:var(--fd-muted)}.fi-history-source b{font-weight:600;overflow-wrap:anywhere}
+.fi-review-flag{color:var(--fd-warning,#f2ce95)!important;font-size:12px;line-height:1.6}
+.fi-history-review summary{font-size:13px;font-weight:750;color:var(--fd-warning,#f2ce95);cursor:pointer;padding:4px 0}
