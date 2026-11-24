@@ -631,3 +631,7 @@ body[data-fd-screen="home"] .header-actions.fd-home-actions { display: grid; }
 @media (prefers-reduced-motion: reduce) {
   .fd-iron-root button, .fw-set-row { transition: none; }
 }
+
+/* FORMDAY Power mark: identical SVG asset for sidebar and browser tab. */
+.brand .brand-icon { flex: 0 0 30px; width: 30px; height: 30px; padding: 0; background: none; border-radius: 0; transform: none; text-shadow: none; }
+.brand .brand-icon img { display: block; width: 30px; height: 30px; }
