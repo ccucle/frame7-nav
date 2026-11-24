@@ -355,11 +355,13 @@ test('workout navigation handles icon and text targets and keeps training select
   const view=ui();view.workout();
   assert.equal(view.document.body.dataset.fdScreen,'independent');
   assert.match(view.host.innerHTML,/data-fi-nav="home" aria-current="page"/);
-  for(const page of ['routines','programs','history','home']){
+  for(const page of ['routines','programs','home']){
     view.subnav(page);
     assert.match(view.host.innerHTML,new RegExp('data-fi-nav="'+page+'" aria-current="page"'));
     assert.equal(view.globalWorkout.attributes['aria-current'],'page');
   }
+  assert.match(view.host.innerHTML,/data-fd-route="library"/);
+  assert.doesNotMatch(view.host.innerHTML,/data-fi-nav="history"/);
   view.api.open('routines');view.workout({textNode:true});
   assert.match(view.host.innerHTML,/data-fi-nav="home" aria-current="page"/);
   view.api.open('choose');

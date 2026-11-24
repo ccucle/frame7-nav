@@ -115,6 +115,14 @@
     if(screen==='session'&&page!=='session'&&!saveSessionInputs())return false;
     const leavingDraft=(screen==='builder'&&page!=='builder'&&draft)||(screen==='programBuilder'&&page!=='programBuilder'&&programDraft);
     if(leavingDraft&&!beforeNavigate())return false;
+    if(page==='history'&&root.FormdayIron?.open){
+      if(!focusedSession)focusedSession=completed().at(-1)?.id||null;
+      if(root.FormdayIron.open('progress',{scroll:false})===false)return false;
+      const target=host.querySelector(focusedSession?'#fi-history-detail':'#fi-history')||host;
+      target.scrollIntoView?.({behavior:'smooth',block:'start'});
+      target.focus?.({preventScroll:true});
+      return true;
+    }
     document.body.dataset.fdScreen='independent';
     screen=page;
     if(screen==='session'&&!current())screen='home';
@@ -167,10 +175,10 @@
     });
   }
   const button=(action,label,kind='primary',more='')=>'<button class="fi-btn fi-'+kind+'" type="button" data-fi-action="'+action+'" '+more+'>'+label+'</button>';
-  function hubNav(){
-    const selected=screen==='builder'?'routines':screen==='programBuilder'?'programs':screen==='session'?'home':screen;
-    return '<nav class="fi-hub-nav" aria-label="운동 하위 메뉴">'+[['home','운동','◉'],['routines','루틴','▤'],['programs','프로그램','◎'],['history','기록','▦']].map(([page,label,icon])=>
-      '<button type="button" data-fi-nav="'+page+'" aria-current="'+(selected===page?'page':'false')+'"><span aria-hidden="true">'+icon+'</span><b>'+label+'</b></button>').join('')+'</nav>';
+  function hubNav(pageName=screen){
+    const selected=pageName==='builder'?'routines':pageName==='programBuilder'?'programs':pageName==='session'?'home':pageName;
+    return '<nav class="fi-hub-nav" aria-label="운동 하위 메뉴">'+[['home','운동','◉'],['routines','루틴','▤'],['programs','프로그램','◎'],['library','운동 도감','▧']].map(([page,label,icon])=>
+      '<button type="button" '+(page==='library'?'data-fd-route':'data-fi-nav')+'="'+page+'" aria-current="'+(selected===page?'page':'false')+'"><span aria-hidden="true">'+icon+'</span><b>'+label+'</b></button>').join('')+'</nav>';
   }
   function home(){
     const history=completed().slice().reverse();
@@ -178,9 +186,7 @@
       scheduledWorkouts()+'<div class="fi-stats"><div><span>저장된 루틴</span><strong>'+state.routines.length+'</strong></div><div><span>훈련 프로그램</span><strong>'+state.programs.length+'</strong></div><div><span>확정한 운동</span><strong>'+history.length+'</strong></div></div>'+
       '<div class="fi-hub-start"><div><h3>어떻게 운동할까요?</h3><p>자유 운동에서는 검색과 즐겨찾기로 여러 종목을 한 번에 고를 수 있습니다.</p></div><div class="fi-action-grid">'+
       (current()?button('inspect-session','운동 이어하기'):button('start-free','＋ 종목 골라 운동 시작'))+button('routine-list','저장한 루틴으로 시작','outline')+'</div></div>'+
-      (state.programs.some(p=>p.active)?'<div class="fi-panel"><div class="fi-section-head"><h3>프로그램의 다음 운동</h3>'+button('program-list','프로그램 보기','subtle')+'</div>'+programStarts()+'</div>':'')+
-      '<div class="fi-panel"><div class="fi-section-head"><h3>최근 운동</h3>'+button('show-history','기록 전체 →','subtle')+'</div>'+
-      (!history.length?'<p class="fi-empty">아직 확정된 운동 기록이 없습니다.</p>':history.slice(0,4).map(s=>recordCard(s)).join(''))+'</div></section>';
+      (state.programs.some(p=>p.active)?'<div class="fi-panel"><div class="fi-section-head"><h3>프로그램의 다음 운동</h3>'+button('program-list','프로그램 보기','subtle')+'</div>'+programStarts()+'</div>':'')+'</section>';
   }
   function scheduledWorkouts(){
     const items=root.FormdayBridge?.getScheduledWorkouts?.(scheduledDay)||[];
@@ -412,10 +418,9 @@
   function historyView(){
     const records=completed().slice().sort((a,b)=>b.startedAt.localeCompare(a.startedAt));
     const selected=records.find(x=>x.id===focusedSession);
-    return '<section class="fi-view" aria-label="운동 기록"><div class="fi-view-toolbar"><span class="fi-note">'+records.length+'회 기록</span>'+
-      button('back-home','웨이트 홈','outline')+'</div>'+
+    return '<section class="fi-view fi-history-view" id="fi-history" aria-labelledby="fi-history-title" tabindex="-1"><div class="fi-section-head fi-history-heading"><div><span class="fi-kicker">WORKOUT LOG</span><h2 id="fi-history-title">운동 기록</h2></div><span class="fi-note">전체 '+records.length+'회 기록</span></div>'+
       '<div class="fi-panel">'+(records.length?records.map(s=>recordCard(s)).join(''):'<p class="fi-empty">완료된 운동 세션이 없습니다.</p>')+'</div>'+
-      (selected?'<div class="fi-panel"><div class="fi-section-head"><h3>'+esc(selected.label)+'</h3><span>'+ (selected.status==='PARTIAL'?'부분 완료':'정상 완료')+'</span></div>'+
+      (selected?'<div class="fi-panel" id="fi-history-detail" tabindex="-1" aria-labelledby="fi-history-detail-title"><div class="fi-section-head"><h3 id="fi-history-detail-title">'+esc(selected.label)+'</h3><span>'+ (selected.status==='PARTIAL'?'부분 완료':'정상 완료')+'</span></div>'+
       '<p class="fi-note">'+esc(selected.date)+' · 운동 '+timeLabel(Math.floor(selected.activeMs/1000))+'</p>'+
       reflectionNotice(selected)+
       (selected.notes?'<p class="fi-history-note">'+esc(selected.notes)+'</p>':'')+
@@ -497,6 +502,14 @@
   function render(){
     renderCalendar();
     if(!host)return;
+    if(document.body.dataset.fdScreen==='progress'){
+      removeSessionSheet();screen='history';
+      document.body.dataset.fiSession='false';
+      host.innerHTML='<div id="fi-banner" class="'+(error?'fi-msg-error':'')+'" '+(!message?'hidden':'')+' role="status">'+esc(message)+'</div>'+
+        (revisionConflict?button('reload','다른 탭의 최신 기록 불러오기','outline'):'')+
+        (blocked||!state?'<section class="fi-panel fi-alert" role="alert"><h2>운동 기록을 불러오지 못했습니다.</h2><p>'+esc(blocked||'기록을 확인해 주세요.')+'</p>'+button('reload','기록 다시 확인','outline')+'</section>':historyView());
+      return;
+    }
     if(document.body.dataset.fdScreen!=='independent'){removeSessionSheet();return;}
     top();
     document.body.classList?.remove('fs-keyboard');
@@ -1108,7 +1121,7 @@
     }
   });
   root.addEventListener('formday:changed',()=>{
-    if(document.body.dataset.fdScreen==='independent'&&['home','history'].includes(screen))render();
+    if(document.body.dataset.fdScreen==='progress'||document.body.dataset.fdScreen==='independent'&&['home','history'].includes(screen))render();
     else renderCalendar();
   });
   root.addEventListener('storage',event=>{
@@ -1172,7 +1185,7 @@
   host.addEventListener('pointerup',finishSheetDrag);
   host.addEventListener('pointercancel',finishSheetDrag);
   root.setInterval(()=>{clockTick=Date.now();paintTimer();},1000);
-  root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,getSnapshot:()=>state?M.copy(state):null,getCalendarSnapshot,
+  root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,hubNav,renderHistory:()=>{if(document.body.dataset.fdScreen==='progress')render();},getSnapshot:()=>state?M.copy(state):null,getCalendarSnapshot,
     canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current()&&!pickerOpen&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.(),
     cloudReload:()=>{
       if(blocked||revisionConflict||draft||programDraft||current()||pickerOpen||root.FormdayExercisePicker?.isOpen?.()||root.FormdayBridge?.isRoutineSwapOpen?.())return false;

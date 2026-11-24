@@ -13,10 +13,10 @@
 <link rel="stylesheet" href="backup.css?v=0.3.1">
 <link rel="stylesheet" href="cloud-auth.css?v=0.5.2">
 <link rel="stylesheet" href="cloud-sync.css?v=0.6.0">
-<link rel="stylesheet" href="iron.css?v=0.4.0">
-<link rel="stylesheet" href="iron-independent.css?v=0.5.0">
+<link rel="stylesheet" href="iron.css?v=0.8.15">
+<link rel="stylesheet" href="iron-independent.css?v=0.8.15">
 <link rel="stylesheet" href="theme.css?v=0.8.7">
-<link rel="stylesheet" href="workout-hub.css?v=0.7.0">
+<link rel="stylesheet" href="workout-hub.css?v=0.8.15">
 <link rel="stylesheet" href="exercise-picker.css?v=0.7.0">
 <link rel="stylesheet" href="progress.css?v=0.7.0">
 <link rel="stylesheet" href="session-screen.css?v=0.8.6">
@@ -36,7 +36,6 @@
       <button type="button" data-ind-nav="start" class="fd-route"><span>◉</span> 운동</button>
       <button type="button" data-fd-route="progress" class="fd-route"><span>↗</span> 변화 그래프</button>
       <button type="button" data-fd-route="analysis" class="fd-route"><span>▥</span> 운동 성과</button>
-      <button type="button" data-fd-route="library" class="fd-route"><span>▧</span> 운동 도감</button>
     </nav>
     <div class="side-caption">WORKSPACE / 기록</div>
     <nav>
@@ -65,7 +64,7 @@
           </span>
           <div class="fd-page-title-copy">
             <h1 class="page-title" id="fd-page-title">오늘의 기록</h1>
-            <div class="crumb">TODAY <span class="version-tag sr-only">v0.8.14</span></div>
+            <div class="crumb">TODAY <span class="version-tag sr-only">v0.8.15</span></div>
           </div>
         </div>
         <span class="fd-page-image" aria-hidden="true"></span>
@@ -96,8 +95,8 @@
     <div id="fd-workout-error" class="fd-load-error" role="alert" hidden></div>
     <div id="demo-banner" class="demo-banner hide"><span>✳ 현재 표시된 운동·식단·체중은 <b>체험용 샘플</b>입니다. 실제 개인 기록이 아닙니다.</span><button id="clear-demo">샘플 지우기</button></div>
     <div id="fd-iron-root" class="fd-iron-root" aria-label="훈련 대시보드 및 운동 도감"></div>
-    <div id="fd-ind-root" class="fd-ind-root" aria-label="독립 웨이트 루틴 및 운동 세션"></div>
     <div id="fd-progress-root" class="fd-progress-root" aria-label="체중과 섭취 열량 변화 그래프"></div>
+    <div id="fd-ind-root" class="fd-ind-root" aria-label="웨이트 루틴, 운동 세션 및 기록"></div>
     <section class="card" id="calendar-card">
       <div class="calendar-toolbar">
         <div class="toolbar-top">
@@ -163,7 +162,6 @@
   <button data-ind-nav="start"><b>◉</b>운동</button>
   <button data-fd-route="calendar"><b>▦</b>캘린더</button>
   <button data-fd-route="progress"><b>↗</b>그래프</button>
-  <button data-fd-route="library"><b>▧</b>도감</button>
 </div>
 <dialog class="fd-account-dialog" id="fd-account-dialog" aria-labelledby="fd-account-title">
   <header class="fd-account-head">
@@ -219,9 +217,9 @@
 <script defer src="backup.js?v=0.3.1"></script>
 <script defer src="iron-store.js?v=0.8.13"></script>
 <script defer src="exercise-picker.js?v=0.7.0"></script>
-<script defer src="iron-independent.js?v=0.8.14"></script>
+<script defer src="iron-independent.js?v=0.8.15"></script>
 <script defer src="progress.js?v=0.8.9"></script>
-<script defer src="iron.js?v=0.8.13"></script>
+<script defer src="iron.js?v=0.8.15"></script>
 <script defer src="sync-policy.js?v=0.7.0"></script>
 <script type="module" src="cloud-auth.js?v=0.8.7"></script>
 <script type="module" src="cloud-sync.js?v=0.6.1"></script>

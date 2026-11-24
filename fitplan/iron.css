@@ -354,7 +354,7 @@ body:not([data-fd-screen=calendar]) .nav-button.active{color:#8b939f;background:
   .fd-session-footer{gap:7px}
   .fd-session-footer button{padding:10px;font-size:11px}
   body[data-fd-screen=calendar] .rightbar{display:block;height:auto;position:static}
-  .mobile-nav{display:grid;grid-template-columns:repeat(5,1fr)}
+  .mobile-nav{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))}
   .mobile-nav button{min-width:0;white-space:nowrap;font-size:9px}
   .mobile-nav button b{font-size:19px}
 }

@@ -34,7 +34,7 @@
     const [eyebrow,title]=labels[screenName]||labels.home;
     const titleEl=document.querySelector('.page-title'),descEl=document.querySelector('.page-sub');
     if(titleEl)titleEl.textContent=title;
-    if(descEl)descEl.textContent=screenName==='calendar'?'운동 · 식단 · 체중을 날짜별로 관리하세요.':screenName==='progress'?'체중과 기록한 섭취 열량을 기간별로 확인하세요.':'기록으로 확인하는 오늘의 훈련. 웨이트 중심 퍼포먼스 시스템.';
+    if(descEl)descEl.textContent=screenName==='calendar'?'운동 · 식단 · 체중을 날짜별로 관리하세요.':screenName==='progress'?'체중·섭취 열량의 변화와 완료한 운동 기록을 확인하세요.':screenName==='library'?'부위와 장비별로 종목을 찾고 운동을 시작하세요.':'기록으로 확인하는 오늘의 훈련. 웨이트 중심 퍼포먼스 시스템.';
     const crumb=document.querySelector('.crumb');
     if(crumb)crumb.firstChild.textContent=eyebrow+'  ';
     document.body.dataset.fdScreen=screenName;
@@ -44,7 +44,8 @@
       button.setAttribute('aria-current',isSelected?'page':'false');
     });
     document.querySelectorAll('[data-ind-nav]').forEach(button=>{
-      button.classList.remove('fd-current','active');button.setAttribute('aria-current','false');
+      const selected=screenName==='library'&&button.dataset.indNav==='start';
+      button.classList.toggle('fd-current',selected);button.classList.toggle('active',selected);button.setAttribute('aria-current',selected?'page':'false');
     });
     const types=bridge.getVisibleTypes?.()||[];
     const activeFilter=types.length===1?types[0]:'calendar';
@@ -69,11 +70,12 @@
     }
   }
   function setScreen(name,{scroll=true}={}){
-    if(name==='session'){openWorkout('session');return;}
-    if(!['home','library','analysis','progress','calendar'].includes(name))return;
-    if(document.body.dataset.fdScreen==='independent'&&root.FormdayIndependent?.beforeNavigate?.()===false)return;
+    if(name==='session')return openWorkout('session');
+    if(!['home','library','analysis','progress','calendar'].includes(name))return false;
+    if(document.body.dataset.fdScreen==='independent'&&root.FormdayIndependent?.beforeNavigate?.()===false)return false;
     screen=name;render(true);
     if(scroll)document.querySelector('#main-content')?.scrollIntoView({block:'start',behavior:'smooth'});
+    return true;
   }
   function banner(title,value,sub,icon){
     return '<div class="fd-metric"><span class="fd-metric-kicker">'+icon+' '+html(title)+'</span><div class="fd-metric-val">'+value+'</div><p>'+sub+'</p></div>';
@@ -148,7 +150,7 @@
       '<p class="fd-photo-note">종목을 구분하는 동작 삽화입니다. <a href="exercise-credits.html" target="_blank" rel="noopener noreferrer">운동 이미지 출처 ↗</a></p></div></div>';
   }
   function library(){
-    return '<section class="fd-library-view" aria-labelledby="fd-page-title">'+
+    return (root.FormdayIndependent?.hubNav?.('library')||'')+'<section class="fd-library-view" aria-labelledby="fd-page-title">'+
       '<div class="fd-lib-search-box"><span>⌕</span><input id="fd-lib-search" type="search" autocomplete="off" placeholder="운동 이름 검색 · 벤치프레스, 풀업, 스쿼트..." value="'+html(query)+'" aria-label="운동 이름 검색"></div>'+
       '<div class="fd-filter-heading">운동 부위</div><div class="fd-filter-buttons">'+D.MUSCLES.map(g=>'<button data-fd-group="'+html(g)+'" class="'+(g===muscle?'active':'')+'">'+html(g)+'</button>').join('')+'</div>'+
       '<div class="fd-filter-heading">장비 종류</div><div class="fd-filter-buttons fd-equip-buttons">'+equipmentOptions.map(g=>'<button data-fd-equip="'+html(g)+'" class="'+(g===equipment?'active':'')+'">'+html(g)+'</button>').join('')+'</div>'+
@@ -233,7 +235,7 @@
     if(!navigation&&document.body.dataset.fdScreen==='independent')return;
     top(screen);
     node.innerHTML=screen==='home'?home():screen==='library'?library():screen==='session'?session():screen==='analysis'?analysis():'';
-    if(screen==='progress'&&navigation)root.FormdayProgress?.render?.();
+    if(screen==='progress'&&navigation){root.FormdayProgress?.render?.();root.FormdayIndependent?.renderHistory?.();}
     if(screen==='library')libraryResults();
     if(screen==='session')paintTimer();
   }
@@ -313,5 +315,6 @@
   root.addEventListener('formday:iron-changed',()=>render());
   root.addEventListener('focus',()=>{if(screen==='home'||screen==='analysis')render();});
   root.setInterval(paintTimer,1000);
+  root.FormdayIron=Object.freeze({open:setScreen});
   render();
 })(typeof window!=='undefined'?window:globalThis);
