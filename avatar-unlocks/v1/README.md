@@ -79,9 +79,9 @@ PC에서 한 Windows 사용자로 연결된 아바타는 공통 엔진을 공유
 
 아이템 그림은 [PokeAPI/sprites](https://github.com/PokeAPI/sprites/tree/master/sprites/items)에서 가져왔고 스톤 파우더에는 별의모래 그림을 썼다. 이상해풀·이상해꽃을 제외한 1~4세대 진화체에는 위 하트골드·소울실버 필드 그림을 썼다. 님피아 걷기는 [baronessfaron의 SpriteCollab 그림](https://github.com/PMDCollab/SpriteCollab/tree/master/sprite/0700)이며 [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/)으로 제공된다. 좌우 방향을 골라 32픽셀 칸에 맞추고 다른 포켓몬과 한 이미지에 배치했다.
 
-## 레인저 동행 제작 현황
+## 포켓몬 동행 제작 현황
 
-완료 기준은 레인저 일반색 동행 도트, 좌우 각 네 프레임, 정지와 크기별 배치의 실제 화면 확인이다. 도감 카드의 HGSS 앞모습과 동행 그림은 별도로 관리한다. #0001 이상해씨, #0002 이상해풀, #0003 이상해꽃을 같은 [Pokémon Ranger 원본 시트 · Ragey](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8452/)에서 제작했다. 도감 v1.8.1에서 [파이리·리자드](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8453/)와 [리자몽](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8671/)의 일반색 레인저 동행을 추가했다. 도감 v1.8.2에서 [꼬부기·어니부기·거북왕의 레인저 원본 시트](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8653/)를 적용했다. 1세대 151종 중 #0001–#0009까지 실제 바탕화면에서 검수했다. 다음은 #0010 캐터피다. 1.6.0의 신규 카드 128종은 도감 앞모습만 등록했다. 세부 도트가 32픽셀 칸에서 손실되는 종은 원본 해상도의 4×2 프레임 PNG를 보관하고 `walk-rows.json`에 `walkMaster`로 연결한다.
+완료 기준은 레인저 또는 불가사의 던전 탐험대의 일반색 동행 도트, 좌우 이동 한 주기, 정지와 크기별 배치의 실제 화면 확인이다. 도감 카드의 HGSS 앞모습과 동행 그림은 별도로 관리한다. #0001 이상해씨, #0002 이상해풀, #0003 이상해꽃을 같은 [Pokémon Ranger 원본 시트 · Ragey](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8452/)에서 제작했다. 도감 v1.8.1에서 [파이리·리자드](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8453/)와 [리자몽](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8671/)의 일반색 레인저 동행을 추가했다. 도감 v1.8.2에서 [꼬부기·어니부기·거북왕의 레인저 원본 시트](https://www.spriters-resource.com/ds_dsi/pokemonranger/asset/8653/)를 적용했다. 1세대 151종 중 #0001–#0009까지 실제 바탕화면에서 검수했다. v1.8.3은 #0010 캐터피·#0011 단데기·#0012 버터플에 불가사의 던전 탐험대 일반색 이동 도트를 적용한다. 각각 좌우 3·10·12프레임을 사용한다. 원본의 프레임 길이 비율에 따라 이동 거리에 맞춰 재생하고, 멈추면 첫 자세로 돌아온다. [탐험대 원본 시트 · redblueyellow](https://www.spriters-resource.com/ds_dsi/pokemonmysterydungeonexplorersoftimedarkness/asset/26226/) · [좌우 프레임과 기록 · CHUNSOFT, PMD SpriteCollab](https://github.com/PMDCollab/SpriteCollab/tree/f683e1a5c27c31ef3d88a49c92c95e89b485839b/sprite). 1.6.0의 신규 카드 128종은 도감 앞모습만 등록했다. 세부 도트가 32픽셀 칸에서 손실되는 종은 원본 해상도의 4×2 프레임 PNG를 보관하고 `walk-rows.json`에 `walkMaster`로 연결한다.
 
 ## 마리오 의상 착용 · 도감 1.7.0
 
