@@ -105,7 +105,13 @@
       trainingAction='open-legacy';trainingLabel='기존 일정 열기';
     }
     const best=a.bestPR;
-    return '<section class="fd-main-layout" aria-label="운동 대시보드">'+
+    const imageCredit='<a class="fd-photo-credit" target="_blank" rel="noopener noreferrer" href="https://unsplash.com/license">운동 분위기 사진 · Unsplash</a>';
+    return '<section class="fd-hero fd-hero-photo" aria-label="오늘 운동 요약">'+img(D.PHOTOS.hero,'피트니스 운동 장면','fd-hero-image')+
+      '<div class="fd-hero-shade"></div><div class="fd-hero-content"><span class="fd-overline"><i></i> FORMDAY / STRENGTH</span>'+
+      '<h2>오늘도<br><em>기록 갱신하자.</em></h2>'+
+      '<p>계획하고, 들어 올리고, 어제의 나를 넘어선다.</p>'+
+      '<button class="fd-action-primary" data-fd-route="session">'+(unfinished?'운동 이어하기':'운동 시작')+' <span>↗</span></button></div>'+imageCredit+'</section>'+
+      '<section class="fd-main-layout" aria-label="운동 대시보드">'+
       '<div class="fd-feature-card"><div class="fd-feature-icon">▤</div><div class="fd-feature-details"><span class="fd-overline">TODAY\'S TRAINING</span><h3>'+html(trainingTitle)+'</h3><p>'+html(trainingNote)+'</p></div>'+
       '<button class="fd-feature-go" data-fd-action="'+trainingAction+'" '+(strength?'data-fd-workout="'+html(strength.id)+'"':'')+' aria-label="'+trainingLabel+'">↗</button></div>'+
       '<div class="fd-metrics">'+banner('최근 체중',unit(a.weight),'<span>실제 완료된 측정 기록 기준</span>','⌁')+
