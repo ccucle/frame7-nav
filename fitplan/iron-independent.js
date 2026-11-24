@@ -137,9 +137,9 @@
     const title=document.querySelector('.page-title');
     const sub=document.querySelector('.page-sub');
     const crumb=document.querySelector('.crumb');
-    if(title)title.textContent=({home:'운동',routines:'내 루틴',builder:'루틴 만들기',programs:'훈련 프로그램',session:'운동',history:'운동 기록',programBuilder:'프로그램 만들기'})[screen]||'운동';
+    if(title)title.textContent=({home:'오늘의 운동',routines:'내 루틴',builder:'루틴 만들기',programs:'훈련 프로그램',session:'오늘의 운동',history:'운동 기록',programBuilder:'프로그램 만들기'})[screen]||'오늘의 운동';
     if(sub)sub.textContent='종목 선택부터 루틴, 운동 기록까지 한곳에서 관리하세요.';
-    if(crumb?.firstChild)crumb.firstChild.textContent='TRAINING  ';
+    if(crumb?.firstChild)crumb.firstChild.textContent=(({routines:'ROUTINES',builder:'ROUTINE BUILDER',programs:'PROGRAMS',history:'WORKOUT LOG',programBuilder:'PROGRAM BUILDER'})[screen]||'WORKOUT')+'  ';
     document.querySelectorAll('[data-ind-nav]').forEach(b=>{
       const selected=b.dataset.indNav==='start';
       b.classList.toggle('fd-current',selected);

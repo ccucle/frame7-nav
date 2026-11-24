@@ -1,0 +1,132 @@
+/* Compact page headings: red line icon, title, and a quiet photo at the edge.
+   The home actions and the full-screen workout dialog keep their own rules. */
+.toprow { align-items: center; gap: 12px; }
+.toprow > .fd-page-header {
+  --fd-header-image: url("assets/headers/today.webp");
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: 1 1 320px;
+  align-items: center;
+  min-width: 0;
+  min-height: 72px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  overflow: clip;
+  color: var(--fd-text, #f1f4f8);
+  background: var(--fd-canvas, #0e1116);
+  box-shadow: none;
+}
+.fd-page-heading {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 70%;
+  min-width: 0;
+  padding: 10px 0 10px 14px;
+  box-sizing: border-box;
+}
+.fd-page-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  border: 1px solid #2b333e;
+  border-radius: 12px;
+  color: var(--fd-accent, #cf3445);
+  background: #191e26;
+}
+.fd-page-icon > svg {
+  display: none;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+body:not([data-fd-screen]) .fd-page-icon > svg[data-page-icon="home"],
+body[data-fd-screen="home"] .fd-page-icon > svg[data-page-icon="home"],
+body[data-fd-screen="independent"] .fd-page-icon > svg[data-page-icon="workout"],
+body[data-fd-screen="calendar"] .fd-page-icon > svg[data-page-icon="calendar"],
+body[data-fd-screen="progress"] .fd-page-icon > svg[data-page-icon="progress"],
+body[data-fd-screen="library"] .fd-page-icon > svg[data-page-icon="library"],
+body[data-fd-screen="analysis"] .fd-page-icon > svg[data-page-icon="analysis"] {
+  display: block;
+}
+.fd-page-title-copy { flex: 1; min-width: 0; }
+.fd-page-header .page-title {
+  margin: 0;
+  color: var(--fd-text, #f1f4f8);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -.45px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fd-page-header .crumb {
+  display: block;
+  margin: 3px 0 0;
+  color: var(--fd-subtle, #93a1b2);
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fd-page-header .page-sub.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.fd-page-image {
+  position: absolute;
+  z-index: 0;
+  inset: 0 0 0 auto;
+  width: 30%;
+  height: 100%;
+  border: 0;
+  background-image: var(--fd-header-image);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  filter: grayscale(1) brightness(.65) contrast(.92);
+  opacity: .85;
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 32%, #000 100%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 32%, #000 100%);
+  pointer-events: none;
+}
+body[data-fd-screen="independent"] .fd-page-header { --fd-header-image: url("assets/headers/workout.webp"); }
+body[data-fd-screen="calendar"] .fd-page-header { --fd-header-image: url("assets/headers/calendar.webp"); }
+body[data-fd-screen="progress"] .fd-page-header { --fd-header-image: url("assets/headers/progress.webp"); }
+body[data-fd-screen="library"] .fd-page-header { --fd-header-image: url("assets/headers/library.webp"); }
+body[data-fd-screen="analysis"] .fd-page-header { --fd-header-image: url("assets/headers/performance.webp"); }
+
+@media (max-width: 730px) {
+  .toprow > .fd-page-header { flex-basis: 100%; min-height: 64px; border-radius: 10px; }
+  .fd-page-heading { gap: 10px; padding-left: 12px; }
+  .fd-page-icon { flex-basis: 36px; width: 36px; height: 36px; border-radius: 10px; }
+  .fd-page-icon > svg { width: 20px; height: 20px; }
+  .fd-page-header .page-title { font-size: 20px; letter-spacing: -.35px; }
+  .fd-page-header .crumb { font-size: 9px; letter-spacing: .65px; }
+}

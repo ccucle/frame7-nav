@@ -30,7 +30,7 @@
     return {state,a,independent};
   }
   function top(screenName){
-    const labels={home:['IRON MODE','오늘의 퍼포먼스'],session:['WORKOUT SESSION','운동 실행'],library:['EXERCISE LIBRARY','운동 도감'],analysis:['TRAINING ANALYTICS','훈련 성과'],progress:['MY PROGRESS','몸의 변화, 기록으로'],calendar:['TRAINING CALENDAR','통합 캘린더']};
+    const labels={home:['TODAY','오늘의 기록'],session:['WORKOUT','오늘의 운동'],library:['LIBRARY','운동 도감'],analysis:['PERFORMANCE','훈련 성과'],progress:['PROGRESS','몸의 변화'],calendar:['CALENDAR','통합 캘린더']};
     const [eyebrow,title]=labels[screenName]||labels.home;
     const titleEl=document.querySelector('.page-title'),descEl=document.querySelector('.page-sub');
     if(titleEl)titleEl.textContent=title;
