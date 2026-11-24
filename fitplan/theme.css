@@ -61,6 +61,10 @@ textarea:focus-visible, summary:focus-visible, .fm-editor :focus-visible,
   outline: 3px solid var(--fd-accent-text);
   outline-offset: 3px;
 }
+/* Native dialog focus restoration can keep :focus-visible after a touch. */
+html[data-fd-input="pointer"] :is(button, a, summary, [tabindex]):not(input):not(textarea):not(select):focus {
+  outline: none;
+}
 ::selection { background: #71313e; color: #fff; }
 
 /* Separate views keep navigation independent from chart refreshes. */
