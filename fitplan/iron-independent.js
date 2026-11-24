@@ -323,7 +323,6 @@
       '<span>'+(previousSet?'이전 '+esc(previous.date.slice(5).replace('-','.'))+' · '+fmt(previousSet.weight)+'kg × '+previousSet.reps+'회':previous?'이전 워밍업 기록 있음':'이전 기록 없음')+'</span></div></div>'+
       '<div class="fs-ex-actions">'+sessionButton('replace-session-ex','⇄','fs-icon','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 종목 교체" title="'+(hasDone?'완료 체크를 해제한 뒤 교체할 수 있습니다':'종목 교체')+'" '+(enabled&&!hasDone?'':'disabled'))+
       sessionButton('toggle-set-settings',sessionIcon('more'),'fs-icon','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 세트 상세 설정" aria-expanded="'+settingsOpen+'" title="세트 휴식 시간 · RPE 설정"')+'</div></div>'+
-      '<label class="sr-only" for="note-'+esc(ex.id)+'">'+esc(ex.name)+' 메모</label><input id="note-'+esc(ex.id)+'" class="fs-ex-note" data-fi-ex-note="'+esc(ex.id)+'" maxlength="2000" placeholder="이 종목의 메모를 남겨보세요" value="'+esc(ex.notes)+'" '+disabled+'>'+
       '<div class="fs-set-tools"><div class="fs-stepper">'+
       sessionButton('remove-session-set','−','','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 마지막 세트 삭제" '+(enabled&&ex.sets.length>1&&!ex.sets.at(-1).done?'':'disabled'))+
       '<span>'+ex.sets.length+' 세트</span>'+sessionButton('add-session-set','＋','','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 세트 추가" '+(enabled&&ex.sets.length<50?'':'disabled'))+'</div>'+
@@ -372,7 +371,7 @@
       sessionButton('reload','다른 탭의 최신 기록 불러오기','fi-btn fi-outline','id="fi-session-reload" '+(revisionConflict?'':'hidden'))+
       (!enabled?'<div class="fs-pause-note"><b>'+(s.status==='SAVED'?'임시 보관한 운동':'운동을 잠시 멈췄습니다')+'</b><span>상단의 재생 버튼을 누르면 이어서 기록할 수 있습니다.</span></div>':'')+
       (Date.now()-Date.parse(s.lastSavedAt)>=TIME_LIMIT_MS?'<div class="fi-alert">마지막 저장 이후 24시간이 지났습니다. 이어서 진행하거나 여기까지 완료할 수 있습니다.</div>':'')+
-      '<div class="fs-heading"><span class="fi-kicker">TODAY’S TRAINING · '+esc(s.date)+'</span><h2>'+esc(s.label)+'</h2><label class="sr-only" for="fi-session-note">오늘의 운동 메모</label><textarea id="fi-session-note" class="fs-note-input" rows="2" maxlength="4000" placeholder="오늘의 컨디션이나 메모를 남겨보세요" '+(enabled?'':'disabled')+'>'+esc(s.notes)+'</textarea><span id="fi-session-save-state" class="fs-save-state">기기에 저장됨</span></div>'+
+      '<div class="fs-heading"><span class="fi-kicker">TODAY’S TRAINING · '+esc(s.date)+'</span><h2>'+esc(s.label)+'</h2><span id="fi-session-save-state" class="fs-save-state">기기에 저장됨</span></div>'+
       sessionButton('toggle-session-view',sessionViewMode==='all'?'▤ 한 종목씩 보기':'☷ 모든 종목 보기','fs-view-switch','aria-pressed="'+(sessionViewMode==='one')+'"')+
       (sessionViewMode==='one'?'<nav class="fs-focus-nav" aria-label="현재 운동 종목">'+sessionButton('session-prev','← 이전','','aria-label="이전 운동 종목" '+(sessionExerciseIndex===0?'disabled':''))+'<span>'+(sessionExerciseIndex+1)+' / '+s.exercises.length+'</span>'+sessionButton('session-next','다음 →','','aria-label="다음 운동 종목" '+(sessionExerciseIndex===s.exercises.length-1?'disabled':''))+'</nav>':'')+
       '<div class="fs-exercises">'+shown.map(([ex,i])=>sessionExercise(ex,i,s)).join('')+'</div>'+
@@ -596,17 +595,11 @@
     try{
       editable();
       const patch={},exercises=new Map();
-      const note=host.querySelector('#fi-session-note');
-      if(note&&note.value!==session.notes)patch.notes=note.value;
+      // The workout editor updates sets only; notes in existing records stay intact.
       const forExercise=id=>{
         if(!exercises.has(id))exercises.set(id,{id,sets:[]});
         return exercises.get(id);
       };
-      host.querySelectorAll('[data-fi-ex-note]').forEach(field=>{
-        const ex=session.exercises.find(ex=>ex.id===field.dataset.fiExNote);
-        if(!ex)throw Error('메모를 저장할 종목을 찾지 못했습니다.');
-        if(field.value!==ex.notes)forExercise(ex.id).notes=field.value;
-      });
       host.querySelectorAll('[data-fi-set]').forEach(row=>{
         const ex=session.exercises.find(ex=>ex.id===row.dataset.fiExid);
         const previous=ex?.sets.find(set=>set.id===row.dataset.fiSet);

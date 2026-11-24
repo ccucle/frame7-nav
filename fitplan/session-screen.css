@@ -59,6 +59,7 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
   color: var(--fd-text);
   background: var(--fd-canvas);
   position: relative;
+  letter-spacing: -.2px;
   height: 100%;
   min-height: 0;
   max-height: 100%;
@@ -69,6 +70,7 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
 .fs-session .fs-symbol { display: block; flex: 0 0 auto; width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .fs-session button, .fs-session input, .fs-session textarea {
   font-family: inherit;
+  letter-spacing: inherit;
   -webkit-tap-highlight-color: transparent;
 }
 .fs-session button { touch-action: manipulation; }
@@ -155,7 +157,7 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
   white-space: nowrap;
 }
 .fs-clock:hover { border-color: var(--fd-border-strong); }
-.fs-clock #fi-duration { font-variant-numeric: tabular-nums; letter-spacing: .3px; }
+.fs-clock #fi-duration { font-variant-numeric: tabular-nums; letter-spacing: 0; }
 .fs-clock > span:last-child:not(#fi-duration) { color: var(--fd-muted); font-size: 17px; }
 .fs-clock[aria-pressed="true"] { border-color: var(--fd-warning-border); }
 .fs-finish {
@@ -187,7 +189,7 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
   font-weight: 850;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -.6px;
+  letter-spacing: -.7px;
   overflow-wrap: anywhere;
 }
 .fs-metrics strong small { color: var(--fd-muted); font-size: 12px; font-weight: 650; letter-spacing: 0; }
@@ -200,34 +202,15 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
 .fs-session[data-rest-open="true"] .fs-body { padding-bottom: calc(310px + env(safe-area-inset-bottom, 0px)); }
 .fs-session[data-rest-open="true"] .fs-scroll { scroll-padding-bottom: 310px; }
 .fs-heading { margin-bottom: 14px; }
-.fs-heading .fi-kicker, .fs-heading > small { color: var(--fd-accent-text); font-size: 11px; font-weight: 750; letter-spacing: 1px; }
+.fs-heading .fi-kicker, .fs-heading > small { color: var(--fd-accent-text); font-size: 11px; font-weight: 750; letter-spacing: .6px; }
 .fs-heading h2 {
   margin: 5px 0 10px;
   font-size: 24px;
   line-height: 1.3;
-  letter-spacing: -.8px;
+  letter-spacing: -1px;
   font-weight: 850;
   overflow-wrap: anywhere;
 }
-.fs-note-input, .fs-ex-note {
-  display: block;
-  width: 100%;
-  min-width: 0;
-  min-height: 44px;
-  margin: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--fd-border);
-  border-radius: 10px;
-  background: var(--fd-input);
-  color: var(--fd-text);
-  font-size: 16px;
-  font-weight: 400;
-  line-height: 1.35;
-  resize: vertical;
-}
-textarea.fs-note-input { min-height: 54px; max-height: 180px; }
-.fs-note-input::placeholder, .fs-ex-note::placeholder { color: var(--fd-subtle); opacity: 1; }
-.fs-note-input:disabled, .fs-ex-note:disabled { opacity: .6; }
 .fs-save-state, .fs-pause-note {
   color: var(--fd-muted);
   font-size: 12px;
@@ -304,8 +287,8 @@ textarea.fs-note-input { min-height: 54px; max-height: 180px; }
 }
 .fs-art img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .fs-ex-title { flex: 1; min-width: 0; }
-.fs-ex-title h3 { font-size: 18px; font-weight: 800; line-height: 1.35; letter-spacing: -.4px; margin: 0 0 3px; overflow-wrap: anywhere; }
-.fs-ex-order { display: block; color: var(--fd-subtle); font-size: 10px; letter-spacing: 1.3px; font-weight: 750; margin-bottom: 3px; }
+.fs-ex-title h3 { font-size: 18px; font-weight: 800; line-height: 1.35; letter-spacing: -.6px; margin: 0 0 3px; overflow-wrap: anywhere; }
+.fs-ex-order { display: block; color: var(--fd-subtle); font-size: 10px; letter-spacing: .7px; font-weight: 750; margin-bottom: 3px; }
 .fs-ex-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; color: var(--fd-muted); font-size: 12px; line-height: 1.6; }
 .fs-ex-meta > span { overflow-wrap: anywhere; }
 .fs-ex-meta strong { color: var(--fd-text); font-weight: 750; }
@@ -326,7 +309,6 @@ textarea.fs-note-input { min-height: 54px; max-height: 180px; }
 .fs-ex-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; align-self: flex-start; }
 .fs-ex-actions .fs-icon { color: var(--fd-muted); font-size: 22px; }
 .fs-ex-actions button[aria-expanded="true"] { border-color: var(--fd-accent); color: var(--fd-accent-text); background: var(--fd-accent-soft); }
-.fs-ex-note { margin-top: 10px; background: #151b23; border-color: #343e4b; }
 .fs-set-tools { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; gap: 10px; align-items: center; margin-top: 12px; margin-bottom: 8px; }
 .fs-stepper { display: flex; align-items: center; justify-content: space-between; min-width: 0; min-height: 46px; border: 1px solid var(--fd-border); border-radius: 10px; background: var(--fd-surface-raised); overflow: hidden; }
 .fs-stepper button { flex: 0 0 44px; width: 44px; min-height: 44px; padding: 0; border-radius: 8px; background: transparent; color: var(--fd-text); font-size: 22px; }
@@ -410,6 +392,7 @@ textarea.fs-note-input { min-height: 54px; max-height: 180px; }
   font-size: 22px;
   font-weight: 800;
   line-height: 1.3;
+  letter-spacing: -.3px;
   text-align: right;
   font-variant-numeric: tabular-nums;
   -moz-appearance: textfield;
@@ -553,7 +536,6 @@ body.fs-keyboard .fs-dock { display: none; }
 .fd-ind-root .fs-set-number { font-size: 14px; font-weight: 750; line-height: 1; }
 .fd-ind-root .fs-add { font-size: 14px; font-weight: 800; }
 .fd-ind-root .fs-rest .fs-icon { font-size: 18px; font-weight: 750; }
-.fd-ind-root input.fs-ex-note { font-size: 16px; font-weight: 400; line-height: 1.35; }
 
 @media (max-width: 600px) {
   dialog.fs-sheet { width: 100%; max-width: 100%; border-left: 0; border-right: 0; }
@@ -578,7 +560,6 @@ body.fs-keyboard .fs-dock { display: none; }
   .fs-ex-meta button { font-size: 12px; min-height: 44px; }
   .fs-ex-actions { flex-direction: column; gap: 0; margin: -3px -6px 0 0; }
   .fs-ex-actions .fs-icon { font-size: 22px; }
-  .fs-ex-note { margin-top: 8px; font-size: 16px; }
   .fs-set-tools { gap: 8px; margin-top: 10px; }
   .fs-stepper button { flex-basis: 44px; width: 44px; min-height: 44px; }
   .fs-stepper > span, .fs-stepper > strong { font-size: 12px; }

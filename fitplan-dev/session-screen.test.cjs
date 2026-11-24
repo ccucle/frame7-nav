@@ -128,16 +128,29 @@ function ui(options={}){
 }
 const active=view=>view.snapshot().sessions.find(s=>['ACTIVE','PAUSED','SAVED'].includes(s.status));
 
-test('checking one set preserves all visible weights, repetitions and notes without completing other sets',()=>{
+test('set edits, bulk completion and pause preserve existing notes after note editors are removed',()=>{
   const view=ui();view.start();
+  const M=view.root.FormdayIronStore,initial=view.snapshot(),session=active(view);
+  const notes={notes:'기존 운동 메모',exercises:session.exercises.map((ex,index)=>({id:ex.id,notes:'기존 종목 메모 '+(index+1)}))};
+  M.createStore(view.root.localStorage).save(M.updateSession(initial,session.id,notes).next,initial.revision);
+  view.root.emit('storage',{key:M.KEY});view.answers.push(true);view.action('reload');view.api.open('session');
+  const assertNotes=()=>{
+    const saved=active(view);assert.equal(saved.notes,notes.notes);
+    assert.deepEqual(saved.exercises.map(ex=>({id:ex.id,notes:ex.notes})),notes.exercises);
+    const persisted=JSON.parse(view.db.get(M.KEY)).sessions.find(s=>s.id===session.id);
+    assert.equal(persisted.notes,notes.notes);assert.deepEqual(persisted.exercises.map(ex=>({id:ex.id,notes:ex.notes})),notes.exercises);
+  };
+  assert.equal(view.host.querySelector('#fi-session-note'),null);assert.equal(view.host.querySelectorAll('[data-fi-ex-note]').length,0);assertNotes();
   view.edit(0,0,'kg',62.5);view.edit(0,0,'reps',8);view.edit(1,1,'kg',90);view.edit(1,1,'reps',6);
-  const sessionNote=view.host.querySelector('#fi-session-note');assert.ok(sessionNote);sessionNote.value='오늘은 천천히';
-  const ex=active(view).exercises[1],exerciseNote=view.host.querySelector('[data-fi-ex-note="'+ex.id+'"]');assert.ok(exerciseNote);exerciseNote.value='무릎 위치 확인';
   view.complete(0);
-  const saved=active(view);assert.equal(saved.notes,'오늘은 천천히');assert.equal(saved.exercises[1].notes,'무릎 위치 확인');
+  const saved=active(view);assertNotes();
   assert.equal(saved.exercises[0].sets[0].weight,62.5);assert.equal(saved.exercises[0].sets[0].reps,8);assert.equal(saved.exercises[0].sets[0].done,true);
   assert.equal(saved.exercises[1].sets[1].weight,90);assert.equal(saved.exercises[1].sets[1].reps,6);assert.equal(saved.exercises[1].sets[1].done,false);
   assert.equal(saved.exercises.flatMap(x=>x.sets).filter(x=>x.done).length,1);
+  view.action('complete-exercise',{id:session.exercises[1].id});assertNotes();assert.ok(active(view).exercises[1].sets.every(set=>set.done));
+  view.action('pause');assert.equal(active(view).status,'PAUSED');assertNotes();
+  view.action('resume');assert.equal(active(view).status,'ACTIVE');assertNotes();
+  assert.equal(active(view).exercises[1].sets[1].weight,90);assert.equal(active(view).exercises[1].sets[1].reps,6);
 });
 test('numeric change saves without replacing the field or turning it into a completed set',()=>{
   const view=ui();view.start();const input=view.edit(0,0,'kg',72.5),rendered=view.host.renderCount;
