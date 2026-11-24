@@ -1,27 +1,27 @@
-/* Active workout bottom sheet. The existing site stays visible behind the
-   native modal; only the sheet's inner viewport scrolls while it is open. */
+/* The active workout slides up to fill the viewport. Only the inner viewport
+   scrolls; the native modal and rest dock stay anchored to the screen. */
 body.fs-sheet-open { overflow: hidden; }
 dialog.fs-sheet {
   position: fixed;
-  inset: auto 0 0;
-  width: min(900px, calc(100% - 32px));
-  height: calc(100vh - max(36px, 6vh) - env(safe-area-inset-top, 0px));
-  height: calc(100dvh - max(36px, 6dvh) - env(safe-area-inset-top, 0px));
-  max-width: 900px;
-  max-height: calc(100vh - max(36px, 6vh) - env(safe-area-inset-top, 0px));
-  max-height: calc(100dvh - max(36px, 6dvh) - env(safe-area-inset-top, 0px));
+  inset: 0;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  max-width: none;
+  max-height: 100vh;
+  max-height: 100dvh;
   min-width: 0;
-  margin: 0 auto;
+  margin: 0;
   padding: 0;
   border: 0;
-  border-radius: 24px 24px 0 0;
+  border-radius: 0;
   overflow: hidden;
   /* Only .fs-scroll may scroll. Focus during the rest-panel entrance must not
      scroll the native dialog itself and displace its fixed header/dock. */
   overflow: clip;
   color: var(--fd-text);
   background: var(--fd-canvas);
-  box-shadow: 0 -16px 80px #0006;
+  box-shadow: none;
   color-scheme: dark;
   transform: translateY(var(--fs-drag-offset, 0px));
 }
@@ -47,7 +47,7 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  scroll-padding-top: 180px;
+  scroll-padding-top: calc(180px + env(safe-area-inset-top, 0px));
   scroll-padding-bottom: 100px;
 }
 .fs-sheet #fi-banner { max-width: none; margin: 0 0 20px; }
@@ -85,7 +85,7 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
   position: sticky;
   top: 0;
   z-index: 18;
-  padding-top: 0;
+  padding-top: env(safe-area-inset-top, 0px);
   border-bottom: 1px solid var(--fd-border);
   background: #101319f5;
   -webkit-backdrop-filter: blur(18px);
@@ -100,19 +100,21 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
   margin: 0;
   padding: 0;
   border: 0;
-  border-radius: 24px 24px 0 0;
+  border-radius: 0;
   background: transparent;
   touch-action: none;
   cursor: grab;
 }
 .fs-sheet-handle::before { content: ''; display: block; width: 38px; height: 4px; border-radius: 4px; background: var(--fd-border-strong); }
-.fs-session .fs-sheet-handle:focus-visible { outline-offset: -6px; }
+.fs-session .fs-sheet-handle:focus-visible { outline: none; }
+.fs-session .fs-sheet-handle:focus-visible::before { outline: 2px solid var(--fd-muted); outline-offset: 4px; }
 .fs-sheet-handle:hover::before, .fs-sheet-handle:focus-visible::before { background: var(--fd-muted); }
 .fs-sheet-handle:active { cursor: grabbing; }
 .fs-top-row, .fs-metrics {
   max-width: 900px;
   margin-inline: auto;
-  padding-inline: var(--fs-page-space);
+  padding-left: max(var(--fs-page-space), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--fs-page-space), env(safe-area-inset-right, 0px));
 }
 .fs-top-row {
   display: flex;
@@ -198,6 +200,8 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
   max-width: 900px;
   margin-inline: auto;
   padding: 16px var(--fs-page-space) calc(100px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(var(--fs-page-space), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--fs-page-space), env(safe-area-inset-right, 0px));
 }
 .fs-session[data-rest-open="true"] .fs-body { padding-bottom: calc(310px + env(safe-area-inset-bottom, 0px)); }
 .fs-session[data-rest-open="true"] .fs-scroll { scroll-padding-bottom: 310px; }
@@ -265,7 +269,7 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
   border: 1px solid var(--fd-border);
   border-radius: 18px;
   background: var(--fd-surface);
-  scroll-margin-top: 180px;
+  scroll-margin-top: calc(180px + env(safe-area-inset-top, 0px));
 }
 .fs-ex-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .fs-art {
@@ -428,6 +432,8 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
   z-index: 19;
   bottom: 0;
   left: 0;
+  right: 0;
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -448,6 +454,8 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
   width: 100%;
   min-width: 0;
   padding: 12px var(--fs-page-space, 20px) max(12px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(var(--fs-page-space, 20px), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--fs-page-space, 20px), env(safe-area-inset-right, 0px));
   border: 1px solid #36574f;
   border-bottom: 0;
   border-radius: 20px 20px 0 0;
@@ -498,7 +506,7 @@ dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-ou
 .fs-rest[data-state="done"] #fi-timer-number { color: #8ce4bf; }
 .fs-rest[data-state="done"] { border-top-color: var(--fs-rest-accent); }
 .fs-session .fs-rest :focus-visible { outline-color: #8ce4bf; outline-offset: -3px; }
-.fs-dock > .fs-add { align-self: flex-end; margin: 0 var(--fs-page-space, 24px) max(16px, env(safe-area-inset-bottom, 0px)) 0; }
+.fs-dock > .fs-add { align-self: flex-end; margin: 0 max(var(--fs-page-space, 20px), env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) 0; }
 .fs-dock[data-rest-open="true"] > .fs-add { margin-bottom: 0; }
 .fs-add {
   display: inline-flex;
@@ -538,9 +546,8 @@ body.fs-keyboard .fs-dock { display: none; }
 .fd-ind-root .fs-rest .fs-icon { font-size: 18px; font-weight: 750; }
 
 @media (max-width: 600px) {
-  dialog.fs-sheet { width: 100%; max-width: 100%; border-left: 0; border-right: 0; }
   .fs-session { --fs-page-space: 14px; --fs-row-gap: 8px; }
-  .fs-scroll { scroll-padding-top: 170px; }
+  .fs-scroll { scroll-padding-top: calc(170px + env(safe-area-inset-top, 0px)); }
   .fs-top-row { min-height: 56px; gap: 8px; padding-block: 5px; }
   .fs-clock { gap: 9px; padding-inline: 12px; }
   .fd-ind-root .fs-clock { font-size: 18px; }
@@ -551,7 +558,7 @@ body.fs-keyboard .fs-dock { display: none; }
   .fs-body { padding-top: 14px; }
   .fs-heading h2 { font-size: 22px; }
   .fs-exercises { gap: 14px; }
-  .fs-exercise { padding: 12px; border-radius: 15px; scroll-margin-top: 170px; }
+  .fs-exercise { padding: 12px; border-radius: 15px; scroll-margin-top: calc(170px + env(safe-area-inset-top, 0px)); }
   .fs-ex-head { gap: 10px; align-items: flex-start; }
   .fs-art { flex-basis: 60px; width: 60px; height: 72px; padding: 5px; border-radius: 10px; }
   .fs-ex-title { padding-top: 1px; }
