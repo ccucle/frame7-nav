@@ -242,3 +242,33 @@ test('training charts omit invalid confirmed sessions and preserve genuine zero-
  assert.equal(model.totalSets,1);assert.equal(model.totalVolume,0);
  assert.equal(D.trainingSeries(model,'가슴','maxWeight').buckets.at(-1).maxWeight,0);
 });
+
+test('all-time weight and training views share the earliest actual date when training starts first',()=>{
+ const state=stateOf([trainingEvent('old-training','2026-10-01','벤치프레스',[{weight:60,reps:10}]),weight('w',today,80)]);
+ const base=build(state,'all'),training=trainingBuild(state,null,'all');
+ assert.equal(base.start,today);assert.equal(training.start,'2026-10-01');
+ const aligned=D.build(C,N,state,{range:'all',today,earliestDate:training.start});
+ assert.equal(aligned.start,training.start);
+ assert.equal(aligned.buckets.at(-1).weight,80);
+});
+test('training filters and point selection work inside the real graph view without writing workout records',()=>{
+ const state=stateOf([trainingEvent('chest',today,'벤치프레스',[{weight:60,reps:10}]),trainingEvent('back','2026-11-23','랫풀다운',[{weight:40,reps:10}])]);
+ const before=JSON.stringify(state),events=new Map(),listeners=new Map(),detail={innerHTML:''};
+ let html='';
+ const host={clientWidth:350,contains:()=>false,querySelectorAll:()=>[],
+  querySelector(selector){return selector==='#fp-training-detail'?detail:null},
+  addEventListener(name,fn){listeners.set(name,fn)},get innerHTML(){return html},set innerHTML(v){html=v}};
+ const document={body:{dataset:{fdScreen:'progress'}},activeElement:null,getElementById:id=>id==='fd-progress-root'?host:null,addEventListener(){}};
+ class FixedDate extends Date{constructor(...a){super(...(a.length?a:[2026,10,24,12]))}}
+ const root={Date:FixedDate,FormdayCore:C,FormdayNutrition:N,FormdayWorkouts:W,FormdayIronData:A,FormdayBridge:{getState:()=>state},FormdayIndependent:{getSnapshot:()=>I.empty()},addEventListener(name,fn){events.set(name,fn)},clearTimeout(){},setTimeout(){}};
+ V.mount(root,document);assert.match(html,/부위별 운동 기록/);
+ const click=(selector,dataset)=>listeners.get('click')({target:{closest:q=>q===selector?{dataset}:null}});
+ click('[data-training-group]',{trainingGroup:'등'});
+ click('[data-training-metric]',{trainingMetric:'sets'});
+ assert.match(html,/등 · 완료 세트/);
+ assert.match(html,/2026-11-23 완료 세트 1 세트/);
+ click('[data-training-point]',{trainingPoint:'28'});
+ assert.match(detail.innerHTML,/2026-11-23/);
+ assert.match(detail.innerHTML,/총 운동량 400 kg/);
+ assert.equal(JSON.stringify(state),before);
+});

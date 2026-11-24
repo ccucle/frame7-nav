@@ -238,7 +238,8 @@ function ui(initial=M.empty(),options={}){
     localStorage:backing.obj,addEventListener(){},dispatchEvent(){},setInterval(){},requestAnimationFrame:fn=>fn(),
     confirm:text=>{prompts.push(text);return answers.shift()??false;}};
   if(!options.missingPicker)root.FormdayExercisePicker={isOpen:()=>pickerActive,open(config){if(pickerActive)return false;pickerConfig=config;pickerActive=true;return true;}};
-  const context=vm.createContext({window:root,document,Date,console,CustomEvent:class{constructor(type){this.type=type;}}});
+  const TestDate=options.fixedToday?class extends Date{constructor(...args){super(...(args.length?args:[options.fixedToday]))}}:Date;
+  const context=vm.createContext({window:root,document,Date:TestDate,console,CustomEvent:class{constructor(type){this.type=type;}}});
   vm.runInContext(fs.readFileSync(require.resolve('../fitplan/iron-independent.js'),'utf8'),context);
   function click(dataset,clickOptions={}){
     const button={dataset,disabled:clickOptions.disabled===true};
@@ -759,7 +760,7 @@ test('history excludes zero-completion, future and explicitly marked sample sess
  const invalid={...M.copy(actual),id:'bad-record',label:'완료 세트 없음',exercises:actual.exercises.map(e=>({...e,sets:e.sets.map(s=>({...s,done:false}))}))};
  const future={...M.copy(actual),id:'future-record',label:'미래 기록',date:'9999-12-31'};
  const sample={...M.copy(actual),id:'sample-record',label:'샘플 기록',isSample:true};
- const view=ui(M.normalize({...data,sessions:[actual,invalid,future,sample]}));
+ const view=ui(M.normalize({...data,sessions:[actual,invalid,future,sample]}),{fixedToday:'2026-11-24T12:00:00Z'});
  view.api.open('history');
  assert.match(view.host.innerHTML,/전체 1회 기록/);
  assert.match(view.host.innerHTML,/확인 필요 기록 3건/);
@@ -773,7 +774,7 @@ test('test-named confirmed records are visibly flagged without deleting or assum
  const b=M.start(M.empty(),{label:'[TEST] 확인 대상'},clock),ex=b.session.exercises[0];
  let data=M.setValue(b.next,b.session.id,ex.id,ex.sets[0].id,{done:true},advance(1)).next;
  data=M.finish(data,b.session.id,'COMPLETED',advance(2)).next;
- const view=ui(data);view.api.open('history');
+ const view=ui(data,{fixedToday:'2026-11-24T12:00:00Z'});view.api.open('history');
  assert.match(view.host.innerHTML,/테스트 이름 · 수행 여부 확인 필요/);
  view.action('record-detail',{id:b.session.id});
  assert.match(view.host.innerHTML,/기록 ID/);assert.match(view.host.innerHTML,/시작 시각/);

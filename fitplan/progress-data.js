@@ -64,7 +64,8 @@
     const range=String(options.range||'30');
     if(!RANGES.includes(range))throw new Error('지원하지 않는 그래프 조회 기간입니다.');
     const all=dailyRecords(core,nutrition,state,today),endIndex=dayNumber(today);
-    const start=range==='all'?(all[0]?.date||today):dateAt(Math.max(dayNumber('0000-01-01'),endIndex-Number(range)+1));
+    const first=all[0]?.date||today,earliest=options.earliestDate;
+    const start=range==='all'?(core.validDate(earliest)&&earliest<first?earliest:first):dateAt(Math.max(dayNumber('0000-01-01'),endIndex-Number(range)+1));
     const startIndex=dayNumber(start),dayCount=endIndex-startIndex+1;
     const daily=all.filter(day=>day.date>=start);
     // Every calendar day belongs to exactly one bin. Long ranges are explicitly
@@ -138,7 +139,8 @@
     }
     const all=[...days.values()].sort((a,b)=>a.date.localeCompare(b.date));
     const endIndex=dayNumber(today);
-    const start=range==='all'?(all[0]?.date||today):dateAt(Math.max(dayNumber('0000-01-01'),endIndex-Number(range)+1));
+    const first=all[0]?.date||today,earliest=options.earliestDate;
+    const start=range==='all'?(core.validDate(earliest)&&earliest<first?earliest:first):dateAt(Math.max(dayNumber('0000-01-01'),endIndex-Number(range)+1));
     const dayCount=endIndex-dayNumber(start)+1,bucketDays=Math.max(1,Math.ceil(dayCount/MAX_BINS));
     const daily=all.filter(day=>day.date>=start);
     const aggregate=Object.fromEntries(TRAINING_GROUPS.map(g=>[g,totals()]));

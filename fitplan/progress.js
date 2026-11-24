@@ -27,7 +27,7 @@
     if(metric==='weight'){
       min=values.length?Math.min(...values):0;max=values.length?Math.max(...values):100;
       const padding=Math.max(.5,(max-min)*.15);min=Math.max(0,min-padding);max+=padding;
-    }else{min=0;max=Math.max(1,...values)*1.12;}
+    }else{min=0;max=metric==='sets'?Math.max(4,Math.ceil(Math.max(1,...values)*1.12/4)*4):Math.max(1,...values)*1.12;}
     const x=index=>left+((index-D.dayNumber(model.start)+.5)/model.dayCount)*plotWidth;
     const y=value=>top+(max-value)/(max-min)*plotHeight;
     const points=model.buckets.map(bin=>({index:bin.index,value:bin[metric],
@@ -206,15 +206,20 @@
         active.getAttribute('data-training-metric')!==null?['data-training-metric',active.getAttribute('data-training-metric')]:null:null;
       const tableOpen=!!host.querySelector('details')?.open;
       try{
-        const previous=model;
-        model=D.build(core,nutrition,bridge.getState(),{range,today:today()});
+        const previous=model,calendar=bridge.getState(),date=today(),previousTraining=training;
+        model=D.build(core,nutrition,calendar,{range,today:date});
+        if(root.FormdayIronData&&root.FormdayWorkouts){
+          const snapshot=root.FormdayIndependent?.getSnapshot?.();
+          training=D.buildTraining(core,root.FormdayWorkouts,root.FormdayIronData,calendar,snapshot,{range,today:date,earliestDate:model.start});
+          if(range==='all'&&training.start<model.start)model=D.build(core,nutrition,calendar,{range,today:date,earliestDate:training.start});
+          if(!previousTraining||previousTraining.start!==training.start||previousTraining.end!==training.end)trainingSelected=null;
+        }else training=null;
         for(const metric of ['weight','kcal']){
           if(!previous||previous.start!==model.start||previous.end!==model.end||
             !model.buckets[selected[metric]]||model.buckets[selected[metric]][metric]===null)selected[metric]=defaultIndex(metric);
         }
         page=Math.min(page,Math.max(0,Math.ceil(model.daily.length/PAGE_SIZE)-1));
-        if(root.FormdayIronData&&root.FormdayWorkouts){
-          training=D.buildTraining(core,root.FormdayWorkouts,root.FormdayIronData,bridge.getState(),root.FormdayIndependent?.getSnapshot?.(),{range,today:today()});
+        if(training){
           const series=D.trainingSeries(training,trainingGroup,trainingMetric);
           if(!series.buckets[trainingSelected]||series.buckets[trainingSelected][trainingMetric]===null)trainingSelected=series.buckets.filter(b=>b[trainingMetric]!==null).at(-1)?.index??series.buckets.length-1;
         }
@@ -256,7 +261,7 @@
       const g=event.target.closest('[data-training-group]'),m=event.target.closest('[data-training-metric]'),p=event.target.closest('[data-training-point]');
       if(g&&['전체',...D.TRAINING_GROUPS].includes(g.dataset.trainingGroup)){trainingGroup=g.dataset.trainingGroup;trainingSelected=null;render();return;}
       if(m&&D.TRAINING_METRICS.includes(m.dataset.trainingMetric)){trainingMetric=m.dataset.trainingMetric;trainingSelected=null;render();return;}
-      if(p){selectTraining(Number(p.dataset.trainingPoint));return;}
+      if(p?.dataset?.trainingPoint!==undefined){selectTraining(Number(p.dataset.trainingPoint));return;}
       const button=event.target.closest('[data-progress-range]');
       if(button){range=button.dataset.progressRange;page=0;trainingSelected=null;render();return;}
       const point=event.target.closest('[data-progress-point]');
