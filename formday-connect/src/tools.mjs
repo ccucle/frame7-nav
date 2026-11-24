@@ -23,7 +23,7 @@ export const READ_TOOLS=Object.freeze([
     description:"기존 IRON MODE 루틴·프로그램과 종목별 목표 중량·반복 횟수를 읽습니다.",
     inputSchema:params({limit:dateRangeProps.limit})},
   {name:"formday_calendar",title:"캘린더 일정",
-    description:"FORMDAY 일정의 원본 날짜와 상태를 조회합니다. 반복 규칙을 임의로 확장하지 않습니다.",
+    description:"한국 날짜 기준으로 FORMDAY 일정의 실제 발생일·시작/종료 시간·상태를 조회합니다. 사이트의 반복 규칙·제외일·날짜별 수정 내용을 반영합니다.",
     inputSchema:params({...dateRangeProps,includeSamples:{type:"boolean",default:false}})},
   {name:"formday_meals",title:"식단 기록",
     description:"기록된 식사를 조회합니다. 검증되지 않은 칼로리나 영양소를 추정하지 않습니다.",

@@ -1,12 +1,13 @@
 # FORMDAY Connect — scoped MCP/OAuth backend
 
-**2026-11-24: Phase 5 source v0.4.0. 67 synthetic tests pass locally. Not deployed, not installed in ChatGPT, not connected to real records.**
+**2026-11-24 (Asia/Seoul): Phase 5 source v0.4.0 with mobile-route verification and read-correctness fixes. 81 synthetic tests pass locally on Node 24. Not deployed, not installed in ChatGPT, not connected to real records.**
 
-[Phase 5 implementation and limitations](PHASE5-APPEND.md) · [Phase 4 security review](PHASE4-REVIEW.md)
+[Current mobile-route and read verification](PHASE5-MOBILE-REVIEW.md) · [Phase 5 append implementation and limitations](PHASE5-APPEND.md) · [Phase 4 security review](PHASE4-REVIEW.md)
 
 ## User-facing behavior
 
 - Six read tools for cloud status, actual workouts, routines/programs, calendar, meals and weight history.
+- Calendar/meal/weight reads follow the site's actual recurring dates, exclusions, occurrence snapshots and completion semantics. Dates default to Asia/Seoul; meal portions retain their stored units. Coaching is lower priority than accurate lookup and requested registration.
 - Optional previews for adding an existing routine to a dated calendar, creating a program from existing routines, and adding a consumed meal.
 - One commit tool saves exactly the previewed addition. No tools edit/delete existing items or manufacture completed workout sessions.
 - Meal photos are interpreted in ChatGPT. The backend accepts structured foods and portions, labels estimates, and preserves unknown nutrients as null. No image upload or separate image-model API is implemented.
@@ -40,11 +41,11 @@ See .env.example. The entry point requires an HTTPS origin, an OAuth encryption 
 
 ## Release blockers
 
-1. No Connect web service, isolated OAuth storage, verified IAM isolation or production secrets have been provisioned. No paid service was created. Existing FORMDAY v0.6.0, Firebase data/rules and authentication settings remain unchanged.
+1. No Connect web service, isolated OAuth storage, verified IAM isolation or production secrets have been provisioned. No paid service was created. Render now verifies the live FORMDAY v0.6.1 commit `3c6cc4adf5fda21a2d205ceb0738ad06877dc43f`; preserve that live site and all Firebase data/rules/authentication settings. Never deploy this development branch's older `fitplan/` over the live site. Current account billing and overage safeguards remain unverified.
 2. OAuth token-bundle issuance is not atomic; grant-family revocation, concurrent Firebase credential rotation, request limits and expired-secret cleanup still require implementation and failure testing. This remains development code, with writes disabled by default.
 3. Actual Google browser login, authorized domains, exact ChatGPT callback/CIMD registration, live Firestore rules and owner-account read/write smoke tests remain unverified. Selecting a new Google account can create a Firebase Auth user; first-login prevention remains unresolved.
 4. The website requires cloud download to apply remote records. Local unsynced changes may conflict; active IRON sessions can block download. No automatic site refresh was added.
-5. The prior official-document review found direct custom MCP connections web-only. A supported iPhone distribution path and real PC/iPhone testing remain necessary. See Phase 4 for sources and the distinction from general mobile plugins.
+5. Direct custom MCP connections are documented as web-only, while account-available cloud plugins support mobile Chat/Work. A Sites-hosted MCP plugin is a valid candidate, but Sites sign-in does not authenticate Firebase. No FORMDAY tool is available in the inspected mobile session. See the mobile review for observed account access and the separate authentication/cost gates.
 
 ## Main modules
 
