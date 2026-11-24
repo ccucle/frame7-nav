@@ -1240,7 +1240,22 @@
   host.addEventListener('pointerup',finishSheetDrag);
   host.addEventListener('pointercancel',finishSheetDrag);
   root.setInterval(()=>{clockTick=Date.now();paintTimer();},1000);
-  root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,hubNav,renderHistory:()=>{if(document.body.dataset.fdScreen==='progress')render();},getSnapshot:()=>state?M.copy(state):null,getCalendarSnapshot,
+  function canCloudMerge(next){
+    // Paused/saved sessions are records, not a reason to force completion.
+    // Preserve editable drafts and never apply during an active/open session.
+    return !blocked&&!revisionConflict&&!draft&&!programDraft&&!pickerOpen&&!sessionDirty&&!sessionDialog?.open&&backgroundStoppedAt===null&&
+      current()?.status!=='ACTIVE'&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.()&&
+      Array.isArray(next?.sessions)&&!next.sessions.some(s=>s.status==='ACTIVE');
+  }
+  function cloudMergeReload(expectedRevision){
+    const latest=store.load();
+    if(latest.error||latest.data.revision!==expectedRevision||!canCloudMerge(latest.data))return false;
+    state=latest.data;resetRest();backgroundStoppedAt=null;sessionDirty=false;focusedSession=null;
+    if(screen==='session')screen='home';
+    setMessage('병합한 최신 웨이트 기록을 반영했습니다.');
+    renderCalendar();render();root.dispatchEvent(new CustomEvent('formday:iron-changed'));return true;
+  }
+  root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,hubNav,canCloudMerge,cloudMergeReload,renderHistory:()=>{if(document.body.dataset.fdScreen==='progress')render();},getSnapshot:()=>state?M.copy(state):null,getCalendarSnapshot,
     canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current()&&!pickerOpen&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.(),
     cloudReload:()=>{
       if(blocked||revisionConflict||draft||programDraft||current()||pickerOpen||root.FormdayExercisePicker?.isOpen?.()||root.FormdayBridge?.isRoutineSwapOpen?.())return false;

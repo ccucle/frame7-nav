@@ -632,3 +632,23 @@ test('new fixed program needs at least one weekday and can save directly without
   const saved=view.backing.store.load().data.programs[0];
   assert.equal(saved.mode,'fixed');assert.deepEqual(saved.routineIds,[a]);assert.deepEqual(saved.weekdays,{'4':a});
 });
+
+test('cloud merge permits safely stashed sessions without forcing completion',()=>{
+ const start=M.start(M.empty(),{},clock),ex=start.session.exercises[0];
+ const done=M.setValue(start.next,start.session.id,ex.id,ex.sets[0].id,{done:true},advance(1)).next;
+ const saved=M.changeState(done,start.session.id,'stash',advance(2)).next;
+ const view=ui(saved);
+ const next=M.createRoutine(saved,'추가 루틴',[M.newExercise('스쿼트')]).next;
+ assert.equal(view.api.canCloudApply(),false);
+ assert.equal(view.api.canCloudMerge(next),true);
+ const persisted=view.backing.store.save(next,saved.revision);
+ assert.equal(view.api.cloudMergeReload(persisted.revision),true);
+ assert.deepEqual(view.api.getSnapshot().sessions,saved.sessions);
+ assert.equal(view.api.getSnapshot().routines.length,1);
+});
+test('cloud merge never imports active sessions or replaces an open editor',()=>{
+ const view=ui();view.action('new-routine');
+ assert.equal(view.api.canCloudMerge(M.empty()),false);
+ const idle=ui();
+ assert.equal(idle.api.canCloudMerge(M.start(M.empty(),{},clock).next),false);
+});

@@ -50,7 +50,7 @@ function boot(initial={}){
  context.window=context;
  const source=fs.readFileSync(require.resolve('../fitplan/cloud-sync.js'),'utf8')
   .replace(/^import\s+\{[\s\S]*?\}\s+from\s+'[^']+';\s*/gm,'');
- vm.runInContext(source+'\nwindow.__syncTest={download,upload,view:kind=>({working:slots[kind].working,remote:slots[kind].remote,issues:slots[kind].issues}),schedule};',context);
+ vm.runInContext(source+'\nwindow.__syncTest={download,upload,prepareMerge,applyMerge,chooseMerge,review:kind=>reviews[kind],view:kind=>({working:slots[kind].working,remote:slots[kind].remote,issues:slots[kind].issues}),schedule};',context);
  function attempt(transaction){
   return transaction.callback({get(ref){const pending=deferred();transaction.reads.push({ref,...pending});return pending.promise;},
    set(ref,value){transaction.writes.push({ref,value});}});
@@ -184,4 +184,70 @@ test('a late rejection does not replace the new account status or synchronizatio
  assert.equal(h.api.view('calendar').issues,'');
  assert.equal(h.api.view('calendar').working,true);
  h.reads[1].resolve(snapshot(calendar('remote-B')));await currentRequest;
+});
+
+test('explicit conflict merge preserves both originals, checks the remote revision and resumes syncing',async()=>{
+ const base=iron('base');
+ const l={...I.createRoutine(base,'기기 루틴',[I.newExercise('벤치프레스')]).next,revision:'local2'};
+ const r={...I.createRoutine(base,'서버 루틴',[I.newExercise('스쿼트')]).next,revision:'remote2'};
+ const h=boot({[I.KEY]:JSON.stringify(l),[prefix+'A:iron']:JSON.stringify({version:1,localRevision:'base',remoteRevision:'base',updatedAt:'2026-11-24T00:00:00Z'})});
+ h.login(user('A'));h.emit('iron',r);
+ const prep=h.api.prepareMerge('iron');h.reads[0].resolve(snapshot(r));await prep;
+ assert.equal(h.api.review('iron').result.next.routines.length,3);
+ const apply=h.api.applyMerge('iron'),tx=h.transactions[0];
+ const attempt=h.attempt(tx);tx.reads[0].resolve(snapshot(r));await attempt;
+ assert.equal(tx.writes.length,1);
+ assert.equal(JSON.parse(tx.writes[0].value.payload).routines.length,3);
+ const backup=JSON.parse(h.map.get(I.KEY+'_merge_backup_A'));
+ assert.deepEqual(backup.local,l);assert.deepEqual(backup.remote,r);
+ tx.resolve();await apply;
+ assert.equal(JSON.parse(h.map.get(I.KEY)).routines.length,3);
+ assert.equal(JSON.parse(h.map.get(prefix+'A:iron')).remoteRevision,tx.writes[0].value.revision);
+ assert.equal(h.api.review('iron'),null);
+});
+test('same content repairs metadata without overwriting local or remote records',async()=>{
+ const l=iron('local2'),r={...I.copy(l),revision:'remote2'};
+ const h=boot({[I.KEY]:JSON.stringify(l),[prefix+'A:iron']:JSON.stringify({version:1,localRevision:'old',remoteRevision:'old',updatedAt:'2026-11-24T00:00:00Z'})});
+ h.login(user('A'));h.emit('iron',r);
+ const prep=h.api.prepareMerge('iron');h.reads[0].resolve(snapshot(r));await prep;
+ const apply=h.api.applyMerge('iron'),tx=h.transactions[0],attempt=h.attempt(tx);
+ tx.reads[0].resolve(snapshot(r));await attempt;assert.equal(tx.writes.length,0);
+ tx.resolve();await apply;
+ assert.equal(h.map.get(I.KEY),JSON.stringify(l));
+ assert.equal(JSON.parse(h.map.get(prefix+'A:iron')).remoteRevision,'remote2');
+});
+test('changed server after review blocks merge before any overwrite',async()=>{
+ const l=iron('local2'),r=iron('remote2'),h=boot({[I.KEY]:JSON.stringify(l)});
+ h.login(user('A'));h.emit('iron',r);
+ const prep=h.api.prepareMerge('iron');h.reads[0].resolve(snapshot(r));await prep;
+ const apply=h.api.applyMerge('iron'),tx=h.transactions[0],attempt=h.attempt(tx);
+ tx.reads[0].resolve(snapshot(iron('remote3')));
+ let failure;try{await attempt;}catch(e){failure=e;}
+ assert.match(failure.message,/서버 기록이 변경/);assert.equal(tx.writes.length,0);
+ tx.reject(failure);await apply;
+ assert.equal(h.map.get(I.KEY),JSON.stringify(l));
+});
+
+test('repeated merge retains earlier recovery pairs and does not overwrite them',async()=>{
+ const l=iron('local2'),r=iron('remote2');
+ const old={version:1,local:iron('old-local'),remote:iron('old-remote'),localRevision:'old-local',remoteRevision:'old-remote',savedAt:'2026-11-24T00:00:00Z'};
+ const h=boot({[I.KEY]:JSON.stringify(l),[I.KEY+'_merge_backup_A']:JSON.stringify(old)});
+ h.login(user('A'));h.emit('iron',r);
+ const prep=h.api.prepareMerge('iron');h.reads[0].resolve(snapshot(r));await prep;
+ const apply=h.api.applyMerge('iron'),tx=h.transactions[0],attempt=h.attempt(tx);
+ tx.reads[0].resolve(snapshot(r));await attempt;tx.resolve();await apply;
+ const archived=JSON.parse(h.map.get(I.KEY+'_merge_backup_A'));
+ assert.deepEqual(archived.local,l);assert.deepEqual(archived.remote,r);
+ assert.deepEqual(archived.history,[old]);
+});
+test('merge rejects a local edit made while awaiting the transaction read',async()=>{
+ const l=iron('local2'),r=iron('remote2'),h=boot({[I.KEY]:JSON.stringify(l)});
+ h.login(user('A'));h.emit('iron',r);
+ const prep=h.api.prepareMerge('iron');h.reads[0].resolve(snapshot(r));await prep;
+ const apply=h.api.applyMerge('iron'),tx=h.transactions[0],attempt=h.attempt(tx);
+ const changed={...I.copy(l),revision:'local3'};h.map.set(I.KEY,JSON.stringify(changed));
+ tx.reads[0].resolve(snapshot(r));
+ let failure;try{await attempt;}catch(e){failure=e;}
+ assert.match(failure.message,/기기의 기록이 변경/);assert.equal(tx.writes.length,0);tx.reject(failure);await apply;
+ assert.equal(h.map.get(I.KEY),JSON.stringify(changed));
 });
