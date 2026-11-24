@@ -321,13 +321,13 @@ function renderRight(){let d=dateOf(selected),l=getDay(selected,false);$('#right
 
   function openSettings() {
     const g=data.settings;
-    modal('나의 일일 영양 목표',`<div class="fields">${field('단백질 (g)','s-protein','number',g.protein,'min="0" max="1000" step="1"')}${field('탄수화물 (g)','s-carbs','number',g.carbs,'min="0" max="1000" step="1"')}${field('총 지방 (g)','s-fat','number',g.fat,'min="0" max="1000" step="1"')}</div><div class="hint-box target-hint">목표 열량: 단백질 × 4 + 탄수화물 × 4 + 총 지방 × 9 = <strong id="target-kcal"></strong> kcal<br>불포화지방은 총 지방의 일부이며, 열량을 중복 합산하지 않습니다.</div>`,`<span></span><div class="mini-buttons"><button class="btn btn-outline" id="cancel-settings">취소</button><button class="btn btn-primary" id="save-settings">목표 저장</button></div>`,'직접 정한 목표를 기록합니다. 초기 목표값은 개인 맞춤 권장량이 아닙니다.');
+    modal('체중·일일 영양 목표',`<div class="fields">${field('목표 체중 (kg, 선택)','s-target-weight','number',g.targetWeight??'','min="0.1" max="500" step="0.1" inputmode="decimal" placeholder="미설정"')}${field('단백질 (g)','s-protein','number',g.protein,'min="0" max="1000" step="1" inputmode="numeric"')}${field('탄수화물 (g)','s-carbs','number',g.carbs,'min="0" max="1000" step="1" inputmode="numeric"')}${field('총 지방 (g)','s-fat','number',g.fat,'min="0" max="1000" step="1" inputmode="numeric"')}</div><div class="hint-box target-hint">목표 열량: 단백질 × 4 + 탄수화물 × 4 + 총 지방 × 9 = <strong id="target-kcal"></strong> kcal<br>불포화지방은 총 지방의 일부이며, 열량을 중복 합산하지 않습니다. 목표 체중을 입력하면 변화 그래프에 목표선이 표시됩니다.</div>`,`<span></span><div class="mini-buttons"><button class="btn btn-outline" id="cancel-settings">취소</button><button class="btn btn-primary" id="save-settings">목표 저장</button></div>`,'직접 정한 목표를 기록합니다. 초기 목표값은 개인 맞춤 권장량이 아닙니다.');
     const inputs=['protein','carbs','fat'];
-    const values=()=>Object.fromEntries(inputs.map(k=>[k,$('#s-'+k).value.trim()===''?NaN:Number($('#s-'+k).value)]));
+    const values=()=>({...Object.fromEntries(inputs.map(k=>[k,$('#s-'+k).value.trim()===''?NaN:Number($('#s-'+k).value)])),targetWeight:$('#s-target-weight').value.trim()===''?null:Number($('#s-target-weight').value)});
     const update=()=>{const n=values(),total=n.protein*4+n.carbs*4+n.fat*9;$('#target-kcal').textContent=Number.isFinite(total)?fmt(total,1):'—';};
     inputs.forEach(k=>$('#s-'+k).oninput=update);update();modalDirty=false;
     $('#cancel-settings').onclick=()=>closeModal();
-    $('#save-settings').onclick=()=>{try{const next=C.normalizeState({...data,settings:values()});if(commit(next,'영양 목표를 저장했습니다.'))closeModal(true);}catch(error){formError(error);}};
+    $('#save-settings').onclick=()=>{try{const next=C.normalizeState({...data,settings:values()});if(commit(next,'체중·영양 목표를 저장했습니다.'))closeModal(true);}catch(error){formError(error);}};
   }
   function infoAI() {
     modal('AI 코치 · 다음 확장',`<div class="hint-box"><strong>AI는 아직 연결되어 있지 않습니다.</strong><br>현재는 입력한 기록과 목표를 계산하고 보여줍니다.</div><div class="ai-plan"><p>다음 단계에서는 세트별 기록과 식단, 체중 추이를 바탕으로 주간 요약과 조정안을 제안하도록 연결합니다.</p><p>제안한 일정은 사용자가 확인한 뒤 반영하고, 기존 실제 기록은 유지하는 방식으로 개발할 예정입니다.</p></div>`,`<span></span><button class="btn btn-primary" id="ai-ok">확인</button>`);

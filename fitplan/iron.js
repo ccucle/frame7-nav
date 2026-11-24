@@ -16,7 +16,13 @@
   const unit=(v,suffix='kg')=>v==null?'–':n(v)+' '+suffix;
   const img=(src,alt,cls='')=>'<img class="'+cls+'" loading="lazy" src="'+html(src)+'" alt="'+html(alt)+'" referrerpolicy="no-referrer" onerror="this.classList.add(\'fd-img-failed\')">';
   const trainingPhoto='운동 분위기를 표현한 이미지이며 해당 종목의 정확한 자세 시범은 아닙니다.';
-  const catalog= D.all(workouts.catalog);
+  const media=root.FormdayExerciseMedia?.byName||{};
+  const catalog=D.all(workouts.catalog).map(ex=>({...ex,equipment:media[ex.name]?.equipment||ex.equipment}));
+  const equipmentOptions=['전체 장비',...new Set(catalog.map(ex=>ex.equipment))];
+  function exerciseImage(ex){
+    const entry=media[ex.name];
+    return entry?img(entry.src,entry.alt,'fd-movement-image'):'<span class="fd-movement-missing">이미지 준비 중</span>';
+  }
   function dataset(){
     const state=bridge.getState();
     const independent=root.FormdayIndependent?.getSnapshot?.();
@@ -24,11 +30,11 @@
     return {state,a,independent};
   }
   function top(screenName){
-    const labels={home:['IRON MODE','오늘의 퍼포먼스'],session:['WORKOUT SESSION','운동 실행'],library:['EXERCISE LIBRARY','운동 도감'],analysis:['TRAINING ANALYTICS','훈련 성과'],calendar:['TRAINING CALENDAR','통합 캘린더']};
+    const labels={home:['IRON MODE','오늘의 퍼포먼스'],session:['WORKOUT SESSION','운동 실행'],library:['EXERCISE LIBRARY','운동 도감'],analysis:['TRAINING ANALYTICS','훈련 성과'],progress:['MY PROGRESS','몸의 변화, 기록으로'],calendar:['TRAINING CALENDAR','통합 캘린더']};
     const [eyebrow,title]=labels[screenName]||labels.home;
     const titleEl=document.querySelector('.page-title'),descEl=document.querySelector('.page-sub');
     if(titleEl)titleEl.textContent=title;
-    if(descEl)descEl.textContent=screenName==='calendar'?'운동 · 식단 · 체중을 날짜별로 관리하세요.':'기록으로 확인하는 오늘의 훈련. 웨이트 중심 퍼포먼스 시스템.';
+    if(descEl)descEl.textContent=screenName==='calendar'?'운동 · 식단 · 체중을 날짜별로 관리하세요.':screenName==='progress'?'체중과 기록한 섭취 열량을 기간별로 확인하세요.':'기록으로 확인하는 오늘의 훈련. 웨이트 중심 퍼포먼스 시스템.';
     const crumb=document.querySelector('.crumb');
     if(crumb)crumb.firstChild.textContent=eyebrow+'  ';
     document.body.dataset.fdScreen=screenName;
@@ -51,9 +57,20 @@
       button.classList.toggle('active',selected);button.setAttribute('aria-current',selected?'page':'false');
     });
   }
+  function openWorkout(page,options){
+    const notice=document.getElementById('fd-workout-error');
+    try{
+      if(typeof root.FormdayIndependent?.open!=='function')throw Error('운동 화면을 불러오지 못했습니다.');
+      if(notice)notice.hidden=true;
+      return root.FormdayIndependent.open(page,options);
+    }catch(error){
+      if(notice){notice.hidden=false;notice.innerHTML='<strong>운동 화면을 열지 못했습니다.</strong><p>저장된 기록을 지우지 말고 새로고침한 뒤 다시 시도해 주세요.</p><button type="button" class="fd-outline" data-fd-action="retry-workout">새로고침</button>';}
+      return false;
+    }
+  }
   function setScreen(name){
-    if(name==='session'&&root.FormdayIndependent){root.FormdayIndependent.open('start');return;}
-    if(!['home','session','library','analysis','calendar'].includes(name))return;
+    if(name==='session'){openWorkout('session');return;}
+    if(!['home','library','analysis','progress','calendar'].includes(name))return;
     if(document.body.dataset.fdScreen==='independent'&&root.FormdayIndependent?.beforeNavigate?.()===false)return;
     screen=name;render(true);
     document.querySelector('#main-content')?.scrollIntoView({block:'start',behavior:'smooth'});
@@ -101,6 +118,7 @@
       banner('이번 주 훈련',n(a.trainingDays)+' <small>일</small>','완료 본세트·유산소 완료 날짜 기준','▦')+
       banner('완료한 본세트',n(a.completedSets)+' <small>세트</small>','워밍업 제외 · 이번 주','◈')+
       banner('총 운동량',n(a.totalVolume)+' <small>kg</small>','완료한 웨이트 본세트만 합산','▰')+'</div>'+
+      '<div class="fd-trend-link"><div><h3>체중과 섭취량의 변화</h3><p>몸무게 흐름과 기록한 칼로리를 기간별로 확인하세요.</p></div><button class="fd-outline" data-fd-route="progress">변화 그래프 보기 ↗</button></div>'+
       '<div class="fd-insight-grid"><div class="fd-panel fd-pr-panel"><div class="fd-panel-head"><span>◉</span><h3>PERFORMANCE · 추정 1RM</h3></div>'+
       (best?'<p class="fd-pr-name">'+html(best.name)+'</p><div class="fd-pr-number">'+n(best.oneRM)+' <small>kg</small></div><p class="fd-hint">'+html(best.date)+' 완료 세트 · '+n(best.weight)+'kg × '+best.reps+'회</p>':
       '<p class="fd-pr-empty">아직 추정 1RM 기록이 없습니다.</p><p class="fd-hint">완료한 1~10회 본세트가 쌓이면 Epley 공식을 사용해 추정합니다.</p>')+
@@ -114,7 +132,7 @@
   }
   function tiles(list){
     return list.map(ex=>'<button class="fd-exercise-tile '+(ex.name===selectedName?'is-active':'')+'" data-fd-exercise="'+html(ex.name)+'">'+
-      '<div class="fd-exercise-photo">'+img(ex.photo,ex.group+' 트레이닝 대표 이미지')+'<span>'+html(ex.group)+'</span></div>'+
+      '<div class="fd-exercise-photo fd-movement-photo">'+exerciseImage(ex)+'<span class="fd-muscle-label">'+html(ex.group)+'</span></div>'+
       '<div class="fd-exercise-info"><strong>'+html(ex.name)+'</strong><small>'+html(ex.equipment)+' / '+html(ex.group)+'</small></div><span class="fd-tile-arrow">↗</span></button>').join('');
   }
   function activeExercise(){
@@ -122,18 +140,18 @@
   }
   function detailMarkup(ex){
     if(!ex)return '';
-    return '<div class="fd-exercise-detail"><div class="fd-detail-photo">'+img(ex.photo,ex.group+' 트레이닝 대표 이미지')+'<span>REPRESENTATIVE IMAGE</span></div>'+
+    return '<div class="fd-exercise-detail"><div class="fd-detail-photo fd-movement-photo">'+exerciseImage(ex)+'</div>'+
       '<div class="fd-detail-body"><span class="fd-overline">EXERCISE GUIDE</span><h3>'+html(ex.name)+'</h3>'+
       '<div class="fd-exercise-tags"><span class="fd-tag-red">'+html(ex.group)+'</span><span>'+html(ex.equipment)+'</span></div>'+
       '<h4>기본 체크 포인트</h4><ul>'+ex.tips.map(t=>'<li>'+html(t)+'</li>').join('')+'</ul>'+
-      '<button class="fd-action-primary fd-detail-add" data-fd-action="add-exercise" data-fd-name="'+html(ex.name)+'">＋ 오늘 운동으로 등록</button>'+
-      '<p class="fd-photo-note">'+trainingPhoto+' 동작별 정확한 가이드 영상은 아직 제공하지 않습니다.</p></div></div>';
+      '<button class="fd-action-primary fd-detail-add" data-fd-action="add-exercise" data-fd-name="'+html(ex.name)+'">＋ 이 종목으로 운동 시작</button>'+
+      '<p class="fd-photo-note">종목을 구분하는 동작 삽화입니다. <a href="exercise-credits.html" target="_blank" rel="noopener noreferrer">운동 이미지 출처 ↗</a></p></div></div>';
   }
   function library(){
     return '<section class="fd-library-view"><div class="fd-section-heading"><div><span class="fd-overline">EXERCISE LIBRARY</span><h2>운동 도감 <em>'+catalog.length+' EXERCISES</em></h2><p>이름·부위·장비로 종목을 찾고 운동 기록에 추가하세요.</p></div></div>'+
       '<div class="fd-lib-search-box"><span>⌕</span><input id="fd-lib-search" type="search" autocomplete="off" placeholder="운동 이름 검색 · 벤치프레스, 풀업, 스쿼트..." value="'+html(query)+'" aria-label="운동 이름 검색"></div>'+
       '<div class="fd-filter-heading">운동 부위</div><div class="fd-filter-buttons">'+D.MUSCLES.map(g=>'<button data-fd-group="'+html(g)+'" class="'+(g===muscle?'active':'')+'">'+html(g)+'</button>').join('')+'</div>'+
-      '<div class="fd-filter-heading">장비 종류</div><div class="fd-filter-buttons fd-equip-buttons">'+D.EQUIPMENT.map(g=>'<button data-fd-equip="'+html(g)+'" class="'+(g===equipment?'active':'')+'">'+html(g)+'</button>').join('')+'</div>'+
+      '<div class="fd-filter-heading">장비 종류</div><div class="fd-filter-buttons fd-equip-buttons">'+equipmentOptions.map(g=>'<button data-fd-equip="'+html(g)+'" class="'+(g===equipment?'active':'')+'">'+html(g)+'</button>').join('')+'</div>'+
       '<div class="fd-library-body"><div class="fd-library-list"><div class="fd-results-top"><h3>운동 종목</h3><small id="fd-lib-count"></small></div><div class="fd-exercise-grid" id="fd-lib-results"></div><button id="fd-lib-more" class="fd-outline-wide" hidden>운동 더 보기 ＋</button></div>'+
       '<aside id="fd-lib-detail" class="fd-detail-column"></aside></div>'+
       '<div class="fd-credits">운동 이미지: <a href="https://unsplash.com/license" target="_blank" rel="noopener noreferrer">Unsplash 라이선스</a> · 종목별 정확한 자세 사진이 아닌 대표 분위기 이미지입니다. Gymwork의 시각 자산이나 텍스트를 복제하지 않았습니다.</div></section>';
@@ -215,6 +233,7 @@
     if(!navigation&&document.body.dataset.fdScreen==='independent')return;
     top(screen);
     node.innerHTML=screen==='home'?home():screen==='library'?library():screen==='session'?session():screen==='analysis'?analysis():'';
+    if(screen==='progress'&&navigation)root.FormdayProgress?.render?.();
     if(screen==='library')libraryResults();
     if(screen==='session')paintTimer();
   }
@@ -254,10 +273,12 @@
     if(button.dataset.fdTimer) {changeTimer(button.dataset.fdTimer);return;}
     if(button.dataset.fdTime){timerDuration=Number(button.dataset.fdTime);timerRemaining=timerDuration;timerRunning=false;paintTimer();return;}
     const action=button.dataset.fdAction;
-    if(action==='resume-workout'){root.FormdayIndependent?.open('start');return;}
-    if(action==='choose-routine'){root.FormdayIndependent?.open('choose');return;}
+    if(action==='resume-workout'){openWorkout('session');return;}
+    if(action==='choose-routine'){openWorkout('routines');return;}
+    if(action==='retry-workout'){root.location.reload();return;}
     if(action==='open-legacy'){bridge.editStrength(button.dataset.fdWorkout,bridge.getToday());return;}
-    if(action==='new-strength'||action==='add-exercise'){bridge.openStrength(button.dataset.fdName||null,bridge.getToday());return;}
+    if(action==='add-exercise'){openWorkout('start',{exercise:button.dataset.fdName});return;}
+    if(action==='new-strength'){bridge.openStrength(null,bridge.getToday());return;}
     if(action==='start-workout'){selectedWorkoutId=button.dataset.fdWorkout||null;selectedExerciseIndex=0;setScreen('session');return;}
     if(action==='edit-workout'){const {a}=dataset();bridge.editStrength(selectedWorkoutId||a.currentWorkout[0]?.id,a.today);return;}
     if(button.dataset.fdSaveSet){
@@ -275,6 +296,7 @@
     }
   }
   document.addEventListener('click',e=>{
+    if(e.target.closest('[data-ind-nav]')&&!root.FormdayIndependent){e.preventDefault();openWorkout('home');return;}
     const target=e.target.closest('[data-fd-route],[data-fd-action],[data-fd-group],[data-fd-equip],[data-fd-exercise],[data-fd-pick-workout],[data-fd-next-exercise],[data-fd-prev-exercise],[data-fd-save-set],[data-fd-timer],[data-fd-time],#fd-lib-more');
     if(target)onClick(e);
     // app.js may have replaced the mini-calendar DOM earlier in this click.

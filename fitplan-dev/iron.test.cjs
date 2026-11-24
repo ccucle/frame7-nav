@@ -151,29 +151,48 @@ test('calendar daily totals include partial independent workouts and exclude war
 function bootDashboard(independent){
   const listeners=new Map(),docListeners=new Map();
   const classes=initial=>({items:new Set(initial||[]),toggle(name,on){if(on)this.items.add(name);else this.items.delete(name);},remove(...names){names.forEach(n=>this.items.delete(n));},contains(name){return this.items.has(name);}});
-  const button=(dataset,initial)=>({dataset,disabled:false,attrs:{},classList:classes(initial),setAttribute(k,v){this.attrs[k]=v;},closest(){return this;}});
-  const routes=[button({fdRoute:'home'}),button({fdRoute:'analysis'}),button({fdRoute:'calendar'})];
-  const oldNav=button({go:'calendar'},['active']),indNav=button({indNav:'routines'},['fd-current','active']);
-  const node={innerHTML:'',addEventListener(){},querySelector(){return null;}};
+  const button=(dataset,initial)=>({dataset,disabled:false,attrs:{},classList:classes(initial),setAttribute(k,v){this.attrs[k]=v;},
+    hasAttribute(name){return name.startsWith('data-')&&Object.hasOwn(this.dataset,name.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase()));},
+    closest(selector){return selector.split(',').some(part=>part==='button'||(/^\[data-[\w-]+\]$/.test(part)&&this.hasAttribute(part.slice(1,-1))))?this:null;}});
+  const routes=['home','analysis','calendar','progress','library'].map(fdRoute=>button({fdRoute}));
+  const oldNav=button({go:'calendar'},['active']),indNav=button({indNav:'start'},['fd-current','active']);
+  const children=new Map();let markup='';
+  const node={get innerHTML(){return markup;},set innerHTML(value){
+    markup=value;children.clear();
+    for(const match of value.matchAll(/\bid="([^"]+)"/g))children.set('#'+match[1],{innerHTML:'',textContent:'',hidden:false});
+  },addEventListener(){},querySelector(selector){return children.get(selector)||null;}};
+  const notice={innerHTML:'',hidden:true};
   const body={dataset:{}};
   const title={},sub={},crumb={firstChild:{textContent:''}},main={scrollIntoView(){}};
-  const document={body,getElementById:id=>id==='fd-iron-root'?node:null,
+  const document={body,getElementById:id=>id==='fd-iron-root'?node:id==='fd-workout-error'?notice:null,
     querySelector:s=>({'.page-title':title,'.page-sub':sub,'.crumb':crumb,'#main-content':main}[s]||null),
     querySelectorAll:s=>({'[data-fd-route]':routes,'[data-go]':[oldNav],'[data-ind-nav]':[indNav]}[s]||[]),
     addEventListener(type,fn){docListeners.set(type,fn);}};
   class FixedDate extends Date {constructor(...args){super(...(args.length?args:[2026,10,25,12]));}}
-  let snapshot=independent,allowNavigation=true,navigationChecks=0;
+  let snapshot=independent,allowNavigation=true,navigationChecks=0,progressRenders=0,reloads=0;
+  const workoutOpens=[],legacyStarts=[];
   const context=vm.createContext({document,Date:FixedDate,FormdayCore:C,FormdayWorkouts:W,FormdayIronData:D,
-    FormdayBridge:{getState:()=>C.normalizeState({events:[],settings:C.defaults}),getVisibleTypes:()=>['strength','cardio','meal','weight']},
-    FormdayIndependent:{getSnapshot:()=>snapshot,beforeNavigate(){navigationChecks++;return allowNavigation;},open(){}},
+    FormdayBridge:{getState:()=>C.normalizeState({events:[],settings:C.defaults}),getVisibleTypes:()=>['strength','cardio','meal','weight'],getToday:()=>'2026-11-25',openStrength:(...args)=>legacyStarts.push(args)},
+    FormdayIndependent:{getSnapshot:()=>snapshot,beforeNavigate(){navigationChecks++;return allowNavigation;},open(page,options){workoutOpens.push({page,options});body.dataset.fdScreen='independent';return true;}},
+    FormdayProgress:{render(){progressRenders++;}},location:{reload(){reloads++;}},
     addEventListener(type,fn){listeners.set(type,fn);},setInterval(){}});
   context.window=context;
   vm.runInContext(read('iron.js'),context,{filename:'iron.js'});
-  return {node,body,routes,oldNav,indNav,emit:type=>listeners.get(type)?.(),
+  function click(target){docListeners.get('click')({target,preventDefault(){}});}
+  function renderedButton(attribute,value){
+    const output=[node.innerHTML,...Array.from(children.values(),child=>child.innerHTML),notice.innerHTML].join('\n');
+    const tag=Array.from(output.matchAll(/<button\b([^>]*)>/g)).find(match=>match[1].includes(attribute+'="'+value+'"'));
+    assert.ok(tag,'rendered button '+attribute+'='+value+' must exist');
+    const dataset={};
+    for(const match of tag[1].matchAll(/data-([\w-]+)="([^"]*)"/g))dataset[match[1].replace(/-([a-z])/g,(_,c)=>c.toUpperCase())]=match[2];
+    return button(dataset);
+  }
+  return {node,body,routes,oldNav,indNav,notice,workoutOpens,legacyStarts,emit:type=>listeners.get(type)?.(),
     setSnapshot(value){snapshot=value;},allowNavigation(value){allowNavigation=value;},
-    navigationChecks:()=>navigationChecks,
-    click(target){docListeners.get('click')({target,preventDefault(){}});},
-    navigate(route){docListeners.get('click')({target:routes.find(x=>x.dataset.fdRoute===route),preventDefault(){}});}};
+    navigationChecks:()=>navigationChecks,progressRenders:()=>progressRenders,reloads:()=>reloads,
+    dropRuntime(){delete context.FormdayIndependent;},
+    click,press(attribute,value){const target=renderedButton(attribute,value);click({closest:selector=>target.closest(selector)});},
+    navigate(route){click(routes.find(x=>x.dataset.fdRoute===route));}};
 }
 
 test('independent record changes refresh dashboard values but focus and data updates preserve an open independent editor',()=>{
@@ -224,4 +243,52 @@ test('a detached mini-calendar date still uses the draft guard and opens the cal
   assert.equal(app.body.dataset.fdScreen,'calendar');
   assert.equal(app.oldNav.classList.contains('active'),true);
   assert.equal(dateTarget.dataset.mini,'2026-11-24');
+});
+
+test('the rendered progress link opens its view and respects an independent draft guard',()=>{
+  const app=bootDashboard(independentState());
+  app.press('data-fd-route','progress');
+  assert.equal(app.body.dataset.fdScreen,'progress');
+  assert.equal(app.routes.find(b=>b.dataset.fdRoute==='progress').attrs['aria-current'],'page');
+  assert.equal(app.progressRenders(),1);
+  app.body.dataset.fdScreen='independent';app.allowNavigation(false);app.navigate('progress');
+  assert.equal(app.body.dataset.fdScreen,'independent');assert.equal(app.progressRenders(),1);
+  app.allowNavigation(true);app.navigate('progress');
+  assert.equal(app.body.dataset.fdScreen,'progress');assert.equal(app.progressRenders(),2);
+});
+
+test('hero and resume buttons hand session navigation to the independent workout runtime',()=>{
+  const snapshot=independentState(independentSession('paused','2026-11-25',60,10,{status:'PAUSED'}));
+  const before=JSON.stringify(snapshot),app=bootDashboard(snapshot);
+  app.press('data-fd-route','session');
+  assert.equal(app.workoutOpens[0].page,'session');
+  assert.equal(app.body.dataset.fdScreen,'independent');
+  app.navigate('home');app.press('data-fd-action','resume-workout');
+  assert.deepEqual(app.workoutOpens.map(call=>call.page),['session','session']);
+  assert.equal(app.legacyStarts.length,0);
+  assert.equal(JSON.stringify(snapshot),before);
+});
+
+test('routine selection opens routines and exercise-library start forwards the selected exercise',()=>{
+  const snapshot=independentState();snapshot.routines=[{id:'routine',name:'상체',exercises:[]}];
+  const app=bootDashboard(snapshot);
+  app.press('data-fd-action','choose-routine');
+  assert.equal(app.workoutOpens[0].page,'routines');
+  app.navigate('library');app.press('data-fd-action','add-exercise');
+  assert.equal(app.workoutOpens[1].page,'start');
+  assert.equal(app.workoutOpens[1].options.exercise,'벤치프레스');
+  assert.equal(app.legacyStarts.length,0);
+});
+
+test('missing workout runtime shows an actionable notice from hero and global workout entry',()=>{
+  const app=bootDashboard(independentState());app.dropRuntime();
+  app.press('data-fd-route','session');
+  assert.equal(app.notice.hidden,false);
+  assert.match(app.notice.innerHTML,/운동 화면을 열지 못했습니다/);
+  assert.match(app.notice.innerHTML,/저장된 기록을 지우지 말고/);
+  assert.equal(app.workoutOpens.length,0);
+  app.press('data-fd-action','retry-workout');assert.equal(app.reloads(),1);
+  app.notice.hidden=true;app.click(app.indNav);
+  assert.equal(app.notice.hidden,false);
+  assert.equal(app.body.dataset.fdScreen,'home');
 });

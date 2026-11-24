@@ -239,6 +239,24 @@ test('failed settings persistence keeps the dialog draft and prior rendered data
   assert.equal(app.get('storage-status').classList.contains('storage-error'), false);
 });
 
+test('weight goal settings validate, persist, and clear without replacing existing records', () => {
+  const raw = JSON.stringify(legacyState()), app = boot(raw);
+  app.get('settings-btn').click();
+  assert.equal(app.get('s-target-weight').value, '');
+  app.get('s-target-weight').value = '501'; app.get('save-settings').click();
+  assert.match(app.get('form-error').textContent, /목표 체중/);
+  assert.equal(app.map.get(C.STORE), raw);
+  app.get('s-target-weight').value = '75.5'; app.get('save-settings').click();
+  const saved = JSON.parse(app.map.get(C.STORE));
+  assert.equal(saved.settings.targetWeight, 75.5);
+  assert.equal(saved.events.length, 1);
+  assert.equal(saved.events[0].id, legacyEvent().id);
+  app.get('settings-btn').click();
+  assert.equal(app.get('s-target-weight').value, '75.5');
+  app.get('s-target-weight').value = ''; app.get('save-settings').click();
+  assert.equal(JSON.parse(app.map.get(C.STORE)).settings.targetWeight, null);
+});
+
 test('invalid backup import does not ask to replace or write current records', async () => {
   const raw = JSON.stringify(legacyState()), app = boot(raw);
   await app.importText('{invalid json');

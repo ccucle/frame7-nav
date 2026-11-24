@@ -242,6 +242,7 @@
     if (!plain(raw.settings)) fail('영양 목표 형식이 올바르지 않습니다.');
     const settings = {};
     for (const name of Object.keys(defaults)) settings[name] = own(raw.settings, name) ? numberValue(raw.settings[name], '영양 목표', 0, 1000, false) : defaults[name];
+    settings.targetWeight = raw.settings.targetWeight == null ? null : numberValue(raw.settings.targetWeight, '목표 체중', 0.1, 500, false);
     if (settings.protein * 4 + settings.carbs * 4 + settings.fat * 9 <= 0) fail('영양 목표를 입력해 주세요.');
     const revision = raw.revision === undefined ? '' : raw.revision;
     if (typeof revision !== 'string' || (revision !== '' && !idOK(revision))) fail('기록 버전 식별자가 올바르지 않습니다.');

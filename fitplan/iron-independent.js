@@ -4,14 +4,22 @@
   'use strict';
   const M=root.FormdayIronStore,W=root.FormdayWorkouts;
   const host=document.getElementById('fd-ind-root'),calendar=document.getElementById('fd-iron-calendar');
-  if(!host||!M||!W)return;
+  if(!host||!M||!Array.isArray(W?.catalog)){
+    const unavailable=()=>{
+      if(host){document.body.dataset.fdScreen='independent';host.innerHTML='<section class="fi-panel fi-alert" role="alert"><h2>운동 화면을 불러오지 못했습니다.</h2><p>페이지를 새로고침한 뒤 다시 열어 주세요. 기기에 저장된 기록은 유지됩니다.</p></section>';}
+      return false;
+    };
+    root.FormdayIndependent=Object.freeze({open:unavailable,beforeNavigate:()=>true,getSnapshot:()=>null,canCloudApply:()=>false});
+    document.addEventListener('click',event=>{if(event.target.closest?.('[data-ind-nav]')){event.preventDefault();unavailable();}});
+    return;
+  }
   const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const fmt=x=>Number(x||0).toLocaleString('ko-KR',{maximumFractionDigits:1});
   const iso=d=>new Date(d).toLocaleDateString('sv-SE');
   const weekdays=['일','월','화','수','목','금','토'];
   const TIME_LIMIT_MS=24*60*60*1000;
   let store,blocked='',state=null,screen='home',editingRoutine=null,draft=null,programDraft=null,
-      draftBaseline='',programBaseline='',
+      draftBaseline='',programBaseline='',pickerOpen=false,
       focusedSession=null,message='',error=false,revisionConflict=false,clockTick=Date.now(),timerSecs=90,timerEnd=0;
   try{
     store=M.createStore(root.localStorage);
@@ -34,23 +42,31 @@
   const summary=s=>M.recordSummary(s);
   const current=()=>active();
   const setMessage=(value,isError=false)=>{message=value;error=isError;};
-  function commit(result,success){
-    if(blocked||revisionConflict){setMessage(blocked||'다른 탭에서 데이터가 변경되었습니다. 먼저 기록을 다시 불러와 주세요.',true);render();return false;}
+  function paintMessage(){
+    const banner=host.querySelector('#fi-banner');
+    if(banner){banner.hidden=!message;banner.textContent=message;banner.classList?.toggle('fi-msg-error',error);}
+  }
+  function editable(){
+    if(blocked||!state)throw Error(blocked||'운동 기록을 먼저 불러와 주세요.');
+    if(revisionConflict)throw Error('다른 탭에서 데이터가 변경되었습니다. 먼저 최신 기록을 불러와 주세요.');
+  }
+  function commit(result,success,refresh=true){
+    if(blocked||revisionConflict){setMessage(blocked||'다른 탭에서 데이터가 변경되었습니다. 먼저 기록을 다시 불러와 주세요.',true);if(refresh)render();else paintMessage();return false;}
     try{
       state=store.save(result.next,state.revision);
       root.dispatchEvent(new CustomEvent('formday:iron-changed'));
       if(success)setMessage(success,false);
-      render();
+      if(refresh)render();else paintMessage();
       return true;
     }catch(e){
       setMessage(e.message,true);
       if(/다른 탭/.test(e.message))revisionConflict=true;
-      render();
+      if(refresh)render();else paintMessage();
       return false;
     }
   }
-  function changed(mutator,success){
-    try{return commit(mutator(),success);}catch(e){setMessage(e.message,true);render();return false;}
+  function changed(mutator,success,refresh=true){
+    try{editable();return commit(mutator(),success,refresh);}catch(e){setMessage(e.message,true);if(refresh)render();else paintMessage();return false;}
   }
   function clearDrafts(){
     draft=null;editingRoutine=null;programDraft=null;draftBaseline='';programBaseline='';
@@ -62,11 +78,14 @@
       (programDraft&&JSON.stringify(programDraft)!==programBaseline));
   }
   function beforeNavigate(){
+    if(pickerOpen||root.FormdayExercisePicker?.isOpen?.()){setMessage('종목 선택을 완료하거나 선택창을 닫은 뒤 이동해 주세요.',true);paintMessage();return false;}
     if(hasUnsavedDraft()&&!root.confirm('저장하지 않은 루틴 또는 프로그램 변경사항을 버리고 이동할까요? 계속 작성하려면 취소를 누르세요.'))return false;
     clearDrafts();
     return true;
   }
   function go(page){
+    if(page==='choose')page='routines';
+    if(!['home','routines','builder','programs','programBuilder','session','history'].includes(page))page='home';
     const leavingDraft=(screen==='builder'&&page!=='builder'&&draft)||(screen==='programBuilder'&&page!=='programBuilder'&&programDraft);
     if(leavingDraft&&!beforeNavigate())return false;
     document.body.dataset.fdScreen='independent';
@@ -78,35 +97,35 @@
     return true;
   }
   function open(page='home',extra){
-    if(!beforeNavigate())return false;
-    if(page==='start'&&extra?.exercise){
-      if(current()){
-        const s=current();
-        if(s.status==='ACTIVE'&&extra.exercise){
-          changed(()=>M.addExercise(state,s.id,extra.exercise),'기존 운동 세션에 종목을 추가했습니다.');
+    try{
+      if(!beforeNavigate())return false;
+      if(blocked||!state){go('home');return false;}
+      if(page==='start'&&extra?.exercise){
+        if(current()){
+          const s=current();
+          if(s.status!=='ACTIVE'){setMessage('보관된 운동을 먼저 재개한 뒤 종목을 추가해 주세요.',true);go('session');return false;}
+          const added=changed(()=>M.addExercises(state,s.id,[extra.exercise]),'기존 운동 세션에 종목을 추가했습니다.');
+          go('session');return added;
         }
-        go('session');return;
+        const started=doStart(null,null,[extra.exercise]);
+        if(!started)go('home');
+        return started;
       }
-      const result=M.start(state,{label:'자유 운동'});
-      const ex=M.newExercise(extra.exercise);
-      result.session.exercises=[{...ex,sets:ex.sets.map(s=>({...s,done:false}))}];
-      if(commit(result,'자유 운동을 시작했습니다.'))go('session');
-      return;
+      return go(page==='start'?'home':page);
+    }catch(e){
+      setMessage('운동 화면을 열지 못했습니다. '+e.message,true);go('home');return false;
     }
-    if(page==='start')page=current()?'session':'home';
-    go(page);
   }
   function top(){
     document.body.dataset.fdScreen='independent';
     const title=document.querySelector('.page-title');
     const sub=document.querySelector('.page-sub');
     const crumb=document.querySelector('.crumb');
-    if(title)title.textContent=({home:'IRON MODE · 웨이트',builder:'루틴 제작',programs:'프로그램 관리',session:'운동 실행',history:'웨이트 기록',programBuilder:'프로그램 제작',choose:'루틴 선택'})[screen]||'IRON MODE';
-    if(sub)sub.textContent='계획과 실제 운동은 따로 저장됩니다. 웨이트는 새 일정 등록 없이 실행하세요.';
-    if(crumb?.firstChild)crumb.firstChild.textContent='INDEPENDENT STRENGTH  ';
+    if(title)title.textContent=({home:'운동',routines:'내 루틴',builder:'루틴 만들기',programs:'훈련 프로그램',session:'운동 기록하기',history:'운동 기록',programBuilder:'프로그램 만들기'})[screen]||'운동';
+    if(sub)sub.textContent='종목 선택부터 루틴, 운동 기록까지 한곳에서 관리하세요.';
+    if(crumb?.firstChild)crumb.firstChild.textContent='TRAINING  ';
     document.querySelectorAll('[data-ind-nav]').forEach(b=>{
-      const selected=b.dataset.indNav===screen||(b.dataset.indNav==='start'&&screen==='session')||
-         (b.dataset.indNav==='routines'&&(screen==='builder'||screen==='home'));
+      const selected=b.dataset.indNav==='start';
       b.classList.toggle('fd-current',selected);
       b.classList.toggle('active',selected);
       b.setAttribute('aria-current',selected?'page':'false');
@@ -116,6 +135,11 @@
     });
   }
   const button=(action,label,kind='primary',more='')=>'<button class="fi-btn fi-'+kind+'" type="button" data-fi-action="'+action+'" '+more+'>'+label+'</button>';
+  function hubNav(){
+    const selected=screen==='builder'?'routines':screen==='programBuilder'?'programs':screen==='session'?'home':screen;
+    return '<nav class="fi-hub-nav" aria-label="운동 하위 메뉴">'+[['home','운동','◉'],['routines','루틴','▤'],['programs','프로그램','◎'],['history','기록','▦']].map(([page,label,icon])=>
+      '<button type="button" data-fi-nav="'+page+'" aria-current="'+(selected===page?'page':'false')+'"><span aria-hidden="true">'+icon+'</span><b>'+label+'</b></button>').join('')+'</nav>';
+  }
   function banner(){
     const s=current();
     if(!s)return '';
@@ -123,21 +147,23 @@
     const stale=Date.now()-Date.parse(s.lastSavedAt)>=TIME_LIMIT_MS;
     return '<div class="fi-resume '+(stale?'fi-stale':'')+'"><span class="fi-kicker">'+(stale?'24시간 경과 · 삭제되지 않았습니다':'보관 또는 진행 중인 운동')+'</span>'+
       '<h3>'+esc(s.label)+'</h3><p>'+esc(s.date)+' · '+sum.completedSets+'세트 완료 · '+fmt(sum.volume)+'kg · '+s.status+'</p>'+
-      '<div class="fi-inline-actions">'+button('resume','이어서 운동','primary')+button('inspect-session','기록 보기','outline')+'</div></div>';
+      '<div class="fi-inline-actions">'+button(s.status==='ACTIVE'?'inspect-session':'resume','운동 이어하기','primary')+button('inspect-session','진행 기록 보기','outline')+'</div></div>';
   }
   function home(){
     const history=completed().slice().reverse();
-    return '<section class="fi-view"><div class="fi-hero"><div><span class="fi-kicker">IRON MODE / INDEPENDENT</span><h2>계획은 계획대로.<br><em>기록은 기록대로.</em></h2><p>캘린더 등록 없이 바로 웨이트를 시작하세요.</p></div></div>'+
+    return '<section class="fi-view"><div class="fi-hub-hero"><span class="fi-kicker">YOUR WORKOUT</span><h2>오늘의 운동을 시작하세요.</h2><p>종목을 선택해 바로 시작하거나, 저장한 루틴을 실행하세요.</p></div>'+
       banner()+'<div class="fi-stats"><div><span>저장된 루틴</span><strong>'+state.routines.length+'</strong></div><div><span>훈련 프로그램</span><strong>'+state.programs.length+'</strong></div><div><span>확정한 운동</span><strong>'+history.length+'</strong></div></div>'+
-      '<div class="fi-action-grid">'+button('start-free','▶ 자유 운동 시작')+button('choose-routine','루틴으로 운동 시작','outline')+
-      button('new-routine','＋ 새 루틴 제작','outline')+button('program-list','요일·순환 프로그램','outline')+'</div>'+
-      '<div class="fi-panel"><div class="fi-section-head"><h3>내 루틴</h3><span>'+state.routines.length+'개</span></div>'+
-      (!state.routines.length?'<p class="fi-empty">저장된 루틴이 없습니다. 운동 도감에서 종목을 선택해 첫 루틴을 만드세요.</p>':
-       state.routines.map(r=>'<div class="fi-list-row"><div><b>'+esc(r.name)+'</b><small>'+r.exercises.length+'종목 · '+r.exercises.reduce((n,x)=>n+x.sets.length,0)+'세트</small></div>'+
-       '<div class="fi-inline-actions">'+button('begin-routine','시작','primary','data-id="'+esc(r.id)+'"')+
-       button('edit-routine','편집','outline','data-id="'+esc(r.id)+'"')+'</div></div>').join(''))+'</div>'+
+      '<div class="fi-hub-start"><div><span class="fi-kicker">START TRAINING</span><h3>어떻게 운동할까요?</h3><p>자유 운동에서는 검색과 즐겨찾기로 여러 종목을 한 번에 고를 수 있습니다.</p></div><div class="fi-action-grid">'+
+      button('start-free','＋ 종목 골라 운동 시작')+button('routine-list','저장한 루틴으로 시작','outline')+'</div></div>'+
+      (state.programs.some(p=>p.active)?'<div class="fi-panel"><div class="fi-section-head"><h3>프로그램의 다음 운동</h3>'+button('program-list','프로그램 보기','subtle')+'</div>'+programStarts()+'</div>':'')+
       '<div class="fi-panel"><div class="fi-section-head"><h3>최근 운동</h3>'+button('show-history','기록 전체 →','subtle')+'</div>'+
       (!history.length?'<p class="fi-empty">아직 확정된 운동 기록이 없습니다.</p>':history.slice(0,4).map(s=>recordCard(s)).join(''))+'</div></section>';
+  }
+  function routines(){
+    return '<section class="fi-view"><div class="fi-section-head"><div><span class="fi-kicker">MY ROUTINES</span><h2>내 루틴 <small>'+state.routines.length+'</small></h2><p class="fi-note">자주 하는 종목과 목표 세트를 묶어 두세요.</p></div>'+button('new-routine','＋ 새 루틴')+'</div>'+
+      (!state.routines.length?'<div class="fi-panel fi-hub-empty"><h3>첫 루틴을 만들어 보세요.</h3><p>종목을 고르고 목표 중량, 횟수와 휴식 시간을 저장할 수 있습니다.</p>'+button('new-routine','종목을 골라 루틴 만들기')+'</div>':
+      '<div class="fi-routine-list">'+state.routines.map(r=>'<article class="fi-panel fi-routine-card"><div><span class="fi-kicker">'+r.exercises.length+'종목 · '+r.exercises.reduce((n,x)=>n+x.sets.length,0)+'세트</span><h3>'+esc(r.name)+'</h3><p>'+esc(r.exercises.map(ex=>ex.name).join(' · '))+'</p></div><div class="fi-inline-actions">'+
+       button('begin-routine','이 루틴으로 운동','primary','data-id="'+esc(r.id)+'"')+button('edit-routine','루틴 편집','outline','data-id="'+esc(r.id)+'"')+'</div></article>').join('')+'</div>')+'</section>';
   }
   function recordCard(s,calendarMode=false){
     const result=summary(s),kind=s.status==='PARTIAL'?'부분 완료':'완료';
@@ -152,22 +178,17 @@
     if(p.mode==='cycle')return p.routineIds[p.nextIndex];
     return p.weekdays[String(new Date().getDay())]||null;
   }
-  function chooseRoutine(){
-    return '<div class="fi-panel"><div class="fi-section-head"><h3>저장된 루틴에서 운동 시작</h3></div>'+
-      (state.routines.length?state.routines.map(r=>'<div class="fi-list-row"><div><b>'+esc(r.name)+'</b><small>'+r.exercises.map(e=>e.name).join(' · ').slice(0,160)+'</small></div>'+button('begin-routine','시작','primary','data-id="'+esc(r.id)+'"')+'</div>').join(''):
-      '<p class="fi-empty">아직 루틴이 없습니다.</p>')+'</div>'+
-      '<div class="fi-panel"><div class="fi-section-head"><h3>프로그램의 다음 차례</h3></div>'+
-      (state.programs.length?state.programs.filter(p=>p.active).map(p=>{
-        const rid=programNext(p),routine=state.routines.find(r=>r.id===rid);
-        return '<div class="fi-list-row"><div><b>'+esc(p.name)+'</b><small>'+esc(p.mode==='cycle'?'순환형':'요일 고정형')+' · '+(routine?esc(routine.name):'오늘 지정된 루틴 없음')+'</small></div>'+
-          (rid?button('begin-program-routine','시작','primary','data-id="'+esc(p.id)+'"'):'')+'</div>';
-      }).join(''):'<p class="fi-empty">프로그램을 만들면 다음 순서의 루틴을 선택할 수 있습니다.</p>')+'</div>';
+  function programStarts(){
+    return state.programs.filter(p=>p.active).map(p=>{
+      const rid=programNext(p),routine=state.routines.find(r=>r.id===rid);
+      return '<div class="fi-list-row"><div><b>'+esc(p.name)+'</b><small>'+esc(p.mode==='cycle'?'순환형':'요일 고정형')+' · '+(routine?esc(routine.name):'오늘 지정된 루틴 없음')+'</small></div>'+
+        (rid?button('begin-program-routine','시작','primary','data-id="'+esc(p.id)+'"'):'')+'</div>';
+    }).join('');
   }
   function builderRows(){
     return draft.exercises.map((ex,i)=>'<div class="fi-builder-ex" data-fi-ex="'+esc(ex.id)+'">'+
-      '<div class="fi-builder-ex-title"><span>EXERCISE '+(i+1)+'</span><select data-fi-ex-name aria-label="운동 종목">'+
-      W.catalog.map(c=>'<option value="'+esc(c.name)+'" '+(c.name===ex.name?'selected':'')+'>'+esc(c.group+' / '+c.name)+'</option>').join('')+
-      (W.catalog.some(c=>c.name===ex.name)?'':'<option selected value="'+esc(ex.name)+'">'+esc(ex.name)+'</option>')+'</select>'+
+      '<div class="fi-builder-ex-title fi-picker-ex-title"><span>EXERCISE '+(i+1)+'</span><div class="fi-exercise-name"><b>'+esc(ex.name)+'</b><small>'+esc(W.catalog.find(c=>c.name===ex.name)?.group||'직접 입력한 종목')+'</small></div>'+
+      button('replace-builder-ex','종목 바꾸기','outline','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 종목 바꾸기"')+
       '<button type="button" class="fi-icon" data-fi-action="remove-ex" data-id="'+esc(ex.id)+'" aria-label="종목 삭제">×</button></div>'+
       '<div class="fi-builder-head"><span>SET</span><span>목표 kg</span><span>횟수</span><span>휴식초</span><span></span></div>'+
       ex.sets.map((s,j)=>'<div class="fi-builder-set" data-fi-set="'+esc(s.id)+'"><strong>'+(j+1)+'</strong>'+
@@ -180,19 +201,18 @@
   function builder(){
     if(!draft)resetDraft();
     return '<section class="fi-view"><div class="fi-section-head"><div><span class="fi-kicker">PROGRAM BUILDER / ROUTINE</span><h2>'+ (editingRoutine?'루틴 수정':'새 루틴 제작')+'</h2></div>'+
-      button('back-home','← 목록','outline')+'</div><div class="fi-panel"><label class="fi-label" for="fi-routine-name">루틴 이름</label>'+
+      button('routine-list','← 루틴 목록','outline')+'</div><div class="fi-panel"><label class="fi-label" for="fi-routine-name">루틴 이름</label>'+
       '<input class="fi-text-input" id="fi-routine-name" maxlength="100" placeholder="예: 가슴 · 삼두" value="'+esc(draft.name)+'">'+
       '<p class="fi-note">루틴은 목표 계획만 저장합니다. 과거 실제 운동 기록과 완료 여부는 변경하지 않습니다.</p></div>'+
-      '<div class="fi-builder-exercises">'+builderRows()+'</div>'+
-      '<div class="fi-panel"><div class="fi-inline-actions">'+
-      '<select id="fi-library-add" aria-label="추가할 운동 종목">'+W.catalog.map(c=>'<option value="'+esc(c.name)+'">'+esc(c.group+' / '+c.name)+'</option>').join('')+'</select>'+
-      button('add-builder-ex','＋ 운동 종목 추가','outline')+'</div></div>'+
-      '<div class="fi-sticky-actions">'+button('save-routine','루틴 저장')+button('back-home','취소','outline')+'</div></section>';
+      '<div class="fi-builder-exercises">'+(draft.exercises.length?builderRows():'<div class="fi-panel fi-hub-empty"><h3>루틴에 넣을 종목을 골라 주세요.</h3><p>검색, 부위별 필터와 즐겨찾기를 사용할 수 있습니다.</p></div>')+'</div>'+
+      '<div class="fi-picker-add"><div><b>'+draft.exercises.length+' / 30종목</b><p>여러 종목을 선택해 한 번에 추가하세요.</p></div>'+
+      button('add-builder-ex','＋ 종목 선택','outline',draft.exercises.length>=30?'disabled':'')+'</div>'+
+      '<div class="fi-sticky-actions">'+button('save-routine','루틴 저장','primary',draft.exercises.length?'':'disabled')+button('routine-list','취소','outline')+'</div></section>';
   }
   function resetDraft(id){
     const existing=id?state.routines.find(r=>r.id===id):null;
     editingRoutine=existing?.id||null;
-    draft=existing?M.copy(existing):{name:'새 웨이트 루틴',exercises:[M.newExercise('벤치프레스')]};
+    draft=existing?M.copy(existing):{name:'새 웨이트 루틴',exercises:[]};
     draftBaseline=JSON.stringify(draft);
   }
   function readDraft(){
@@ -202,13 +222,13 @@
     host.querySelectorAll('[data-fi-ex]').forEach(block=>{
       const ex=draft.exercises.find(x=>x.id===block.dataset.fiEx);
       if(!ex)return;
-      ex.name=block.querySelector('[data-fi-ex-name]')?.value||ex.name;
       block.querySelectorAll('[data-fi-set]').forEach(row=>{
         const set=ex.sets.find(s=>s.id===row.dataset.fiSet);
         if(!set)return;
-        set.weight=Number(row.querySelector('[data-fi-weight]')?.value);
-        set.reps=Number(row.querySelector('[data-fi-reps]')?.value);
-        set.restSec=Number(row.querySelector('[data-fi-rest]')?.value);
+        for(const [key,selector] of [['weight','[data-fi-weight]'],['reps','[data-fi-reps]'],['restSec','[data-fi-rest]']]){
+          const input=row.querySelector(selector);
+          if(input)set[key]=input.value===''?'':Number(input.value);
+        }
       });
     });
   }
@@ -268,9 +288,8 @@
       '<input type="number" inputmode="decimal" data-fi-rpe min="1" max="10" step="0.5" placeholder="–" value="'+(set.rpe??'')+'" aria-label="'+(j+1)+'세트 RPE" '+(s.status==='ACTIVE'?'':'disabled')+'>'+
       '<label><input type="checkbox" data-fi-done '+(set.done?'checked':'')+' '+(s.status==='ACTIVE'?'':'disabled')+' aria-label="'+(j+1)+'세트 완료"></label>'+
       button('save-session-set','저장',set.done?'done':'outline','data-ex="'+esc(ex.id)+'" data-id="'+esc(set.id)+'" '+(s.status==='ACTIVE'?'':'disabled'))+'</div>').join('')+'</div>').join('')+'</div>'+
-      '<div class="fi-panel"><h3>운동 종목 추가</h3><div class="fi-inline-actions"><select id="fi-add-exercise">'+
-      W.catalog.map(c=>'<option value="'+esc(c.name)+'">'+esc(c.group+' / '+c.name)+'</option>').join('')+'</select>'+
-      button('add-session-ex','종목 추가','outline',s.status==='ACTIVE'?'':'disabled')+'</div></div>'+
+      '<div class="fi-panel fi-picker-add"><div><h3>운동 종목 추가</h3><p>현재 '+s.exercises.length+' / 30종목 · 여러 종목을 한 번에 고를 수 있습니다.</p></div>'+
+      button('add-session-ex','＋ 종목 선택','outline',s.status==='ACTIVE'&&s.exercises.length<30?'':'disabled')+'</div>'+
       '<div class="fi-panel fi-timer"><span class="fi-kicker">REST TIMER</span><div class="fi-timer-number" id="fi-timer-number">'+Math.ceil(timerSecs)+'초</div>'+
       '<div class="fi-inline-actions">'+button('timer90','90초','outline')+button('timer120','120초','outline')+button('timer-toggle',timerEnd?'일시정지':'타이머 시작','outline')+'</div></div>'+
       '<div class="fi-sticky-actions">'+button('finish','운동 완료 확정')+button('partial','여기까지 부분 완료','outline')+'</div>'+
@@ -308,13 +327,13 @@
     if(document.body.dataset.fdScreen!=='independent')return;
     top();
     if(blocked||!state){
-      host.innerHTML='<div class="fi-panel fi-alert"><h3>독립 운동 저장소를 읽을 수 없습니다.</h3><p>'+esc(blocked||'알 수 없는 오류')+'</p>'+
-      '<p>원본 데이터는 삭제하거나 초기화하지 않았습니다. 다른 기기의 기록으로 덮어쓰지 마세요.</p></div>';
+      host.innerHTML=hubNav()+'<div class="fi-panel fi-alert" role="alert"><h3>운동 기록을 불러오지 못했습니다.</h3><p>'+esc(blocked||'알 수 없는 오류')+'</p>'+
+      '<p>기록을 확인하기 전까지 새 운동 저장을 중단했습니다. 원본 데이터는 유지됩니다.</p>'+button('reload','기록 다시 확인','outline')+'</div>';
       return;
     }
-    host.innerHTML='<div id="fi-banner" class="'+(error?'fi-msg-error':'')+'" '+(!message?'hidden':'')+' role="status">'+esc(message)+'</div>'+
+    host.innerHTML=hubNav()+'<div id="fi-banner" class="'+(error?'fi-msg-error':'')+'" '+(!message?'hidden':'')+' role="status">'+esc(message)+'</div>'+
       (revisionConflict?button('reload','다른 탭의 최신 기록 불러오기','outline'):'')+
-      (screen==='home'?home():screen==='builder'?builder():screen==='programs'?programs():screen==='programBuilder'?programBuilder():screen==='session'?sessionView():screen==='history'?historyView():screen==='choose'?'<section class="fi-view"><div class="fi-section-head"><h2>운동 시작</h2>'+button('back-home','웨이트 홈','outline')+'</div>'+chooseRoutine()+'</section>':home())+
+      (screen==='home'?home():screen==='routines'?routines():screen==='builder'?builder():screen==='programs'?programs():screen==='programBuilder'?programBuilder():screen==='session'?sessionView():screen==='history'?historyView():home())+
       backupActions();
     if(screen==='session')paintTimer();
   }
@@ -331,13 +350,72 @@
     const mode=host.querySelector('input[name=fi-mode]:checked')?.value;
     if(mode)programDraft.mode=mode;
   }
-  function doStart(routineId=null,programId=null,exercise=null){
-    if(!beforeNavigate())return;
-    if(active()){setMessage('기존에 진행 중인 운동이 있습니다. 이어하기 또는 확정 후 새 운동을 시작하세요.',true);go('session');return;}
-    const result=changed(()=>{const x=M.start(state,{routineId,programId});
-      if(exercise){const ex=M.newExercise(exercise);x.session.exercises=[{...ex,sets:ex.sets.map(s=>({...s,done:false}))}];}
-      return x;},'새 운동을 시작했습니다. 실제 세트 기록만 완료 처리하세요.');
+  function doStart(routineId=null,programId=null,exerciseNames=null,fromPicker=false){
+    if(!fromPicker&&!beforeNavigate())return false;
+    if(active()){setMessage('기존에 진행 중인 운동이 있습니다. 이어하기 또는 확정 후 새 운동을 시작하세요.',true);go('session');return false;}
+    const result=changed(()=>M.start(state,{routineId,programId,exerciseNames}),'새 운동을 시작했습니다. 실제 세트 기록만 완료 처리하세요.');
     if(result)go('session');
+    return result;
+  }
+  function selectedNames(names,limit){
+    if(!Array.isArray(names)||names.length<1||names.length>limit)throw Error('선택할 운동 종목 수를 확인해 주세요.');
+    if(new Set(names).size!==names.length||names.some(name=>typeof name!=='string'||!W.catalog.some(ex=>ex.name===name)))throw Error('운동 목록에서 종목을 다시 선택해 주세요.');
+    return names;
+  }
+  function selectExercises({title,multiple=true,limit=30,onConfirm}){
+    try{
+      editable();
+      if(limit<1)throw Error('종목은 최대 30개까지 추가할 수 있습니다.');
+      const picker=root.FormdayExercisePicker;
+      if(!picker||typeof picker.open!=='function')throw Error('종목 선택창을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.');
+      if(pickerOpen||picker.isOpen?.())throw Error('이미 열려 있는 종목 선택창을 먼저 확인해 주세요.');
+      if(screen==='builder')readDraft();
+      pickerOpen=true;
+      const opened=picker.open({title,multiple,limit,
+        getFavorites:()=>state?.favoriteExercises||[],
+        onFavoriteChange:(name,selected)=>{
+          try{selectedNames([name],1);return changed(()=>M.toggleFavorite(state,name,selected),selected?'즐겨찾기에 저장했습니다.':'즐겨찾기에서 해제했습니다.',false);}
+          catch(e){setMessage(e.message,true);paintMessage();return false;}
+        },
+        onConfirm:names=>{
+          try{editable();return onConfirm(selectedNames(names,limit))===true;}
+          catch(e){setMessage(e.message,true);paintMessage();return false;}
+        },
+        onClose:({reason}={})=>{pickerOpen=false;if(reason==='confirmed')render();else paintMessage();}
+      });
+      if(opened===false){pickerOpen=false;throw Error('종목 선택창을 열지 못했습니다. 다시 시도해 주세요.');}
+      return true;
+    }catch(e){pickerOpen=false;setMessage(e.message,true);paintMessage();return false;}
+  }
+  function pickRoutineExercises(replaceId=null){
+    if(!draft||screen!=='builder')throw Error('먼저 루틴 편집 화면을 열어 주세요.');
+    readDraft();
+    const target=draft;
+    return selectExercises({title:replaceId?'바꿀 운동 종목 선택':'루틴에 추가할 종목 선택',multiple:!replaceId,
+      limit:replaceId?1:30-draft.exercises.length,
+      onConfirm:names=>{
+        if(draft!==target||screen!=='builder')throw Error('루틴 편집 상태가 바뀌었습니다. 선택창을 닫고 다시 확인해 주세요.');
+        let exercises;
+        if(replaceId){
+          if(!draft.exercises.some(ex=>ex.id===replaceId))throw Error('교체할 운동 종목을 찾지 못했습니다.');
+          exercises=draft.exercises.map(ex=>ex.id===replaceId?{...ex,name:names[0]}:ex);
+        }else{
+          if(draft.exercises.length+names.length>30)throw Error('루틴 종목은 최대 30개입니다.');
+          exercises=[...draft.exercises,...names.map(name=>M.newExercise(name))];
+        }
+        draft={...draft,exercises};
+        setMessage(replaceId?'종목을 바꿨습니다. 루틴 저장을 누르면 반영됩니다.':names.length+'개 종목을 추가했습니다. 루틴 저장을 누르면 반영됩니다.');
+        render();return true;
+      }
+    });
+  }
+  function pickSessionExercises(){
+    const session=current();
+    if(!session||session.status!=='ACTIVE')throw Error('운동을 재개한 뒤 종목을 추가해 주세요.');
+    return selectExercises({title:'이번 운동에 추가할 종목 선택',limit:30-session.exercises.length,onConfirm:names=>{
+      if(current()?.id!==session.id||current()?.status!=='ACTIVE')throw Error('운동 상태가 바뀌었습니다. 선택창을 닫고 운동을 재개해 주세요.');
+      return changed(()=>M.addExercises(state,session.id,names),names.length+'개 운동 종목을 추가했습니다.',false);
+    }});
   }
   function sessionSet(button){
     const row=button.closest('[data-fi-set]'),session=current();
@@ -451,29 +529,34 @@
   }
   function reload(){
     if(!root.confirm('현재 화면의 미저장 입력을 버리고 다른 탭의 최신 기록을 불러올까요?'))return;
-    const loaded=store.load();
-    if(loaded.error){blocked=loaded.error;render();return;}
-    state=loaded.data;revisionConflict=false;error=false;clearDrafts();setMessage('최신 운동 기록을 불러왔습니다.');
-    root.dispatchEvent(new CustomEvent('formday:iron-changed'));go('home');
+    try{
+      store=store||M.createStore(root.localStorage);
+      const loaded=store.load();
+      if(loaded.error){blocked=loaded.error;render();return;}
+      state=loaded.data;blocked='';revisionConflict=false;error=false;clearDrafts();setMessage('최신 운동 기록을 불러왔습니다.');
+      root.dispatchEvent(new CustomEvent('formday:iron-changed'));go('home');
+    }catch(e){blocked='운동 기록을 다시 불러오지 못했습니다. '+e.message;render();}
   }
   function onAction(button){
     const action=button.dataset.fiAction,id=button.dataset.id;
     if(action==='back-home'){go('home');return;}
     if(action==='start-free'){
-      const name=root.prompt('첫 운동 종목을 입력하세요. (운동 도감에 있는 이름을 사용할 수 있습니다.)','벤치프레스');
-      if(name===null)return;
-      if(!name.trim()){setMessage('운동 종목 이름을 입력해 주세요.',true);render();return;}
-      doStart(null,null,name.trim());return;
+      if(!beforeNavigate())return;
+      if(current()){setMessage('진행 중인 운동을 이어가거나 확정한 뒤 새 운동을 시작하세요.',true);go('session');return;}
+      selectExercises({title:'이번 운동의 종목 선택',onConfirm:names=>doStart(null,null,names,true)});return;
     }
-    if(action==='choose-routine'){go('choose');return;}
-    if(action==='begin-routine'){doStart(id);return;}
+    if(action==='choose-routine'||action==='routine-list'){go('routines');return;}
+    if(action==='begin-routine'){
+      if(!id||!state?.routines.some(r=>r.id===id))throw Error('선택한 루틴을 찾지 못했습니다. 루틴 목록을 다시 확인해 주세요.');
+      doStart(id);return;
+    }
     if(action==='begin-program-routine'){
       const p=state.programs.find(x=>x.id===id),rid=p&&programNext(p);
       if(!rid){setMessage('오늘의 루틴을 찾지 못했습니다.',true);render();return;}
       doStart(rid,id);return;
     }
-    if(action==='new-routine'){if(!beforeNavigate())return;resetDraft();go('builder');return;}
-    if(action==='edit-routine'){if(!beforeNavigate())return;resetDraft(id);go('builder');return;}
+    if(action==='new-routine'){editable();if(!beforeNavigate())return;resetDraft();go('builder');return;}
+    if(action==='edit-routine'){editable();if(!beforeNavigate())return;if(!state.routines.some(r=>r.id===id))throw Error('편집할 루틴을 찾지 못했습니다.');resetDraft(id);go('builder');return;}
     if(action==='add-builder-set'){
       readDraft();const ex=draft.exercises.find(x=>x.id===id);
       if(ex){if(ex.sets.length<50){const last=ex.sets.at(-1);ex.sets.push({...last,id:M.uid()});}render();}return;
@@ -484,17 +567,15 @@
     }
     if(action==='remove-ex'){
       readDraft();
-      if(draft.exercises.length>1){draft.exercises=draft.exercises.filter(x=>x.id!==id);render();}return;
+      draft.exercises=draft.exercises.filter(x=>x.id!==id);render();return;
     }
-    if(action==='add-builder-ex'){
-      readDraft();if(draft.exercises.length>=30)return;
-      draft.exercises.push(M.newExercise(host.querySelector('#fi-library-add')?.value||'벤치프레스'));render();return;
-    }
+    if(action==='add-builder-ex'){pickRoutineExercises();return;}
+    if(action==='replace-builder-ex'){pickRoutineExercises(id);return;}
     if(action==='save-routine'){
       readDraft();
       const result=changed(()=>editingRoutine?M.updateRoutine(state,editingRoutine,draft.name,draft.exercises):
         M.createRoutine(state,draft.name,draft.exercises),'루틴 목표를 저장했습니다. 기존 실제 운동 기록은 유지됩니다.');
-      if(result){clearDrafts();go('home');}return;
+      if(result){clearDrafts();go('routines');}return;
     }
     if(action==='program-list'){go('programs');return;}
     if(action==='new-program'){
@@ -508,16 +589,15 @@
         '훈련 프로그램을 저장했습니다.')){clearDrafts();go('programs');}return;
     }
     if(action==='pause'||action==='stash'||action==='resume'){
-      const s=current();if(!s)return;
+      const s=current();if(!s)throw Error('진행 중인 운동이 없습니다. 운동을 먼저 시작해 주세요.');
+      if(action==='resume'&&s.status==='ACTIVE'){go('session');return;}
       const trans=action==='resume'?(s.status==='SAVED'?'resumeSaved':'resume'):action==='stash'&&s.status==='PAUSED'?'stashPaused':action;
-      changed(()=>M.changeState(state,s.id,trans),action==='resume'?'운동을 재개했습니다.':'운동 상태를 저장했습니다.');
+      if(changed(()=>M.changeState(state,s.id,trans),action==='resume'?'운동을 재개했습니다.':'운동 상태를 저장했습니다.')&&action==='resume')go('session');
       return;
     }
     if(action==='inspect-session'){go('session');return;}
     if(action==='add-session-set'){const s=current();if(s?.status==='ACTIVE')changed(()=>M.addSet(state,s.id,id),'세트를 추가했습니다.');return;}
-    if(action==='add-session-ex'){const s=current(),name=host.querySelector('#fi-add-exercise')?.value;
-      if(s?.status==='ACTIVE'&&name)changed(()=>M.addExercise(state,s.id,name),'운동 종목을 추가했습니다.');return;
-    }
+    if(action==='add-session-ex'){pickSessionExercises();return;}
     if(action==='save-session-set'){sessionSet(button);return;}
     if(action==='finish'||action==='partial'){finish(action==='finish'?'COMPLETED':'PARTIAL');return;}
     if(action==='cancel-session'){cancelSession();return;}
@@ -536,18 +616,21 @@
     if(action==='export'){downloadBackup();return;}
     if(action==='reload'){reload();return;}
   }
+  const targetFor=(event,selector)=>(event.target?.closest?event.target:event.target?.parentElement)?.closest(selector);
   document.addEventListener('click',event=>{
-    if(!event.target.closest?.('[data-fd-route],[data-ind-nav],[data-go],[data-mobile],.mini-cal [data-mini]'))return;
+    if(!targetFor(event,'[data-fd-route],[data-ind-nav],[data-go],[data-mobile],.mini-cal [data-mini]'))return;
     if(!beforeNavigate()){event.preventDefault();event.stopImmediatePropagation();}
   },true);
   document.addEventListener('click',event=>{
-    const nav=event.target.closest('[data-ind-nav]');
-    if(nav){event.preventDefault();open(({start:'start',routines:'home',programs:'programs',history:'history'})[nav.dataset.indNav]||nav.dataset.indNav);return;}
-    const action=event.target.closest('[data-fi-action]');
-    if(action){event.preventDefault();onAction(action);return;}
-    if(event.target.closest('[data-day],[data-mini],[data-date],[data-mobile="calendar"]')){
-      root.requestAnimationFrame?.(renderCalendar);
-    }
+    try{
+      const nav=targetFor(event,'[data-ind-nav]');
+      if(nav){event.preventDefault();open(({start:'home',routines:'routines',programs:'programs',history:'history'})[nav.dataset.indNav]||nav.dataset.indNav);return;}
+      const subnav=targetFor(event,'[data-fi-nav]');
+      if(subnav&&!subnav.disabled){event.preventDefault();go(subnav.dataset.fiNav);return;}
+      const action=targetFor(event,'[data-fi-action]');
+      if(action&&!action.disabled){event.preventDefault();onAction(action);return;}
+      if(targetFor(event,'[data-day],[data-mini],[data-date],[data-mobile="calendar"]'))root.requestAnimationFrame?.(renderCalendar);
+    }catch(e){setMessage('요청을 처리하지 못했습니다. '+e.message,true);render();}
   });
   host.addEventListener('input',()=>{
     if(screen==='builder')readDraft();
@@ -593,9 +676,9 @@
   });
   root.setInterval(()=>{clockTick=Date.now();paintTimer();},1000);
   root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,getSnapshot:()=>state?M.copy(state):null,
-    canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current(),
+    canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current()&&!pickerOpen&&!root.FormdayExercisePicker?.isOpen?.(),
     cloudReload:()=>{
-      if(blocked||revisionConflict||draft||programDraft||current())return false;
+      if(blocked||revisionConflict||draft||programDraft||current()||pickerOpen||root.FormdayExercisePicker?.isOpen?.())return false;
       const latest=store.load();
       if(latest.error){blocked=latest.error;setMessage(blocked,true);render();return false;}
       state=latest.data;setMessage('다른 기기의 최신 웨이트 기록을 반영했습니다.');
