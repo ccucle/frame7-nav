@@ -645,6 +645,9 @@ function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$
     });
     $('#calendar').addEventListener('dragend',()=>{dragId=null;});
     document.addEventListener('keydown',e=>{
+      // Native confirmation dialog owns focus and Escape; never open a
+      // background calendar editor while a deletion is awaiting confirmation.
+      if(document.getElementById('fi-program-delete-dialog')?.open)return;
       if($('#modal-root').children.length){
         if(e.key==='Escape'){e.preventDefault();closeModal();return;}
         if(e.key==='Tab'){

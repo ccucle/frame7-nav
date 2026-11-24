@@ -25,6 +25,7 @@
       timerTargetSecs=90,timerTotalSecs=90,timerSource=null,timerGeneration=0,timerEnterPending=false,
       timerClosing=false,timerPresetOpen=false,timerSoundEnabled=true,timerAlerted=false,restAudioContext=null,
       backgroundStoppedAt=null,previousCacheSession=null,
+      programDeleteDialog=null,pendingProgramDelete=null,
       sessionDialog=null,sheetClosing=false,sheetGeneration=0,sheetDrag=null,suppressHandleClickUntil=0;
   const previousCache=new Map();
   const expandedSetSettings=new Set();
@@ -100,6 +101,7 @@
       (programDraft&&JSON.stringify(programDraft)!==programBaseline));
   }
   function beforeNavigate(){
+    closeProgramDelete();
     if(pickerOpen||root.FormdayExercisePicker?.isOpen?.()){setMessage('종목 선택을 완료하거나 선택창을 닫은 뒤 이동해 주세요.',true);paintMessage();return false;}
     if(screen==='session'&&!saveSessionInputs())return false;
     const discarded=hasUnsavedDraft();
@@ -110,6 +112,7 @@
     return true;
   }
   function go(page){
+    closeProgramDelete();
     if(page==='choose')page='routines';
     if(!['home','routines','builder','programs','programBuilder','session','history'].includes(page))page='home';
     if(screen==='session'&&page!=='session'&&!saveSessionInputs())return false;
@@ -332,6 +335,51 @@
       button('delete-program','삭제','outline',attrs+' aria-label="'+esc(p.name)+' 프로그램 삭제"')+
       '</div></article>';
   }
+  // Deletion is a separate, explicitly confirmed action. Opening the
+  // dialog never calls the mutator or writes any record.
+  function closeProgramDelete(restoreFocus=true){
+    const dialog=programDeleteDialog,request=pendingProgramDelete;
+    programDeleteDialog=null;pendingProgramDelete=null;
+    if(dialog?.open)dialog.close();
+    dialog?.remove();
+    if(restoreFocus&&request?.trigger?.isConnected)request.trigger.focus?.({preventScroll:true});
+  }
+  function requestProgramDelete(id,trigger){
+    editable();
+    if(screen!=='programs'||programDeleteDialog?.open)return;
+    const program=state.programs.find(p=>p.id===id);
+    if(!program)throw Error('삭제할 프로그램을 찾을 수 없습니다.');
+    const dialog=document.createElement('dialog');
+    if(typeof dialog.showModal!=='function'){
+      setMessage('안전한 삭제 확인창을 지원하지 않는 브라우저입니다. 최신 Safari 또는 Chrome에서 다시 시도해 주세요.',true);
+      paintMessage();return;
+    }
+    dialog.id='fi-program-delete-dialog';dialog.className='fi-delete-confirm';
+    dialog.setAttribute('aria-labelledby','fi-delete-title');
+    dialog.setAttribute('aria-describedby','fi-delete-description');
+    dialog.innerHTML='<div class="fi-delete-content"><span class="fi-delete-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7m4-7v7"/></svg></span>'+
+      '<h2 id="fi-delete-title">정말 삭제할까요?</h2><p class="fi-delete-name">'+esc(program.name)+'</p>'+
+      '<p id="fi-delete-description">프로그램 목록에서 삭제됩니다. 저장한 루틴, 캘린더 일정 및 운동 기록은 유지됩니다.</p>'+
+      '<div class="fi-delete-actions"><button type="button" class="fi-btn fi-outline" data-fi-action="cancel-delete-program" autofocus>취소</button>'+
+      '<button type="button" class="fi-btn fi-delete-danger" data-fi-action="confirm-delete-program" data-id="'+esc(id)+'">프로그램 삭제</button></div></div>';
+    dialog.addEventListener('cancel',event=>{event.preventDefault();closeProgramDelete();});
+    dialog.addEventListener('click',event=>{if(event.target===dialog)closeProgramDelete();});
+    dialog.addEventListener('close',()=>{if(programDeleteDialog===dialog)closeProgramDelete();});
+    pendingProgramDelete={id,revision:state.revision,baseline:JSON.stringify(program),trigger};
+    programDeleteDialog=dialog;
+    host.appendChild(dialog);
+    try{dialog.showModal();dialog.querySelector('[data-fi-action="cancel-delete-program"]')?.focus?.({preventScroll:true});}
+    catch(e){closeProgramDelete();setMessage('삭제 확인창을 열지 못했습니다. 프로그램은 삭제되지 않았습니다.',true);paintMessage();}
+  }
+  function confirmProgramDelete(id){
+    const request=pendingProgramDelete;
+    if(!request||!programDeleteDialog?.open||id!==request.id||screen!=='programs'||document.body.dataset.fdScreen!=='independent')return;
+    closeProgramDelete(false);
+    if(!state||state.revision!==request.revision||JSON.stringify(state.programs.find(p=>p.id===id))!==request.baseline){
+      setMessage('확인 중 프로그램이 변경되었습니다. 다시 확인해 주세요.',true);render();return;
+    }
+    changed(()=>M.deleteProgram(state,id),'프로그램을 삭제했습니다. 루틴과 기존 운동 기록은 유지됩니다.');
+  }
   function programs(){
     return '<section class="fi-view" aria-label="훈련 프로그램"><div class="fi-view-toolbar"><span class="fi-note">'+state.programs.length+'개 프로그램</span>'+
       button('new-program','＋ 프로그램','primary')+'</div><p class="fi-note">자유 운동은 프로그램 순서를 변경하지 않습니다.</p>'+
@@ -529,6 +577,7 @@
     paintTimer();
   }
   function render(){
+    closeProgramDelete(false);
     renderCalendar();
     if(!host)return;
     if(document.body.dataset.fdScreen==='progress'){
@@ -967,6 +1016,9 @@
   function onAction(button){
     if(sheetClosing)return;
     const action=button.dataset.fiAction,id=button.dataset.id;
+    if(action==='cancel-delete-program'){closeProgramDelete();return;}
+    if(action==='confirm-delete-program'){confirmProgramDelete(id);return;}
+    if(programDeleteDialog?.open)return;
     if(action==='register-program'){
       if(beforeNavigate()){
         if(!root.FormdayBridge?.openProgramRegistration)throw Error('프로그램 등록 기능을 불러오지 못했습니다. 새로고침해 주세요.');
@@ -1063,15 +1115,7 @@
       if(result){clearDrafts();go('routines');}return;
     }
     if(action==='program-list'){go('programs');return;}
-    if(action==='delete-program'){
-      editable();
-      if(screen!=='programs')return;
-      const program=state.programs.find(p=>p.id===id);
-      if(!program)throw Error('삭제할 프로그램을 찾을 수 없습니다.');
-      if(!root.confirm('"'+program.name+'" 프로그램을 삭제할까요? 프로그램만 삭제되며 저장된 루틴, 캘린더 일정과 기존 운동 기록은 유지됩니다.'))return;
-      changed(()=>M.deleteProgram(state,id),'프로그램을 삭제했습니다. 루틴과 기존 운동 기록은 유지됩니다.');
-      return;
-    }
+    if(action==='delete-program'){requestProgramDelete(id,button);return;}
     if(action==='new-program'||action==='edit-program'){
       editable();
       if(!state.routines.length){setMessage('먼저 루틴을 하나 이상 만들어 주세요.',true);render();return;}
@@ -1264,7 +1308,7 @@
   function canCloudMerge(next){
     // Paused/saved sessions are records, not a reason to force completion.
     // Preserve editable drafts and never apply during an active/open session.
-    return !blocked&&!revisionConflict&&!draft&&!programDraft&&!pickerOpen&&!sessionDirty&&!sessionDialog?.open&&backgroundStoppedAt===null&&
+    return !blocked&&!revisionConflict&&!draft&&!programDraft&&!pickerOpen&&!programDeleteDialog?.open&&!sessionDirty&&!sessionDialog?.open&&backgroundStoppedAt===null&&
       current()?.status!=='ACTIVE'&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.()&&
       Array.isArray(next?.sessions)&&!next.sessions.some(s=>s.status==='ACTIVE');
   }
@@ -1277,9 +1321,9 @@
     renderCalendar();render();root.dispatchEvent(new CustomEvent('formday:iron-changed'));return true;
   }
   root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,hubNav,canCloudMerge,cloudMergeReload,renderHistory:()=>{if(document.body.dataset.fdScreen==='progress')render();},getSnapshot:()=>state?M.copy(state):null,getCalendarSnapshot,
-    canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current()&&!pickerOpen&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.(),
+    canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current()&&!pickerOpen&&!programDeleteDialog?.open&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.(),
     cloudReload:()=>{
-      if(blocked||revisionConflict||draft||programDraft||current()||pickerOpen||root.FormdayExercisePicker?.isOpen?.()||root.FormdayBridge?.isRoutineSwapOpen?.())return false;
+      if(blocked||revisionConflict||draft||programDraft||current()||pickerOpen||programDeleteDialog?.open||root.FormdayExercisePicker?.isOpen?.()||root.FormdayBridge?.isRoutineSwapOpen?.())return false;
       const latest=store.load();
       if(latest.error){blocked=latest.error;setMessage(blocked,true);render();return false;}
       state=latest.data;setMessage('다른 기기의 최신 웨이트 기록을 반영했습니다.');

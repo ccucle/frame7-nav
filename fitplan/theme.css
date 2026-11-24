@@ -655,3 +655,17 @@ body[data-fd-screen="home"] .header-actions.fd-home-actions { display: grid; }
 .fi-program-actions:not(:has([data-fi-action="begin-program-routine"]))>[data-fi-action="register-program"]{grid-column:1/-1}
 @media(min-width:760px){.fd-ind-root .fi-program-card .fi-program-actions{grid-template-columns:repeat(4,minmax(0,1fr))}.fi-program-actions:not(:has([data-fi-action="begin-program-routine"]))>[data-fi-action="register-program"]{grid-column:span 2}}
 @media(max-width:380px){.fi-program-card-head h3{font-size:16px}.fd-ind-root .fi-program-card .fi-program-actions>.fi-btn{font-size:12px}}
+
+/* Explicit program deletion confirmation, isolated from session sheets. */
+dialog.fi-delete-confirm{box-sizing:border-box;width:min(420px,calc(100% - 32px));max-width:100%;max-height:calc(100dvh - 40px);padding:0;margin:auto;overflow:auto;border:1px solid var(--fd-border-strong);border-radius:18px;background:var(--fd-surface);color:var(--fd-text);box-shadow:0 18px 60px #0009}
+dialog.fi-delete-confirm::backdrop{background:#06080cbd}
+.fi-delete-content{display:grid;gap:12px;padding:24px;min-width:0}
+.fi-delete-symbol{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:var(--fd-accent-soft,#33212b);color:var(--fd-danger,#ffc0c5)}
+.fi-delete-symbol svg{width:22px;height:22px}
+.fi-delete-content h2{font-size:20px;line-height:1.35;margin:0;font-weight:850}
+.fi-delete-name{font-size:15px;font-weight:750;line-height:1.55;margin:0;padding:12px;background:var(--fd-input);border:1px solid var(--fd-border);border-radius:8px;overflow-wrap:anywhere;word-break:keep-all}
+#fi-delete-description{font-size:13px;line-height:1.7;color:var(--fd-muted);margin:0}
+.fi-delete-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:8px}
+.fd-ind-root .fi-delete-actions>.fi-btn{width:100%;min-width:0;min-height:48px;margin:0;padding:10px 6px;text-align:center;white-space:normal;font-size:13px}
+.fd-ind-root .fi-delete-actions>.fi-delete-danger{color:white;background:var(--fd-accent,#cf3445);border:1px solid var(--fd-accent,#cf3445)}
+@media(max-width:380px){.fi-delete-content{padding:18px;gap:10px}}
