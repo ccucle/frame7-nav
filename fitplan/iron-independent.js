@@ -203,12 +203,12 @@
       (items.length?'<div class="fi-scheduled-list">'+items.map(({event,session,canReplace})=>{
         const final=session&&['COMPLETED','PARTIAL'].includes(session.status),done=!session&&(event.completed||event.workoutSessionId);
         const future=event.date>iso(new Date());
-        const label=future?'예정된 운동':final?'운동 기록 보기':session?'운동 이어하기':done?'완료한 일정':'이 일정으로 시작';
+        const label=final?'운동 기록 보기':future?'예정된 운동':session?'운동 이어하기':done?'완료한 일정':'이 일정으로 시작';
         const metadata='data-id="'+esc(event.id)+'" data-date="'+esc(event.date)+'"';
         return '<article class="fi-planned-card"><div class="fi-planned-heading"><div><small>'+esc(event.start)+'–'+esc(event.end)+(event.repeat!=='none'?' · 반복 일정':'')+'</small><h4>'+esc(event.title)+'</h4></div>'+button('swap-calendar',swap,'outline fd-plan-swap',metadata+' aria-label="'+esc(event.title)+' 루틴 교체" title="'+(canReplace?'이 날짜의 루틴 교체':'시작하거나 기록한 운동은 교체할 수 없습니다')+'" '+(canReplace?'':'disabled'))+'</div>'+
           '<p class="fi-plan-summary">'+event.detail.exercises.length+'종목 · '+event.detail.exercises.reduce((n,e)=>n+e.sets.length,0)+'세트 · '+esc(event.detail.exercises.map(e=>e.name).join(' · '))+'</p>'+
           '<details class="fi-plan-sets"><summary>세트 미리보기</summary>'+event.detail.exercises.map(ex=>'<div><b>'+esc(ex.name)+'</b><span>'+ex.sets.map(set=>(set.warmup?'W · ':'')+fmt(set.weight)+'kg × '+set.reps+'회').join(' / ')+'</span></div>').join('')+'</details>'+
-          button('begin-calendar',label,'primary',metadata+(done||future?' disabled':''))+'</article>';
+          button('begin-calendar',label,'primary',metadata+(done||(future&&!final)?' disabled':''))+'</article>';
       }).join('')+'</div>':'<p class="fi-empty">이 날짜에 등록된 웨이트 일정이 없습니다.</p>')+
       '<p class="fi-note">캘린더의 종목과 세트로 시작합니다. ↔ 아이콘으로 이 날짜의 루틴을 바꿀 수 있습니다.</p></section>';
   }
@@ -648,10 +648,10 @@
   }
   function startCalendar(eventId,date){
     if(!beforeNavigate())return false;
-    if(date>iso(new Date())){setMessage('미래 날짜의 예정된 운동은 해당 날짜부터 시작할 수 있습니다.',true);render();return false;}
     const linked=state.sessions.find(s=>s.calendarSource?.eventId===eventId&&s.calendarSource.date===date);
+    if(linked&&['COMPLETED','PARTIAL'].includes(linked.status)){focusedSession=linked.id;return go('history');}
+    if(date>iso(new Date())){setMessage('미래 날짜의 예정된 운동은 해당 날짜부터 시작할 수 있습니다.',true);render();return false;}
     if(linked){
-      if(['COMPLETED','PARTIAL'].includes(linked.status)){focusedSession=linked.id;return go('history');}
       if(linked.status!=='ACTIVE'&&!changed(()=>M.changeState(state,linked.id,linked.status==='SAVED'?'resumeSaved':'resume'),'예정된 운동을 재개했습니다.'))return false;
       resumeRest();prepareRestAudio();
       return go('session');
