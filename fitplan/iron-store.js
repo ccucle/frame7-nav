@@ -165,6 +165,21 @@
     next.programs.push(pr);return {next,program:pr};
   }
 
+  function updateProgram(data,programId,name,mode,routineIds,weekdays={}){
+    const next=normalize(data),index=next.programs.findIndex(p=>p.id===programId);
+    must(index>=0,'수정할 프로그램을 찾을 수 없습니다.');
+    const previous=next.programs[index];
+    const changed=normalizeProgram({id:previous.id,name,mode,routineIds,weekdays:mode==='cycle'?{}:weekdays,nextIndex:0,active:previous.active},new Set(next.routines.map(r=>r.id)));
+    // Preserve the pending routine by identity, not by its old list index.
+    // If it was removed, or the program changed from fixed to cycle, start at the first routine.
+    if(mode==='cycle'&&previous.mode==='cycle'){
+      const pending=changed.routineIds.indexOf(previous.routineIds[previous.nextIndex]);
+      changed.nextIndex=pending<0?0:pending;
+    }
+    next.programs[index]=changed;
+    return {next,program:changed};
+  }
+
   function updateRoutine(data,routineId,name,exercises,date=new Date()){
     const next=normalize(data),index=next.routines.findIndex(r=>r.id===routineId);
     must(index>=0,'변경할 루틴을 찾을 수 없습니다.');
@@ -384,5 +399,5 @@
     }
     return {completedSets,volume:Math.round(volume*100)/100,exercises,minutes:Math.round(s.activeMs/60000)};
   }
-  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,recordSummary});
+  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,updateProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,recordSummary});
 });

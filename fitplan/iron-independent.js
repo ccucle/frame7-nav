@@ -18,7 +18,7 @@
   const iso=d=>new Date(d).toLocaleDateString('sv-SE');
   const weekdays=['일','월','화','수','목','금','토'];
   const TIME_LIMIT_MS=24*60*60*1000;
-  let store,blocked='',state=null,screen='home',editingRoutine=null,draft=null,programDraft=null,
+  let store,blocked='',state=null,screen='home',editingRoutine=null,draft=null,editingProgram=null,programDraft=null,
       draftBaseline='',programBaseline='',pickerOpen=false,
       focusedSession=null,scheduledDay=iso(new Date()),message='',error=false,revisionConflict=false,clockTick=Date.now(),timerSecs=90,timerEnd=0,
       timerVisible=false,timerAutoPaused=false,sessionDirty=false,sessionViewMode='all',sessionExerciseIndex=0,
@@ -91,7 +91,7 @@
     try{editable();return commit(mutator(),success,refresh);}catch(e){setMessage(e.message,true);if(refresh)render();else paintMessage();return false;}
   }
   function clearDrafts(){
-    draft=null;editingRoutine=null;programDraft=null;draftBaseline='';programBaseline='';
+    draft=null;editingRoutine=null;editingProgram=null;programDraft=null;draftBaseline='';programBaseline='';
   }
   function hasUnsavedDraft(){
     if(screen==='builder')readDraft();
@@ -161,9 +161,9 @@
     const title=document.querySelector('.page-title');
     const sub=document.querySelector('.page-sub');
     const crumb=document.querySelector('.crumb');
-    if(title)title.textContent=({home:'오늘의 운동',routines:'내 루틴',builder:editingRoutine?'루틴 수정':'루틴 만들기',programs:'훈련 프로그램',session:'오늘의 운동',history:'운동 기록',programBuilder:'프로그램 만들기'})[screen]||'오늘의 운동';
+    if(title)title.textContent=({home:'오늘의 운동',routines:'내 루틴',builder:editingRoutine?'루틴 수정':'루틴 만들기',programs:'훈련 프로그램',session:'오늘의 운동',history:'운동 기록',programBuilder:editingProgram?'프로그램 수정':'프로그램 만들기'})[screen]||'오늘의 운동';
     if(sub)sub.textContent=({home:'종목을 선택하거나 저장한 루틴으로 운동을 시작하세요.',routines:'자주 하는 종목과 목표 세트를 함께 관리하세요.',builder:'종목과 목표 세트, 휴식 시간을 설정하세요.',programs:'루틴을 요일별 또는 순서대로 배치하세요.',session:'종목을 선택하거나 저장한 루틴으로 운동을 시작하세요.',history:'완료한 운동의 세트와 운동량을 확인하세요.',programBuilder:'루틴을 선택하고 반복 방식을 설정하세요.'})[screen]||'';
-    if(crumb?.firstChild)crumb.firstChild.textContent=(({routines:'ROUTINES',builder:'ROUTINE BUILDER',programs:'PROGRAMS',history:'WORKOUT LOG',programBuilder:'PROGRAM BUILDER'})[screen]||'WORKOUT')+'  ';
+    if(crumb?.firstChild)crumb.firstChild.textContent=(({routines:'ROUTINES',builder:'ROUTINE BUILDER',programs:'PROGRAMS',history:'WORKOUT LOG',programBuilder:editingProgram?'EDIT PROGRAM':'PROGRAM BUILDER'})[screen]||'WORKOUT')+'  ';
     document.querySelectorAll('[data-ind-nav]').forEach(b=>{
       const selected=b.dataset.indNav==='start';
       b.classList.toggle('fd-current',selected);
@@ -281,21 +281,36 @@
       });
     });
   }
+  function resetProgramDraft(id=null){
+    const existing=id?state.programs.find(p=>p.id===id):null;
+    if(id&&!existing)throw Error('수정할 프로그램을 찾을 수 없습니다.');
+    editingProgram=existing?.id||null;
+    programDraft=existing?{name:existing.name,mode:existing.mode,selected:[...existing.routineIds],weekdays:M.copy(existing.weekdays)}:
+      {name:'새 훈련 프로그램',mode:'cycle',selected:state.routines.map(x=>x.id).slice(0,3),weekdays:{}};
+    programBaseline=JSON.stringify(programDraft);
+  }
   function programBuilder(){
-    if(!programDraft){
-      programDraft={name:'새 훈련 프로그램',mode:'cycle',selected:state.routines.map(x=>x.id).slice(0,3),weekdays:{}};
-      programBaseline=JSON.stringify(programDraft);
-    }
-    return '<section class="fi-view" aria-label="프로그램 만들기"><div class="fi-view-toolbar">'+
-      button('program-list','뒤로','outline')+'</div><div class="fi-panel"><label class="fi-label">프로그램 이름</label><input id="fi-program-name" class="fi-text-input" maxlength="100" value="'+esc(programDraft.name)+'">'+
+    if(!programDraft)resetProgramDraft();
+    const selected=programDraft.selected;
+    const ordered=[...selected.map(id=>state.routines.find(r=>r.id===id)).filter(Boolean),...state.routines.filter(r=>!selected.includes(r.id))];
+    const label=editingProgram?'프로그램 수정':'프로그램 만들기';
+    return '<section class="fi-view" aria-label="'+label+'"><div class="fi-view-toolbar">'+
+      button('program-list','← 프로그램 목록','outline')+'</div><div class="fi-panel"><label class="fi-label" for="fi-program-name">프로그램 이름</label><input id="fi-program-name" class="fi-text-input" maxlength="100" value="'+esc(programDraft.name)+'">'+
       '<div class="fi-mode-row"><label><input type="radio" name="fi-mode" value="cycle" '+(programDraft.mode==='cycle'?'checked':'')+'> 순환형</label>'+
       '<label><input type="radio" name="fi-mode" value="fixed" '+(programDraft.mode==='fixed'?'checked':'')+'> 요일 고정형</label></div>'+
-      '<h3>포함할 루틴과 순서</h3><p class="fi-note">순환형은 이 목록 순서대로 완료 시 다음 루틴으로 이동합니다.</p>'+
-      state.routines.map(r=>'<label class="fi-program-check"><input type="checkbox" data-fi-program-routine="'+esc(r.id)+'" '+(programDraft.selected.includes(r.id)?'checked':'')+'>'+esc(r.name)+'</label>').join('')+
+      '<div class="fi-section-head"><h3>포함할 루틴과 순서</h3><small>'+selected.length+' / 14</small></div><p class="fi-note">루틴을 선택하고 위·아래 버튼으로 순서를 조정하세요. 순환형은 목록 순서대로 진행합니다.</p>'+
+      ordered.map(r=>{
+        const index=selected.indexOf(r.id),included=index!==-1;
+        const attrs='data-id="'+esc(r.id)+'"';
+        return '<div class="fi-program-row"><label class="fi-program-check"><input type="checkbox" data-fi-program-routine="'+esc(r.id)+'" '+(included?'checked':'')+'><span>'+(included?'<small class="fi-program-position">'+(index+1)+'</small>':'')+esc(r.name)+'</span></label>'+
+          (included?'<div class="fi-program-order">'+button('program-move-up','↑','outline',attrs+' aria-label="'+esc(r.name)+' 위로 이동" '+(index===0?'disabled':''))+
+            button('program-move-down','↓','outline',attrs+' aria-label="'+esc(r.name)+' 아래로 이동" '+(index===selected.length-1?'disabled':''))+'</div>':'')+'</div>';
+      }).join('')+
       (programDraft.mode==='fixed'?'<h3>요일별 루틴 배치</h3>'+Array.from({length:7},(_,i)=>i).map(day=>
       '<label class="fi-day-picker">'+weekdays[day]+'요일 <select data-fi-weekday="'+day+'"><option value="">운동 없음</option>'+
-      state.routines.map(r=>'<option value="'+esc(r.id)+'" '+(programDraft.weekdays[day]===r.id?'selected':'')+'>'+esc(r.name)+'</option>').join('')+'</select></label>').join(''):'')+
-      '</div><div class="fi-sticky-actions">'+button('save-program','프로그램 저장')+button('program-list','취소','outline')+'</div></section>';
+      ordered.filter(r=>selected.includes(r.id)).map(r=>'<option value="'+esc(r.id)+'" '+(programDraft.weekdays[day]===r.id?'selected':'')+'>'+esc(r.name)+'</option>').join('')+'</select></label>').join(''):'')+
+      '<p class="fi-note">변경한 구성은 앞으로 사용할 프로그램에만 적용되며 이미 시작했거나 완료한 운동의 종목과 세트 기록은 그대로 유지됩니다.</p>'+
+      '</div><div class="fi-sticky-actions">'+button('save-program',editingProgram?'변경사항 저장':'프로그램 저장')+button('program-list','취소','outline')+'</div></section>';
   }
   function programs(){
     return '<section class="fi-view" aria-label="훈련 프로그램"><div class="fi-view-toolbar"><span class="fi-note">'+state.programs.length+'개 프로그램</span>'+
@@ -305,7 +320,8 @@
         return '<div class="fi-panel"><div class="fi-section-head"><h3>'+esc(p.name)+'</h3><span>'+ (p.mode==='cycle'?'순환형':'요일 고정형')+'</span></div>'+
         '<p>'+p.routineIds.map(id=>state.routines.find(x=>x.id===id)?.name||'삭제된 루틴').map(esc).join(' → ')+'</p>'+
         '<p class="fi-note">다음 운동: '+(r?esc(r.name):'오늘 배정 없음')+'</p>'+
-        (r?button('begin-program-routine','이 프로그램으로 운동 시작','primary','data-id="'+esc(p.id)+'"'):'')+'</div>';
+        '<div class="fi-inline-actions fi-program-actions">'+(r?button('begin-program-routine','이 프로그램으로 운동 시작','primary','data-id="'+esc(p.id)+'"'):'')+
+        button('edit-program','프로그램 수정','outline','data-id="'+esc(p.id)+'"')+'</div></div>';
       }).join(''):'<div class="fi-panel fi-empty">저장된 프로그램이 없습니다. 먼저 루틴을 만든 뒤 프로그램을 구성하세요.</div>')+
       '<div class="fi-panel"><h3>루틴 보관함</h3>'+state.routines.map(r=>'<div class="fi-list-row"><div><b>'+esc(r.name)+'</b><small>'+r.exercises.length+'종목</small></div>'+
       button('edit-routine','편집','outline','data-id="'+esc(r.id)+'"')+'</div>').join('')+'</div></section>';
@@ -533,13 +549,16 @@
   function readProgram(){
     if(!programDraft)return;
     const name=host.querySelector('#fi-program-name');
-    if(name)programDraft.name=name.value;
-    const selected=Array.from(host.querySelectorAll('[data-fi-program-routine]')).filter(x=>x.checked).map(x=>x.dataset.fiProgramRoutine);
-    programDraft.selected=selected;
-    host.querySelectorAll('[data-fi-weekday]').forEach(el=>{
-      if(el.value)programDraft.weekdays[el.dataset.fiWeekday]=el.value;
+    if(!name)return;
+    programDraft.name=name.value;
+    const checked=Array.from(host.querySelectorAll('[data-fi-program-routine]')).filter(x=>x.checked).map(x=>x.dataset.fiProgramRoutine);
+    programDraft.selected=[...programDraft.selected.filter(id=>checked.includes(id)),...checked.filter(id=>!programDraft.selected.includes(id))];
+    const fields=Array.from(host.querySelectorAll('[data-fi-weekday]'));
+    if(fields.length)for(const el of fields){
+      if(el.value&&programDraft.selected.includes(el.value))programDraft.weekdays[el.dataset.fiWeekday]=el.value;
       else delete programDraft.weekdays[el.dataset.fiWeekday];
-    });
+    }
+    for(const [day,id] of Object.entries(programDraft.weekdays))if(!programDraft.selected.includes(id))delete programDraft.weekdays[day];
     const mode=host.querySelector('input[name=fi-mode]:checked')?.value;
     if(mode)programDraft.mode=mode;
   }
@@ -1020,15 +1039,32 @@
       if(result){clearDrafts();go('routines');}return;
     }
     if(action==='program-list'){go('programs');return;}
-    if(action==='new-program'){
+    if(action==='new-program'||action==='edit-program'){
+      editable();
       if(!state.routines.length){setMessage('먼저 루틴을 하나 이상 만들어 주세요.',true);render();return;}
       if(!beforeNavigate())return;
-      programDraft=null;go('programBuilder');return;
+      resetProgramDraft(action==='edit-program'?id:null);go('programBuilder');return;
+    }
+    if(action==='program-move-up'||action==='program-move-down'){
+      if(screen!=='programBuilder'||!programDraft)return;
+      readProgram();
+      const index=programDraft.selected.indexOf(id),target=index+(action==='program-move-up'?-1:1);
+      if(index>=0&&target>=0&&target<programDraft.selected.length){
+        const selected=programDraft.selected;
+        [selected[index],selected[target]]=[selected[target],selected[index]];
+        render();
+        Array.from(host.querySelectorAll('[data-fi-action]')).find(el=>el.dataset.fiAction===action&&el.dataset.id===id&&!el.disabled)?.focus?.({preventScroll:true});
+      }
+      return;
     }
     if(action==='save-program'){
+      if(screen!=='programBuilder'||!programDraft)return;
       readProgram();
-      if(changed(()=>M.createProgram(state,programDraft.name,programDraft.mode,programDraft.selected,programDraft.weekdays),
-        '훈련 프로그램을 저장했습니다.')){clearDrafts();go('programs');}return;
+      const {name,mode,selected,weekdays}=programDraft;
+      const assignments=mode==='fixed'?weekdays:{};
+      if(changed(()=>editingProgram?M.updateProgram(state,editingProgram,name,mode,selected,assignments):
+        M.createProgram(state,name,mode,selected,assignments),
+        editingProgram?'훈련 프로그램을 수정했습니다.':'훈련 프로그램을 저장했습니다.')){clearDrafts();go('programs');}return;
     }
     if(action==='pause'||action==='stash'||action==='resume'){
       const s=current();if(!s)throw Error('진행 중인 운동이 없습니다. 운동을 먼저 시작해 주세요.');
@@ -1113,8 +1149,8 @@
     if(screen==='builder')readDraft();
     if(screen==='programBuilder')readProgram();
     if(screen==='session'&&event.target.closest?.('input,textarea')){saveSessionInputs();return;}
-    if(event.target.name==='fi-mode'){
-      readProgram();programDraft.mode=event.target.value;render();return;
+    if(screen==='programBuilder'&&programDraft&&(event.target.name==='fi-mode'||event.target.dataset?.fiProgramRoutine!==undefined)){
+      render();return;
     }
     if(event.target.id==='fi-import-file'&&event.target.files?.[0]){
       importBackup(event.target.files[0]);event.target.value='';
