@@ -22,9 +22,12 @@
       draftBaseline='',programBaseline='',pickerOpen=false,
       focusedSession=null,message='',error=false,revisionConflict=false,clockTick=Date.now(),timerSecs=90,timerEnd=0,
       timerVisible=false,timerAutoPaused=false,sessionDirty=false,sessionViewMode='all',sessionExerciseIndex=0,
+      timerTargetSecs=90,timerTotalSecs=90,timerSource=null,timerGeneration=0,timerEnterPending=false,
+      timerClosing=false,timerPresetOpen=false,timerSoundEnabled=true,timerAlerted=false,restAudioContext=null,
       backgroundStoppedAt=null,previousCacheSession=null,
       sessionDialog=null,sheetClosing=false,sheetGeneration=0,sheetDrag=null,suppressHandleClickUntil=0;
   const previousCache=new Map();
+  const expandedSetSettings=new Set();
   try{
     store=M.createStore(root.localStorage);
     const result=store.load();
@@ -281,6 +284,21 @@
   const timeLabel=n=>String(Math.floor(n/3600)).padStart(2,'0')+':'+String(Math.floor((n%3600)/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
   const sessionButton=(action,label,classes='',attrs='')=>'<button type="button" class="'+classes+'" data-fi-action="'+action+'" '+attrs+'>'+label+'</button>';
   const restLabel=n=>Math.floor(n/60)+':'+String(n%60).padStart(2,'0');
+  const restClock=n=>String(Math.floor(n/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
+  const sessionIcons={
+    check:'<path d="m5 12 4 4L19 6"></path>',
+    checks:'<path d="m2 12 5 5L18 6M12 15l2 2 8-9"></path>',
+    pause:'<path d="M8 5v14M16 5v14" stroke-width="4"></path>',
+    play:'<path d="m8 5 11 7-11 7Z" fill="currentColor" stroke="none"></path>',
+    sound:'<path d="m11 5-5 4H3v6h3l5 4ZM15 8a6 6 0 0 1 0 8M18 5a10 10 0 0 1 0 14"></path>',
+    muted:'<path d="m11 5-5 4H3v6h3l5 4ZM16 9l5 6M21 9l-5 6"></path>',
+    close:'<path d="m6 6 12 12M18 6 6 18"></path>',
+    chevron:'<path d="m9 5 7 7-7 7"></path>',
+    more:'<circle cx="12" cy="5" r="1.5" fill="currentColor" stroke="none"></circle><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"></circle><circle cx="12" cy="19" r="1.5" fill="currentColor" stroke="none"></circle>',
+    minus:'<path d="M5 12h14"></path>',
+    plus:'<path d="M5 12h14M12 5v14"></path>'
+  };
+  const sessionIcon=name=>'<svg class="fs-symbol" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+sessionIcons[name]+'</svg>';
   const mainSetCount=s=>s.exercises.reduce((n,ex)=>n+ex.sets.filter(set=>set.done&&!set.warmup).length,0);
   const finishedExerciseCount=s=>s.exercises.filter(ex=>{const sets=ex.sets.filter(set=>!set.warmup);return sets.length&&sets.every(set=>set.done);}).length;
   function previousExercise(name,sessionId){
@@ -297,18 +315,20 @@
     const allDone=ex.sets.every(set=>set.done),hasDone=ex.sets.some(set=>set.done);
     const nextSet=ex.sets.find(set=>!set.done)||ex.sets.at(-1);
     let workIndex=0;
-    return '<article class="fs-exercise" data-fi-ex="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+'">'+
+    const settingsOpen=expandedSetSettings.has(ex.id);
+    return '<article class="fs-exercise'+(settingsOpen?' fs-settings-open':'')+'" data-fi-ex="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+'">'+
       '<div class="fs-ex-head"><div class="fs-art">'+(media?'<img src="'+esc(media.src)+'" alt="'+esc(media.alt)+'" width="96" height="112" loading="lazy">':'<span>이미지<br>준비 중</span>')+'</div>'+
       '<div class="fs-ex-title"><span class="fs-ex-order">EXERCISE '+String(index+1).padStart(2,'0')+'</span><h3>'+esc(ex.name)+'</h3><div class="fs-ex-meta">'+
       sessionButton('rest-exercise','◷ 휴식 '+restLabel(nextSet.restSec),'','data-id="'+esc(ex.id)+'" '+disabled)+
       '<span>'+(previousSet?'이전 '+esc(previous.date.slice(5).replace('-','.'))+' · '+fmt(previousSet.weight)+'kg × '+previousSet.reps+'회':previous?'이전 워밍업 기록 있음':'이전 기록 없음')+'</span></div></div>'+
-      '<div class="fs-ex-actions">'+sessionButton('replace-session-ex','⇄','fs-icon','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 종목 교체" title="'+(hasDone?'완료 체크를 해제한 뒤 교체할 수 있습니다':'종목 교체')+'" '+(enabled&&!hasDone?'':'disabled'))+'</div></div>'+
+      '<div class="fs-ex-actions">'+sessionButton('replace-session-ex','⇄','fs-icon','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 종목 교체" title="'+(hasDone?'완료 체크를 해제한 뒤 교체할 수 있습니다':'종목 교체')+'" '+(enabled&&!hasDone?'':'disabled'))+
+      sessionButton('toggle-set-settings',sessionIcon('more'),'fs-icon','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 세트 상세 설정" aria-expanded="'+settingsOpen+'" title="세트 휴식 시간 · RPE 설정"')+'</div></div>'+
       '<label class="sr-only" for="note-'+esc(ex.id)+'">'+esc(ex.name)+' 메모</label><input id="note-'+esc(ex.id)+'" class="fs-ex-note" data-fi-ex-note="'+esc(ex.id)+'" maxlength="2000" placeholder="이 종목의 메모를 남겨보세요" value="'+esc(ex.notes)+'" '+disabled+'>'+
       '<div class="fs-set-tools"><div class="fs-stepper">'+
       sessionButton('remove-session-set','−','','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 마지막 세트 삭제" '+(enabled&&ex.sets.length>1&&!ex.sets.at(-1).done?'':'disabled'))+
       '<span>'+ex.sets.length+' 세트</span>'+sessionButton('add-session-set','＋','','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 세트 추가" '+(enabled&&ex.sets.length<50?'':'disabled'))+'</div>'+
       sessionButton('load-previous','불러오기','fs-load','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+' 이전 기록 불러오기" title="'+(hasDone?'완료 체크를 해제한 뒤 불러올 수 있습니다':previous?'최근 완료 기록을 불러옵니다':'불러올 이전 완료 기록이 없습니다')+'" '+(enabled&&!hasDone&&previous?'':'disabled'))+
-      sessionButton('complete-exercise','✓✓','fs-all-done','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+(allDone?' 전체 완료 해제':' 전체 세트 완료')+'" aria-pressed="'+allDone+'" '+disabled)+'</div>'+
+      sessionButton('complete-exercise',sessionIcon('checks'),'fs-all-done','data-id="'+esc(ex.id)+'" aria-label="'+esc(ex.name)+(allDone?' 전체 완료 해제':' 전체 세트 완료')+'" title="'+(allDone?'전체 완료 해제':'전체 세트 완료')+'" aria-pressed="'+allDone+'" '+disabled)+'</div>'+
       '<div class="fs-columns" aria-hidden="true"><span>세트</span><span>중량</span><span>횟수</span><span>완료</span></div>'+
       ex.sets.map((set,j)=>{
         const count=set.warmup?'W':++workIndex;
@@ -316,11 +336,25 @@
           sessionButton('toggle-warmup',count,'fs-set-number'+(set.warmup?' fs-warmup':''),'data-ex="'+esc(ex.id)+'" data-id="'+esc(set.id)+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 '+(set.warmup?'본세트로 변경':'워밍업으로 변경')+'" aria-pressed="'+set.warmup+'" '+disabled)+
           '<label class="fs-number"><input type="number" inputmode="decimal" data-fi-kg min="0" max="2000" step="any" value="'+set.weight+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 중량" '+disabled+'><span>kg</span></label>'+
           '<label class="fs-number"><input type="number" inputmode="numeric" data-fi-reps min="1" max="1000" step="1" value="'+set.reps+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 횟수" '+disabled+'><span>회</span></label>'+
-          sessionButton('save-session-set','✓','fs-check','data-ex="'+esc(ex.id)+'" data-id="'+esc(set.id)+'" data-done="'+set.done+'" aria-pressed="'+set.done+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 '+(set.done?'완료 해제':'완료')+'" '+disabled)+'</div>'+
+          sessionButton('save-session-set',sessionIcon('check'),'fs-check','data-ex="'+esc(ex.id)+'" data-id="'+esc(set.id)+'" data-done="'+set.done+'" aria-pressed="'+set.done+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 '+(set.done?'완료 해제':'완료')+'" '+disabled)+'</div>'+
           '<details class="fs-set-details"><summary>'+ (j+1)+'세트 상세 <span>휴식 '+restLabel(set.restSec)+(set.rpe?' · RPE '+set.rpe:'')+'</span></summary><div>'+
           '<label>휴식(초)<input type="number" inputmode="numeric" data-fi-rest min="0" max="600" step="1" value="'+set.restSec+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 휴식 시간" '+disabled+'></label>'+
           '<label>RPE <small>선택 · 1–10</small><input type="number" inputmode="decimal" data-fi-rpe min="1" max="10" step="0.5" placeholder="—" value="'+(set.rpe??'')+'" aria-label="'+esc(ex.name)+' '+(j+1)+'세트 RPE" '+disabled+'></label></div></details></div>';
       }).join('')+'</article>';
+  }
+  function restTimerView(enabled){
+    const disabled=enabled?'':'disabled';
+    return '<div class="fs-rest" '+(timerVisible?'':'hidden')+(timerClosing?' data-closing="true"':'')+' role="group" aria-label="휴식 타이머">'+
+      '<div class="fs-rest-progress" aria-hidden="true"><span id="fi-rest-progress"></span></div>'+
+      '<div class="fs-rest-main"><div class="fs-rest-copy">'+sessionButton('timer-presets','<span id="fi-timer-label">휴식 '+restLabel(timerTargetSecs)+'</span>'+sessionIcon('chevron'),'fs-rest-preset','aria-label="휴식 시간 선택" aria-expanded="'+timerPresetOpen+'" '+disabled)+
+      '<strong id="fi-timer-number" role="timer" aria-label="남은 휴식 시간">'+restClock(Math.ceil(timerSecs))+'</strong></div>'+
+      '<div class="fs-rest-actions">'+sessionButton('timer-sound',sessionIcon(timerSoundEnabled?'sound':'muted'),'fs-icon fs-rest-sound','id="fi-timer-sound" aria-label="휴식 알림 소리 '+(timerSoundEnabled?'끄기':'켜기')+'" aria-pressed="'+timerSoundEnabled+'"')+
+      sessionButton('timer-skip',sessionIcon('close'),'fs-icon fs-rest-close','aria-label="휴식 타이머 닫기"')+'</div></div>'+
+      '<div class="fs-rest-presets" '+(timerPresetOpen?'':'hidden')+' role="group" aria-label="휴식 시간 빠른 선택">'+[30,60,90,120].map(seconds=>sessionButton('timer-preset',restLabel(seconds),'','data-seconds="'+seconds+'" aria-label="휴식 '+seconds+'초로 시작" '+disabled)).join('')+'</div>'+
+      '<div class="fs-rest-controls">'+sessionButton('timer-toggle',sessionIcon(timerEnd?'pause':'play'),'','id="fi-timer-toggle" aria-label="휴식 타이머 '+(timerEnd?'일시정지':'시작')+'" '+disabled)+
+      sessionButton('timer-subtract',sessionIcon('minus')+'<span>10초</span>','','aria-label="휴식 10초 줄이기" '+disabled)+
+      sessionButton('timer-add',sessionIcon('plus')+'<span>10초</span>','','aria-label="휴식 10초 추가" '+disabled)+'</div>'+
+      '<span id="fi-rest-status" class="sr-only" role="status" aria-live="polite"></span></div>';
   }
   function sessionView(){
     const s=current();
@@ -329,7 +363,7 @@
     const finishedExercises=finishedExerciseCount(s);
     sessionExerciseIndex=Math.min(sessionExerciseIndex,s.exercises.length-1);
     const shown=sessionViewMode==='one'?[[s.exercises[sessionExerciseIndex],sessionExerciseIndex]]:s.exercises.map((ex,i)=>[ex,i]);
-    return '<section class="fs-session" aria-label="진행 중인 운동"><div class="fs-scroll"><header class="fs-top">'+
+    return '<section class="fs-session" data-rest-open="'+timerVisible+'" aria-label="진행 중인 운동"><div class="fs-scroll"><header class="fs-top">'+
       sessionButton('minimize-session','<span class="sr-only">아래로 내려 닫기</span>','fs-sheet-handle','aria-label="운동 창 아래로 닫기"')+'<div class="fs-top-row">'+
       sessionButton('minimize-session','⌄','fs-icon fs-back','aria-label="운동 화면 접기"')+
       sessionButton(enabled?'pause':'resume','<span id="fi-duration">'+timeLabel(duration(s))+'</span><span aria-hidden="true">'+(enabled?'Ⅱ':'▶')+'</span>','fs-clock','aria-label="'+(enabled?'운동 일시정지':'운동 재개')+'"')+
@@ -346,8 +380,8 @@
       '<details class="fs-session-actions"><summary>운동 관리</summary><div class="fi-inline-actions">'+
       (s.status!=='SAVED'?button('stash','나중에 이어하기','outline'):'')+button('partial','여기까지 부분 완료','outline')+button('cancel-session','이 운동 취소','danger')+'</div><p>완료하면 기록에 저장됩니다. 운동 중의 종목·세트 변경은 원래 루틴에 영향을 주지 않습니다.</p></details>'+
       '<a class="fs-credits" href="exercise-credits.html" target="_blank" rel="noopener">운동 이미지 출처</a></div></div>'+
-      '<div class="fs-dock"><div class="fs-rest" '+(timerVisible?'':'hidden')+' role="group" aria-label="휴식 타이머"><div><span id="fi-timer-label">휴식</span><strong id="fi-timer-number">'+restLabel(Math.ceil(timerSecs))+'</strong></div>'+sessionButton('timer-toggle',timerEnd?'Ⅱ':'▶','fs-icon','id="fi-timer-toggle" aria-label="휴식 타이머 '+(timerEnd?'일시정지':'시작')+'" '+(enabled?'':'disabled'))+sessionButton('timer-add','+15초','','aria-label="휴식 15초 추가" '+(enabled?'':'disabled'))+sessionButton('timer-skip','닫기','','aria-label="휴식 타이머 닫기"')+'</div>'+
-      sessionButton('add-session-ex','<span aria-hidden="true">＋</span> 종목 추가','fs-add',enabled&&s.exercises.length<30?'':'disabled')+'</div></section>';
+      '<div class="fs-dock" data-rest-open="'+timerVisible+'">'+sessionButton('add-session-ex',sessionIcon('plus')+'<span>종목 추가</span>','fs-add',enabled&&s.exercises.length<30?'':'disabled')+
+      restTimerView(enabled)+'</div></section>';
   }
   function historyView(){
     const records=completed().slice().sort((a,b)=>b.startedAt.localeCompare(a.startedAt));
@@ -612,8 +646,45 @@
       paintMessage();return false;
     }
   }
-  function startRest(seconds){
-    timerSecs=seconds;timerVisible=seconds>0;timerEnd=seconds>0?Date.now()+seconds*1000:0;timerAutoPaused=false;
+  const restRemaining=()=>timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):timerSecs;
+  function prepareRestAudio(){
+    if(!timerSoundEnabled||document.hidden)return;
+    try{
+      const AudioContext=root.AudioContext||root.webkitAudioContext;
+      if(!AudioContext)return;
+      if(!restAudioContext||restAudioContext.state==='closed')restAudioContext=new AudioContext();
+      // Call resume during the initiating tap. Audio failure must never affect saving.
+      if(restAudioContext.state==='suspended')restAudioContext.resume()?.catch?.(()=>{});
+    }catch(e){}
+  }
+  function playRestAlert(){
+    if(!timerSoundEnabled||document.hidden||screen!=='session'||!sessionDialog?.open||current()?.status!=='ACTIVE'||restAudioContext?.state!=='running')return;
+    try{
+      for(const delay of [0,.22]){
+        const oscillator=restAudioContext.createOscillator(),gain=restAudioContext.createGain(),at=restAudioContext.currentTime+delay;
+        oscillator.type='sine';oscillator.frequency.setValueAtTime(880,at);
+        gain.gain.setValueAtTime(0,at);gain.gain.linearRampToValueAtTime(.15,at+.015);gain.gain.exponentialRampToValueAtTime(.001,at+.16);
+        oscillator.connect(gain);gain.connect(restAudioContext.destination);
+        oscillator.onended=()=>{oscillator.disconnect();gain.disconnect();};
+        oscillator.start(at);oscillator.stop(at+.17);
+      }
+    }catch(e){}
+  }
+  function settleRest(){
+    if(timerEnd&&Date.now()>=timerEnd){
+      timerSecs=0;timerEnd=0;timerAutoPaused=false;
+      // Consume expiry even while muted, hidden or on another screen: no delayed alert on return.
+      if(!timerAlerted){timerAlerted=true;playRestAlert();}
+    }
+  }
+  function startRest(seconds,source=null){
+    seconds=Math.max(0,Math.min(600,Math.round(Number(seconds)||0)));
+    if(!seconds){resetRest();return;}
+    timerEnterPending=!timerVisible||timerClosing;
+    timerGeneration++;timerClosing=false;timerPresetOpen=false;timerAlerted=false;
+    timerSecs=seconds;timerTargetSecs=seconds;timerTotalSecs=seconds;timerSource=source;
+    timerVisible=true;timerEnd=Date.now()+seconds*1000;timerAutoPaused=false;
+    prepareRestAudio();
   }
   function pauseRest(){
     if(timerEnd){timerSecs=Math.max(0,Math.ceil((timerEnd-Date.now())/1000));timerEnd=0;timerAutoPaused=timerSecs>0;}
@@ -622,7 +693,30 @@
     if(timerVisible&&timerAutoPaused&&timerSecs>0)timerEnd=Date.now()+timerSecs*1000;
     timerAutoPaused=false;
   }
-  function resetRest(){timerEnd=0;timerSecs=90;timerVisible=false;timerAutoPaused=false;}
+  function resetRest(){
+    timerGeneration++;timerEnd=0;timerSecs=90;timerTargetSecs=90;timerTotalSecs=90;
+    timerVisible=false;timerAutoPaused=false;timerSource=null;timerClosing=false;timerPresetOpen=false;timerEnterPending=false;timerAlerted=true;
+  }
+  function closeRest(){
+    if(!timerVisible||timerClosing)return;
+    const source=timerSource,generation=++timerGeneration;
+    timerSecs=restRemaining();timerEnd=0;timerAutoPaused=false;timerAlerted=true;timerClosing=true;timerPresetOpen=false;timerEnterPending=false;
+    paintTimer();
+    const finish=()=>{
+      if(generation!==timerGeneration||!timerClosing)return;
+      const hadFocus=host.querySelector('.fs-rest')?.contains?.(document.activeElement);
+      resetRest();paintTimer();
+      if(hadFocus){
+        const action=source?.setid?'save-session-set':source?.exid?'rest-exercise':'add-session-ex';
+        const target=Array.from(host.querySelectorAll('[data-fi-action="'+action+'"]')).find(el=>!el.disabled&&(!source||el.dataset.id===(source.setid||source.exid)));
+        (target||host.querySelector('.fs-add'))?.focus?.({preventScroll:true});
+      }
+    };
+    if(root.setTimeout)root.setTimeout(finish,180);else finish();
+  }
+  function undoRestFor(exid,setid){
+    if(timerSource?.setid&&timerSource.sessionId===current()?.id&&timerSource.exid===exid&&(setid===undefined||timerSource.setid===setid))closeRest();
+  }
   function sessionSet(button){
     const row=button.closest?.('[data-fi-set]'),session=current();
     if(!session||session.status!=='ACTIVE')return;
@@ -631,7 +725,8 @@
     if(!previous)return;
     if(saveSessionInputs([{exid,setid,values:{done:!previous.done}}],previous.done?'세트 완료를 해제했습니다.':'세트를 완료했습니다.')){
       const saved=current().exercises.find(ex=>ex.id===exid).sets.find(set=>set.id===setid);
-      if(saved.done)startRest(saved.restSec);
+      if(saved.done)startRest(saved.restSec,{sessionId:session.id,exid,setid});
+      else undoRestFor(exid,setid);
       render();
     }
   }
@@ -694,16 +789,41 @@
     }catch(e){setMessage(e.message,true);render();}
   }
   function paintTimer(){
+    settleRest();
     if(screen!=='session')return;
     const ticker=host.querySelector('#fi-timer-number'),dur=host.querySelector('#fi-duration');
-    if(timerEnd&&Date.now()>=timerEnd){timerSecs=0;timerEnd=0;}
-    const remaining=timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):timerSecs;
-    if(ticker)ticker.textContent=restLabel(remaining);
+    const remaining=restRemaining(),restState=remaining<=0?'done':timerEnd?'running':'paused';
+    if(ticker)ticker.textContent=restClock(remaining);
     if(dur&&current())dur.textContent=timeLabel(duration(current()));
     const label=host.querySelector('#fi-timer-label'),toggle=host.querySelector('#fi-timer-toggle'),rest=host.querySelector('.fs-rest');
-    if(label)label.textContent=remaining<=0?'휴식 완료':timerAutoPaused?'휴식 일시정지':'휴식';
-    if(toggle){toggle.textContent=timerEnd?'Ⅱ':'▶';toggle.setAttribute?.('aria-label',timerEnd?'휴식 타이머 일시정지':'휴식 타이머 시작');}
-    if(rest)rest.hidden=!timerVisible;
+    if(label)label.textContent=remaining<=0?'휴식 완료':'휴식 '+restLabel(timerTargetSecs);
+    if(toggle){
+      const icon=timerEnd?'pause':'play';
+      if(toggle.dataset.icon!==icon){toggle.innerHTML=sessionIcon(icon);toggle.dataset.icon=icon;}
+      toggle.setAttribute?.('aria-label',timerEnd?'휴식 타이머 일시정지':remaining<=0?'휴식 타이머 다시 시작':'휴식 타이머 시작');
+    }
+    if(rest){
+      rest.hidden=!timerVisible;rest.dataset.state=restState;
+      if(timerClosing)rest.dataset.closing='true';else delete rest.dataset.closing;
+      if(timerEnterPending&&timerVisible&&!timerClosing){
+        timerEnterPending=false;rest.dataset.entering='true';
+        if(root.setTimeout)root.setTimeout(()=>{delete rest.dataset.entering;},220);
+      }
+    }
+    const progress=host.querySelector('#fi-rest-progress');
+    if(progress)progress.style?.setProperty('width',Math.max(0,Math.min(100,100*(1-remaining/Math.max(1,timerTotalSecs))))+'%');
+    const sound=host.querySelector('#fi-timer-sound');
+    if(sound){
+      const icon=timerSoundEnabled?'sound':'muted';
+      if(sound.dataset.icon!==icon){sound.innerHTML=sessionIcon(icon);sound.dataset.icon=icon;}
+      sound.setAttribute?.('aria-pressed',String(timerSoundEnabled));sound.setAttribute?.('aria-label','휴식 알림 소리 '+(timerSoundEnabled?'끄기':'켜기'));
+    }
+    const presetButton=host.querySelector('[data-fi-action="timer-presets"]'),presets=host.querySelector('.fs-rest-presets');
+    if(presetButton)presetButton.setAttribute?.('aria-expanded',String(timerPresetOpen));
+    if(presets)presets.hidden=!timerPresetOpen;
+    const status=host.querySelector('#fi-rest-status'),statusText=remaining<=0?'휴식이 끝났습니다. 다음 세트를 시작하세요.':timerEnd?'휴식 타이머가 진행 중입니다.':'휴식 타이머가 일시정지되었습니다.';
+    if(status&&status.textContent!==statusText)status.textContent=timerVisible?statusText:'';
+    for(const el of host.querySelectorAll('.fs-session,.fs-dock'))el.dataset.restOpen=String(timerVisible);
   }
   function paintSessionMetrics(){
     const s=current();if(screen!=='session'||!s)return;
@@ -749,12 +869,16 @@
   function onAction(button){
     if(sheetClosing)return;
     const action=button.dataset.fiAction,id=button.dataset.id;
-    if(screen==='session'&&['pause','stash','resume','minimize-session','toggle-session-view','session-prev','session-next','add-session-set','remove-session-set','load-previous','complete-exercise','rest-exercise'].includes(action)&&!saveSessionInputs())return;
+    if(screen==='session'&&['pause','stash','resume','minimize-session','toggle-session-view','toggle-set-settings','session-prev','session-next','add-session-set','remove-session-set','load-previous','complete-exercise','rest-exercise'].includes(action)&&!saveSessionInputs())return;
     if(action==='minimize-session'){
       if(button.classList?.contains('fs-sheet-handle')&&Date.now()<suppressHandleClickUntil)return;
       dismissSessionSheet();return;
     }
     if(action==='toggle-session-view'){sessionViewMode=sessionViewMode==='all'?'one':'all';render();return;}
+    if(action==='toggle-set-settings'){
+      if(expandedSetSettings.has(id))expandedSetSettings.delete(id);else expandedSetSettings.add(id);
+      render();return;
+    }
     if(action==='session-prev'||action==='session-next'){
       const s=current();if(!s)return;
       sessionExerciseIndex=Math.max(0,Math.min(s.exercises.length-1,sessionExerciseIndex+(action==='session-next'?1:-1)));render();return;
@@ -770,7 +894,9 @@
       const ex=current()?.exercises.find(ex=>ex.id===id);if(!ex||current().status!=='ACTIVE')return;
       const done=!ex.sets.every(set=>set.done);
       if(saveSessionInputs(ex.sets.map(set=>({exid:id,setid:set.id,values:{done}})),done?'이 종목의 모든 세트를 완료했습니다.':'이 종목의 완료를 해제했습니다.')){
-        if(done)startRest(ex.sets.at(-1).restSec);render();
+        if(done){const last=current().exercises.find(item=>item.id===id).sets.at(-1);startRest(last.restSec,{sessionId:current().id,exid:id,setid:last.id});}
+        else undoRestFor(id);
+        render();
       }return;
     }
     if(action==='toggle-warmup'){
@@ -780,7 +906,7 @@
     }
     if(action==='rest-exercise'){
       const ex=current()?.exercises.find(ex=>ex.id===id);if(!ex||current().status!=='ACTIVE')return;
-      startRest((ex.sets.find(set=>!set.done)||ex.sets.at(-1)).restSec);paintTimer();return;
+      startRest((ex.sets.find(set=>!set.done)||ex.sets.at(-1)).restSec,{sessionId:current().id,exid:id,setid:null});paintTimer();return;
     }
     if(action==='back-home'){go('home');return;}
     if(action==='start-free'){
@@ -836,7 +962,7 @@
       if(action==='resume'&&s.status==='ACTIVE'){go('session');return;}
       const trans=action==='resume'?(s.status==='SAVED'?'resumeSaved':'resume'):action==='stash'&&s.status==='PAUSED'?'stashPaused':action;
       if(changed(()=>M.changeState(state,s.id,trans),action==='resume'?'운동을 재개했습니다.':'운동 상태를 저장했습니다.',false)){
-        if(action==='resume')resumeRest();else pauseRest();
+        if(action==='resume'){resumeRest();prepareRestAudio();}else pauseRest();
         if(action==='stash')go('home');else go('session');
       }
       return;
@@ -851,20 +977,34 @@
     if(action==='record-detail'){focusedSession=id;go('history');return;}
     if(action==='save-from-history'){saveFromHistory(id);return;}
     if(action==='apply-from-history'){applyFromHistory(id);return;}
-    if(action==='timer90'||action==='timer120'){
-      timerSecs=action==='timer90'?90:120;timerEnd=0;timerVisible=true;timerAutoPaused=false;paintTimer();return;
+    if(action==='timer-skip'){closeRest();return;}
+    if(action==='timer-sound'){
+      timerSoundEnabled=!timerSoundEnabled;prepareRestAudio();paintTimer();return;
     }
-    if(action==='timer-skip'){resetRest();paintTimer();return;}
-    if(action==='timer-add'){
-      if(current()?.status!=='ACTIVE')return;
-      timerSecs=Math.min(600,(timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):timerSecs)+15);
-      if(timerEnd)timerEnd=Date.now()+timerSecs*1000;
+    if(action==='timer-presets'){
+      if(current()?.status!=='ACTIVE'||timerClosing)return;
+      timerPresetOpen=!timerPresetOpen;paintTimer();return;
+    }
+    if(action==='timer-preset'){
+      const seconds=Number(button.dataset.seconds);
+      if(current()?.status!=='ACTIVE'||![30,60,90,120].includes(seconds))return;
+      startRest(seconds,timerSource);paintTimer();return;
+    }
+    if(action==='timer-add'||action==='timer-subtract'){
+      if(current()?.status!=='ACTIVE'||timerClosing||!timerVisible)return;
+      settleRest();
+      const remaining=restRemaining(),running=!!timerEnd;
+      timerSecs=Math.max(0,Math.min(600,remaining+(action==='timer-add'?10:-10)));
+      timerTotalSecs=Math.max(1,timerTotalSecs+timerSecs-remaining);
+      if(timerSecs>0)timerAlerted=false;
+      if(running)timerEnd=Date.now()+timerSecs*1000;
       paintTimer();return;
     }
     if(action==='timer-toggle'){
-      if(current()?.status!=='ACTIVE')return;
-      if(timerEnd){timerSecs=Math.max(0,Math.ceil((timerEnd-Date.now())/1000));timerEnd=0;}
-      else {if(timerSecs<=0)timerSecs=90;timerEnd=Date.now()+timerSecs*1000;}
+      if(current()?.status!=='ACTIVE'||timerClosing||!timerVisible)return;
+      settleRest();
+      if(timerEnd){timerSecs=restRemaining();timerEnd=0;}
+      else {if(timerSecs<=0){timerSecs=timerTargetSecs||90;timerTotalSecs=timerSecs;timerAlerted=false;}timerEnd=Date.now()+timerSecs*1000;prepareRestAudio();}
       timerVisible=true;timerAutoPaused=false;paintTimer();return;
     }
     if(action==='export'){downloadBackup();return;}
@@ -925,7 +1065,8 @@
     const s=current();
     if(s?.status==='ACTIVE'&&!blocked&&!revisionConflict){
       if(!saveSessionInputs()){backgroundStoppedAt=backgroundStoppedAt??Date.now();pauseRest();return;}
-      try{state=store.save(M.changeState(state,s.id,'stash').next,state.revision);pauseRest();root.dispatchEvent(new CustomEvent('formday:iron-changed'));}catch(e){}
+      try{state=store.save(M.changeState(state,s.id,'stash').next,state.revision);pauseRest();root.dispatchEvent(new CustomEvent('formday:iron-changed'));}
+      catch(e){backgroundStoppedAt=backgroundStoppedAt??Date.now();pauseRest();setMessage('화면 전환 중 저장에 실패했습니다. '+e.message,true);paintMessage();}
     }
   });
   root.addEventListener('beforeunload',event=>{
