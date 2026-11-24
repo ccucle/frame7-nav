@@ -461,3 +461,14 @@ test('resuming a saved workout enters its session and repeated resume never star
   assert.equal(JSON.stringify(view.api.getSnapshot()),before);
   assert.equal(view.api.getSnapshot().sessions.length,1);
 });
+test('confirmed routine cancellation replaces the unsaved exercise-added banner with its actual outcome',()=>{
+  const view=ui();view.action('new-routine');view.fields.get('#fi-routine-name').value='취소할 초안';
+  view.action('add-builder-ex');assert.equal(view.choose(['스쿼트','랫풀다운']),true);
+  assert.match(view.banner.textContent,/2개 종목을 추가했습니다/);
+  view.answers.push(true);view.action('routine-list');
+  assert.equal(view.api.getSnapshot().routines.length,0);
+  assert.equal(view.api.canCloudApply(),true);
+  assert.match(view.host.innerHTML,/data-fi-nav="routines" aria-current="page"/);
+  assert.equal(view.banner.textContent,'저장하지 않은 변경사항을 취소했습니다.');
+  assert.doesNotMatch(view.host.innerHTML,/2개 종목을 추가했습니다/);
+});

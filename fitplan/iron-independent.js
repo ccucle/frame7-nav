@@ -79,8 +79,10 @@
   }
   function beforeNavigate(){
     if(pickerOpen||root.FormdayExercisePicker?.isOpen?.()){setMessage('종목 선택을 완료하거나 선택창을 닫은 뒤 이동해 주세요.',true);paintMessage();return false;}
-    if(hasUnsavedDraft()&&!root.confirm('저장하지 않은 루틴 또는 프로그램 변경사항을 버리고 이동할까요? 계속 작성하려면 취소를 누르세요.'))return false;
+    const discarded=hasUnsavedDraft();
+    if(discarded&&!root.confirm('저장하지 않은 루틴 또는 프로그램 변경사항을 버리고 이동할까요? 계속 작성하려면 취소를 누르세요.'))return false;
     clearDrafts();
+    if(discarded)setMessage('저장하지 않은 변경사항을 취소했습니다.');
     return true;
   }
   function go(page){
