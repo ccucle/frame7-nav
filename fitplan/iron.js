@@ -154,7 +154,7 @@
       '<div class="fd-filter-heading">장비 종류</div><div class="fd-filter-buttons fd-equip-buttons">'+equipmentOptions.map(g=>'<button data-fd-equip="'+html(g)+'" class="'+(g===equipment?'active':'')+'">'+html(g)+'</button>').join('')+'</div>'+
       '<div class="fd-library-body"><div class="fd-library-list"><div class="fd-results-top"><h3>운동 종목</h3><small id="fd-lib-count"></small></div><div class="fd-exercise-grid" id="fd-lib-results"></div><button id="fd-lib-more" class="fd-outline-wide" hidden>운동 더 보기 ＋</button></div>'+
       '<aside id="fd-lib-detail" class="fd-detail-column"></aside></div>'+
-      '<div class="fd-credits">운동 이미지: <a href="https://unsplash.com/license" target="_blank" rel="noopener noreferrer">Unsplash 라이선스</a> · 종목별 정확한 자세 사진이 아닌 대표 분위기 이미지입니다. Gymwork의 시각 자산이나 텍스트를 복제하지 않았습니다.</div></section>';
+      '<div class="fd-credits">운동 삽화: Bryl Lim · 일부 원저작물 Everkinetic / Greg Priday · CC BY-SA 4.0. <a href="exercise-credits.html" target="_blank" rel="noopener noreferrer">종목별 이미지 출처와 라이선스 ↗</a></div></section>';
   }
   function libraryResults(){
     if(screen!=='library')return;
