@@ -1,41 +1,53 @@
-/* Active workout workspace. Loaded after the shared FORMDAY theme.
-   Scope the shell changes to both the route and its active session view. */
-body[data-fd-screen="independent"][data-fi-session="true"] .app {
-  display: block;
-  max-width: none;
-  min-height: 100vh;
-  min-height: 100dvh;
-  overflow: visible;
-}
-body[data-fd-screen="independent"][data-fi-session="true"] .app > .sidebar,
-body[data-fd-screen="independent"][data-fi-session="true"] .app > .rightbar,
-body[data-fd-screen="independent"][data-fi-session="true"] .main > .toprow,
-body[data-fd-screen="independent"][data-fi-session="true"] .main > #storage-status:not(.storage-error),
-body[data-fd-screen="independent"][data-fi-session="true"] .main > #demo-banner,
-body[data-fd-screen="independent"][data-fi-session="true"] > .mobile-nav,
-body[data-fd-screen="independent"][data-fi-session="true"] #fd-ind-root > .fi-hub-nav,
-body[data-fd-screen="independent"][data-fi-session="true"] #fd-ind-root > .fi-backup {
-  display: none;
-}
-body[data-fd-screen="independent"][data-fi-session="true"] .main {
-  width: 100%;
-  max-width: none;
-  margin: 0;
-  padding: 0;
-  overflow: visible;
-}
-body[data-fd-screen="independent"][data-fi-session="true"] #fd-ind-root {
-  margin: 0;
+/* Active workout bottom sheet. The existing site stays visible behind the
+   native modal; only the sheet's inner viewport scrolls while it is open. */
+body.fs-sheet-open { overflow: hidden; }
+dialog.fs-sheet {
+  position: fixed;
+  inset: auto 0 0;
+  width: min(900px, calc(100% - 32px));
+  height: calc(100vh - max(36px, 6vh) - env(safe-area-inset-top, 0px));
+  height: calc(100dvh - max(36px, 6dvh) - env(safe-area-inset-top, 0px));
+  max-width: 900px;
+  max-height: calc(100vh - max(36px, 6vh) - env(safe-area-inset-top, 0px));
+  max-height: calc(100dvh - max(36px, 6dvh) - env(safe-area-inset-top, 0px));
   min-width: 0;
-  overflow: visible;
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 24px 24px 0 0;
+  overflow: hidden;
+  color: var(--fd-text);
+  background: var(--fd-canvas);
+  box-shadow: 0 -16px 80px #0006;
+  color-scheme: dark;
+  transform: translateY(var(--fs-drag-offset, 0px));
 }
-body[data-fd-screen="independent"][data-fi-session="true"] #fi-banner {
-  max-width: 852px;
-  margin: 14px auto;
+dialog.fs-sheet:not([open]) { display: none; }
+dialog.fs-sheet::backdrop {
+  background: #05080dab;
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
 }
-body[data-fd-screen="independent"][data-fi-session="true"] .storage-error {
-  margin: 12px 16px;
+dialog.fs-sheet[data-entering="true"] { animation: fs-sheet-up 220ms cubic-bezier(.22, 1, .36, 1) both; }
+dialog.fs-sheet[data-entering="true"]::backdrop { animation: fs-sheet-backdrop-in 220ms ease-out both; }
+dialog.fs-sheet[data-closing="true"] { animation: fs-sheet-down 180ms ease-in both; pointer-events: none; }
+dialog.fs-sheet[data-closing="true"]::backdrop { animation: fs-sheet-backdrop-out 180ms ease-in both; }
+@keyframes fs-sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes fs-sheet-down { from { transform: translateY(var(--fs-drag-offset, 0px)); } to { transform: translateY(100%); } }
+@keyframes fs-sheet-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fs-sheet-backdrop-out { from { opacity: 1; } to { opacity: 0; } }
+.fs-scroll {
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-padding-top: 220px;
+  scroll-padding-bottom: 180px;
 }
+.fs-sheet #fi-banner { max-width: none; margin: 0 0 20px; }
 
 .fs-session {
   --fs-page-space: 24px;
@@ -43,8 +55,10 @@ body[data-fd-screen="independent"][data-fi-session="true"] .storage-error {
   --fs-row-columns: 48px minmax(0, 1fr) minmax(0, 1fr) 52px;
   color: var(--fd-text);
   background: var(--fd-canvas);
-  min-height: 100vh;
-  min-height: 100dvh;
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  max-height: 100%;
 }
 .fs-session *, .fs-dock * { box-sizing: border-box; }
 .fs-session button, .fs-session input, .fs-session textarea {
@@ -63,12 +77,30 @@ body[data-fd-screen="independent"][data-fi-session="true"] .storage-error {
   position: sticky;
   top: 0;
   z-index: 18;
-  padding-top: env(safe-area-inset-top, 0px);
+  padding-top: 0;
   border-bottom: 1px solid var(--fd-border);
   background: #101319f5;
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
+.fs-session .fs-sheet-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 24px 24px 0 0;
+  background: transparent;
+  touch-action: none;
+  cursor: grab;
+}
+.fs-sheet-handle::before { content: ''; display: block; width: 38px; height: 4px; border-radius: 4px; background: var(--fd-border-strong); }
+.fs-session .fs-sheet-handle:focus-visible { outline-offset: -6px; }
+.fs-sheet-handle:hover::before, .fs-sheet-handle:focus-visible::before { background: var(--fd-muted); }
+.fs-sheet-handle:active { cursor: grabbing; }
 .fs-top-row, .fs-metrics {
   max-width: 900px;
   margin-inline: auto;
@@ -242,7 +274,7 @@ textarea.fs-note-input { min-height: 66px; max-height: 180px; }
   border: 1px solid var(--fd-border);
   border-radius: 18px;
   background: var(--fd-surface);
-  scroll-margin-top: calc(178px + env(safe-area-inset-top, 0px));
+  scroll-margin-top: 220px;
 }
 .fs-ex-head { display: flex; align-items: center; gap: 18px; min-width: 0; }
 .fs-art {
@@ -396,11 +428,10 @@ textarea.fs-note-input { min-height: 66px; max-height: 180px; }
 .fs-credits { display: inline-flex; align-items: center; min-height: 44px; margin-top: 10px; color: var(--fd-subtle); font-size: 11px; text-underline-offset: 4px; }
 .fd-ind-root .fi-history-note { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 12px; color: var(--fd-muted); font-size: 12px; line-height: 1.7; }
 .fs-dock {
-  position: fixed;
+  position: absolute;
   z-index: 19;
   bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
@@ -474,7 +505,9 @@ body.fs-keyboard .fs-dock { display: none; }
 .fd-ind-root input.fs-ex-note { font-size: 16px; font-weight: 400; line-height: 1.5; }
 
 @media (max-width: 600px) {
+  dialog.fs-sheet { width: 100%; max-width: 100%; border-left: 0; border-right: 0; }
   .fs-session { --fs-page-space: 16px; --fs-row-gap: 9px; --fs-row-columns: 44px minmax(0, 1fr) minmax(0, 1fr) 48px; }
+  .fs-scroll { scroll-padding-top: 210px; scroll-padding-bottom: 220px; }
   .fs-top-row { min-height: 76px; gap: 9px; padding-block: 12px 8px; }
   .fs-clock { gap: 11px; min-height: 48px; padding-inline: 14px; }
   .fd-ind-root .fs-clock { font-size: 22px; }
@@ -485,7 +518,7 @@ body.fs-keyboard .fs-dock { display: none; }
   .fs-body { padding-top: 24px; padding-bottom: calc(220px + env(safe-area-inset-bottom, 0px)); }
   .fs-heading h2 { font-size: 28px; }
   .fs-exercises { gap: 20px; }
-  .fs-exercise { padding: 20px 13px 13px; border-radius: 15px; scroll-margin-top: calc(161px + env(safe-area-inset-top, 0px)); }
+  .fs-exercise { padding: 20px 13px 13px; border-radius: 15px; scroll-margin-top: 210px; }
   .fs-ex-head { gap: 12px; align-items: flex-start; }
   .fs-art { flex-basis: 76px; width: 76px; height: 92px; padding: 7px; border-radius: 12px; }
   .fs-ex-title { padding-top: 3px; }
@@ -510,7 +543,7 @@ body.fs-keyboard .fs-dock { display: none; }
   .fs-rest { flex-basis: 100%; min-height: 56px; padding: 6px 10px; }
   .fs-add { margin-left: auto; min-height: 54px; padding: 12px 20px; }
   .fd-ind-root .fs-add { font-size: 15px; }
-  body[data-fd-screen="independent"][data-fi-session="true"] #fi-banner { margin: 12px 16px; }
+  .fs-sheet #fi-banner { margin: 0 0 18px; }
 }
 @media (max-width: 360px) {
   .fs-session { --fs-page-space: 12px; --fs-row-gap: 6px; }
@@ -533,4 +566,6 @@ body.fs-keyboard .fs-dock { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .fs-session *, .fs-session *::before, .fs-session *::after { scroll-behavior: auto !important; transition: none !important; }
+  dialog.fs-sheet[data-entering="true"], dialog.fs-sheet[data-closing="true"],
+  dialog.fs-sheet[data-entering="true"]::backdrop, dialog.fs-sheet[data-closing="true"]::backdrop { animation: none !important; }
 }
