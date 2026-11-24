@@ -298,17 +298,17 @@
       button('program-list','← 프로그램 목록','outline')+'</div><div class="fi-panel"><label class="fi-label" for="fi-program-name">프로그램 이름</label><input id="fi-program-name" class="fi-text-input" maxlength="100" value="'+esc(programDraft.name)+'">'+
       '<div class="fi-mode-row"><label><input type="radio" name="fi-mode" value="cycle" '+(programDraft.mode==='cycle'?'checked':'')+'> 순환형</label>'+
       '<label><input type="radio" name="fi-mode" value="fixed" '+(programDraft.mode==='fixed'?'checked':'')+'> 요일 고정형</label></div>'+
-      '<div class="fi-section-head"><h3>포함할 루틴과 순서</h3><small>'+selected.length+' / 14</small></div><p class="fi-note">루틴을 선택하고 위·아래 버튼으로 순서를 조정하세요. 순환형은 목록 순서대로 진행합니다.</p>'+
+      (programDraft.mode==='cycle'?'<div class="fi-section-head"><h3>포함할 루틴과 순서</h3><small>'+selected.length+' / 14</small></div><p class="fi-note">루틴을 선택하고 위·아래 버튼으로 순서를 조정하세요. 순환형은 목록 순서대로 진행합니다.</p>'+
       ordered.map(r=>{
         const index=selected.indexOf(r.id),included=index!==-1;
         const attrs='data-id="'+esc(r.id)+'"';
         return '<div class="fi-program-row"><label class="fi-program-check"><input type="checkbox" data-fi-program-routine="'+esc(r.id)+'" '+(included?'checked':'')+'><span>'+(included?'<small class="fi-program-position">'+(index+1)+'</small>':'')+esc(r.name)+'</span></label>'+
           (included?'<div class="fi-program-order">'+button('program-move-up','↑','outline',attrs+' aria-label="'+esc(r.name)+' 위로 이동" '+(index===0?'disabled':''))+
             button('program-move-down','↓','outline',attrs+' aria-label="'+esc(r.name)+' 아래로 이동" '+(index===selected.length-1?'disabled':''))+'</div>':'')+'</div>';
-      }).join('')+
-      (programDraft.mode==='fixed'?'<h3>요일별 루틴 배치</h3>'+Array.from({length:7},(_,i)=>i).map(day=>
+      }).join(''):'')+
+      (programDraft.mode==='fixed'?'<h3>요일별 루틴 배치</h3><p class="fi-note">요일마다 루틴을 바로 선택하세요. 쉬는 날은 운동 없음으로 두면 됩니다.</p>'+Array.from({length:7},(_,i)=>i).map(day=>
       '<label class="fi-day-picker">'+weekdays[day]+'요일 <select data-fi-weekday="'+day+'"><option value="">운동 없음</option>'+
-      ordered.filter(r=>selected.includes(r.id)).map(r=>'<option value="'+esc(r.id)+'" '+(programDraft.weekdays[day]===r.id?'selected':'')+'>'+esc(r.name)+'</option>').join('')+'</select></label>').join(''):'')+
+      state.routines.map(r=>'<option value="'+esc(r.id)+'" '+(programDraft.weekdays[day]===r.id?'selected':'')+'>'+esc(r.name)+'</option>').join('')+'</select></label>').join(''):'')+
       '<p class="fi-note">변경한 구성은 앞으로 사용할 프로그램에만 적용되며 이미 시작했거나 완료한 운동의 종목과 세트 기록은 그대로 유지됩니다.</p>'+
       '</div><div class="fi-sticky-actions">'+button('save-program',editingProgram?'변경사항 저장':'프로그램 저장')+button('program-list','취소','outline')+'</div></section>';
   }
@@ -551,14 +551,18 @@
     const name=host.querySelector('#fi-program-name');
     if(!name)return;
     programDraft.name=name.value;
-    const checked=Array.from(host.querySelectorAll('[data-fi-program-routine]')).filter(x=>x.checked).map(x=>x.dataset.fiProgramRoutine);
-    programDraft.selected=[...programDraft.selected.filter(id=>checked.includes(id)),...checked.filter(id=>!programDraft.selected.includes(id))];
+    const checkboxes=Array.from(host.querySelectorAll('[data-fi-program-routine]'));
+    // Read only controls that are actually rendered. Switching modes must
+    // not clear the other mode's draft or filter available weekday choices.
+    if(checkboxes.length){
+      const checked=checkboxes.filter(x=>x.checked).map(x=>x.dataset.fiProgramRoutine);
+      programDraft.selected=[...programDraft.selected.filter(id=>checked.includes(id)),...checked.filter(id=>!programDraft.selected.includes(id))];
+    }
     const fields=Array.from(host.querySelectorAll('[data-fi-weekday]'));
     if(fields.length)for(const el of fields){
-      if(el.value&&programDraft.selected.includes(el.value))programDraft.weekdays[el.dataset.fiWeekday]=el.value;
+      if(el.value&&state.routines.some(r=>r.id===el.value))programDraft.weekdays[el.dataset.fiWeekday]=el.value;
       else delete programDraft.weekdays[el.dataset.fiWeekday];
     }
-    for(const [day,id] of Object.entries(programDraft.weekdays))if(!programDraft.selected.includes(id))delete programDraft.weekdays[day];
     const mode=host.querySelector('input[name=fi-mode]:checked')?.value;
     if(mode)programDraft.mode=mode;
   }
@@ -1048,6 +1052,7 @@
     if(action==='program-move-up'||action==='program-move-down'){
       if(screen!=='programBuilder'||!programDraft)return;
       readProgram();
+      if(programDraft.mode!=='cycle')return;
       const index=programDraft.selected.indexOf(id),target=index+(action==='program-move-up'?-1:1);
       if(index>=0&&target>=0&&target<programDraft.selected.length){
         const selected=programDraft.selected;
@@ -1062,8 +1067,14 @@
       readProgram();
       const {name,mode,selected,weekdays}=programDraft;
       const assignments=mode==='fixed'?weekdays:{};
-      if(changed(()=>editingProgram?M.updateProgram(state,editingProgram,name,mode,selected,assignments):
-        M.createProgram(state,name,mode,selected,assignments),
+      // Fixed schedules derive their unique routine IDs from the seven days.
+      // The same routine may be assigned to several days without duplicates.
+      const routineIds=mode==='fixed'?[...new Set(Object.keys(assignments).sort((a,b)=>((Number(a)+6)%7)-((Number(b)+6)%7)).map(day=>assignments[day]))]:selected;
+      if(mode==='fixed'&&!routineIds.length){
+        setMessage('요일별 루틴 배치에서 하루 이상 운동을 지정해 주세요.',true);render();return;
+      }
+      if(changed(()=>editingProgram?M.updateProgram(state,editingProgram,name,mode,routineIds,assignments):
+        M.createProgram(state,name,mode,routineIds,assignments),
         editingProgram?'훈련 프로그램을 수정했습니다.':'훈련 프로그램을 저장했습니다.')){clearDrafts();go('programs');}return;
     }
     if(action==='pause'||action==='stash'||action==='resume'){
