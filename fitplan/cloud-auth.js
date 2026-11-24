@@ -45,7 +45,12 @@ function showUser(next){
  if(googleBtn)googleBtn.hidden=!!next;
  if(logoutBtn)logoutBtn.hidden=!next;
  if(account)account.textContent=next?(next.email||'Google 계정 로그인됨'):'로그인하지 않았습니다';
- if(button)button.textContent=next?'👤 계정 확인됨':'👤 Google 로그인';
+ if(button){
+  const label=next?'계정 확인됨':'Google 로그인';
+  button.setAttribute('aria-label',label);
+  button.title=label;
+  button.dataset.signedIn=next?'true':'false';
+ }
  if(pwaNotice)pwaNotice.hidden=!standalone||!!next;
  if(warning)warning.textContent=next?'로그인되었습니다. 기기 동기화에서 캘린더와 웨이트의 연결 상태를 각각 확인하세요. 연결된 기록은 온라인에서 자동 동기화되며, 이 기기에도 저장됩니다.':'같은 Google 계정으로 로그인하면 기기 동기화를 연결할 수 있습니다. 로그인 전 작성한 기록은 이 브라우저에 보관됩니다.';
  if(!busy)say(next?'Google 계정이 확인되었습니다. 기존 로컬 기록은 그대로 유지됩니다.':'Google 계정으로 로그인할 수 있습니다. FORMDAY 비밀번호는 필요하지 않습니다.');
