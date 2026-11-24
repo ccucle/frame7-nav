@@ -9,12 +9,22 @@ const script=fs.readFileSync(path.join(__dirname,'../fitplan/cloud-auth.js'),'ut
 const ids=['fd-account-btn','fd-account-dialog','fd-login','fd-logout','fd-account-close',
  'fd-account-status','fd-account-label','fd-account-warning','fd-standalone-notice'];
 const flush=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
-function setup({ios=true,standalone=true,popupError=null,initializationError=false}={}){
- const elements=Object.fromEntries(ids.map(id=>[id,{
-  id,hidden:false,disabled:false,textContent:'',dataset:{},open:false,handlers:{},
+const accountIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 22v-2a8 8 0 0 1 16 0v2"/></svg>';
+function element(id){
+ let markup='',text='';const attributes=new Map();
+ return {id,hidden:false,disabled:false,dataset:{},open:false,handlers:{},title:'',
+  get innerHTML(){return markup;},set innerHTML(value){markup=String(value);text=markup.replace(/<[^>]*>/g,'');},
+  get textContent(){return text;},set textContent(value){text=String(value);markup=text;},
+  setAttribute(name,value){attributes.set(name,String(value));if(name==='title')this.title=String(value);},
+  getAttribute(name){return attributes.get(name)??null;},
   addEventListener(type,fn){this.handlers[type]=fn;},
   showModal(){this.open=true;},close(){this.open=false;}
- }]));
+ };
+}
+function setup({ios=true,standalone=true,popupError=null,initializationError=false}={}){
+ const elements=Object.fromEntries(ids.map(id=>[id,element(id)]));
+ const accountButton=elements['fd-account-btn'];
+ accountButton.innerHTML=accountIcon;accountButton.setAttribute('aria-label','Google 로그인');accountButton.title='계정 로그인 준비 중';
  const auth={currentUser:null},timers=new Map();
  const navigator={standalone,userAgent:ios?'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)':'Mozilla/5.0 (Macintosh)',platform:ios?'iPhone':'MacIntel',maxTouchPoints:ios?5:0};
  let onChange,opened=0,signedout=0,parameters;
@@ -84,6 +94,18 @@ test('sign-out changes account state without claiming to delete device records',
  assert.equal(e['fd-login'].hidden,false);
  assert.equal(e['fd-logout'].hidden,true);
  assert.match(e['fd-account-status'].textContent,/기기의 운동 기록은 유지/);
+});
+test('account icon survives initial authentication, sign-in and sign-out while accessible state updates',async()=>{
+ const {elements:e}=setup(),button=e['fd-account-btn'];
+ const verify=(label,signedIn)=>{
+  assert.equal(button.innerHTML,accountIcon);
+  assert.equal(button.getAttribute('aria-label'),label);
+  assert.equal(button.title,label);
+  assert.equal(button.dataset.signedIn,signedIn);
+ };
+ verify('Google 로그인','false');
+ e['fd-login'].handlers.click();await flush();verify('계정 확인됨','true');
+ e['fd-logout'].handlers.click();await flush();verify('Google 로그인','false');
 });
 test('initialization failure leaves login disabled without claiming success',()=>{
  const {elements:e}=setup({initializationError:true});
