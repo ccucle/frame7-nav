@@ -134,6 +134,7 @@ function boot(raw, options = {}) {
   if (options.storageDenied) Object.defineProperty(context, 'localStorage', { get() { throw new Error('SecurityError'); } });
   for (const [name, code] of scripts) {
     if (name === 'app.js' && options.mealMount) context.FormdayMeals = { mount: options.mealMount };
+    if (name === 'app.js' && options.photoMount) { context.FormdayMealPhotoPolicy = require('../fitplan/meal-photo-policy.js'); context.FormdayMealPhotos = { mount: options.photoMount }; }
     vm.runInContext(code, context, { filename: name });
   }
   return { document, context, map, writes, storage, confirmations, downloads, windowListeners, ironOpens,
@@ -1118,4 +1119,59 @@ test('bulk strength completion requires confirmation and does not turn sample or
  const sampleRaw=JSON.stringify(sample),s=boot(sampleRaw);
  s.get('agenda').querySelector('[data-toggle="scheduled-workout"]').click();
  assert.equal(s.map.get(C.STORE),sampleRaw);assert.equal(s.writes.length,0);
+});
+
+function photoEditor(eventOverrides={},allow=true){
+  const e=mealEvent(mealDetail(food()),eventOverrides),raw=JSON.stringify(stateWith(e));
+  const tracking={mounts:0,leaves:0,disposals:0,allow,options:null,event:null};
+  const app=boot(raw,{photoMount(container,event,options){
+    tracking.mounts++;tracking.event=event;tracking.options=options;
+    return {canLeave(){tracking.leaves++;return tracking.allow;},dispose(){tracking.disposals++;}};
+  }});
+  app.get('agenda').querySelector('[data-edit="'+e.id+'"]').click();
+  return {app,tracking,raw,e};
+}
+test('photo controller binds only to an existing eligible meal and does not write the calendar on mount',()=>{
+ const {app,tracking,raw,e}=photoEditor();
+ assert.equal(tracking.mounts,1);assert.equal(tracking.event.id,e.id);assert.equal(tracking.event.date,e.date);
+ assert.equal(tracking.options.canWrite(),true);assert.equal(app.map.get(C.STORE),raw);assert.equal(app.writes.length,0);
+});
+test('photo controller is not mounted for an incomplete, sample, or new meal',()=>{
+ for(const overrides of [{completed:false},{isSample:true}]){
+  const {app,tracking}=photoEditor(overrides);assert.equal(tracking.mounts,0);assert.equal(app.writes.length,0);
+ }
+ let mounts=0;const app=boot(JSON.stringify(stateWith()),{photoMount(){mounts++;}});
+ app.get('new-meal').click();assert.equal(mounts,0);assert.equal(app.writes.length,0);
+});
+test('photo guard protects the real calendar modal from cancellation and releases on confirmed close',()=>{
+ const {app,tracking,raw}=photoEditor({},false);
+ app.get('cancel-event').click();assert.ok(app.get('save-event'));assert.equal(tracking.disposals,0);assert.equal(tracking.leaves,1);
+ tracking.allow=true;app.get('cancel-event').click();assert.equal(app.get('save-event'),null);assert.equal(tracking.disposals,1);
+ assert.equal(app.map.get(C.STORE),raw);assert.equal(app.writes.length,0);
+});
+test('photo guard blocks type switch without changing the current meal or disposing its draft',()=>{
+ const {app,tracking,raw}=photoEditor({},false);
+ app.document.querySelector('[data-pick="cardio"]').click();assert.equal(tracking.disposals,0);assert.ok(app.get('meal-editor'));assert.equal(app.get('f-cardio'),null);assert.equal(app.map.get(C.STORE),raw);
+ tracking.allow=true;app.document.querySelector('[data-pick="cardio"]').click();assert.ok(app.get('f-cardio'));assert.equal(tracking.disposals,1);assert.equal(app.writes.length,0);
+});
+test('photo guard blocks both calendar save and record deletion before writes',()=>{
+ const {app,tracking,raw}=photoEditor({},false);
+ app.get('save-event').click();app.get('delete-event').click();
+ assert.equal(tracking.leaves,2);assert.equal(tracking.disposals,0);assert.equal(app.map.get(C.STORE),raw);assert.equal(app.writes.length,0);assert.ok(app.get('save-event'));
+});
+test('changed meal editor blocks photo writes until meal is saved and reopened',()=>{
+ const {app,tracking,raw}=photoEditor();
+ app.get('f-date').value='2026-11-24';app.get('modal-root').oninput({target:app.get('f-date')});
+ assert.equal(tracking.options.canWrite(),false);assert.equal(app.map.get(C.STORE),raw);
+ app.get('save-event').click();
+ assert.equal(tracking.disposals,1);assert.equal(JSON.parse(app.map.get(C.STORE)).events[0].date,'2026-11-24');
+ app.get('agenda').querySelector('[data-edit="meal1"]').click();
+ assert.equal(tracking.mounts,2);assert.equal(tracking.options.canWrite(),true);assert.equal(tracking.event.date,'2026-11-24');
+});
+test('photo guard protects local refresh from another device while the meal is open',()=>{
+ const {app,tracking,raw}=photoEditor({},false);
+ app.windowListeners.get('storage')({key:C.STORE});
+ assert.ok(app.get('reload-records'));app.get('reload-records').click();
+ assert.ok(app.get('save-event'));assert.equal(tracking.disposals,0);assert.equal(app.map.get(C.STORE),raw);
+ tracking.allow=true;app.get('reload-records').click();assert.equal(tracking.disposals,1);assert.equal(app.get('save-event'),null);
 });
