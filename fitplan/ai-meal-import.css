@@ -1,0 +1,20 @@
+/* Imported meal UI uses the existing FORMDAY dark tokens and modal. */
+.fd-ai-meal-launch{display:flex;justify-content:flex-end;margin:0 0 12px}
+#ai-meal-import{min-height:44px;max-width:100%;white-space:normal}
+.fd-ai-meal-modal{max-width:620px;width:min(620px,calc(100% - 24px))}
+.fd-ai-meal-modal .fd-ai-paste{display:block;width:100%;min-height:150px;max-height:40vh;resize:vertical;padding:12px;background:var(--fd-input);border:1px solid var(--fd-border);border-radius:var(--fd-radius);color:var(--fd-text);font:14px/1.5 ui-monospace,monospace;overflow:auto;box-sizing:border-box}
+.fd-ai-meal-modal .fd-ai-help{color:var(--fd-muted);font-size:13px;margin:8px 0 12px}
+.fd-ai-meal-modal details{border:1px solid var(--fd-border);border-radius:var(--fd-radius);padding:10px;margin:12px 0;font-size:13px}
+.fd-ai-meal-modal details summary{cursor:pointer;color:var(--fd-link)}
+.fd-ai-meal-modal pre{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--fd-muted);font-size:12px;margin:8px 0 0}
+.fd-ai-meal-modal .fd-ai-preview{border-top:1px solid var(--fd-border);padding-top:14px;margin-top:14px}
+.fd-ai-meal-modal .fd-ai-preview[hidden]{display:none!important}
+.fd-ai-meal-modal .fd-ai-total{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}
+.fd-ai-meal-modal .fd-ai-total>div{padding:10px;border:1px solid var(--fd-border);background:var(--fd-surface-raised);border-radius:var(--fd-radius);min-width:0}
+.fd-ai-meal-modal .fd-ai-total small{display:block;color:var(--fd-muted);font-size:12px}
+.fd-ai-meal-modal .fd-ai-food{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--fd-border);padding:9px 0;overflow-wrap:anywhere}
+.fd-ai-meal-modal .fd-ai-food>div:first-child{min-width:0}
+.fd-ai-meal-modal .fd-ai-food small{display:block;color:var(--fd-muted);font-size:12px}
+.fd-ai-meal-modal #fd-ai-import-status{font-size:13px;color:var(--fd-warning);white-space:pre-wrap}
+.fd-ai-meal-modal .modal-actions .mini-buttons{flex-wrap:wrap}
+@media(max-width:600px){.fd-ai-meal-modal .fd-ai-paste{font-size:16px}.fd-ai-meal-modal .fd-ai-total{gap:6px}.fd-ai-meal-modal .fd-ai-food{font-size:13px}.fd-ai-meal-launch #ai-meal-import{width:100%}}

@@ -13,7 +13,7 @@ const N = require('../fitplan/nutrition.js');
 const I = require('../fitplan/iron-store.js');
 const directory = path.join(__dirname, '../fitplan');
 const html = fs.readFileSync(path.join(directory, 'index.html'), 'utf8');
-const scripts = ['data.js', 'workouts.js', 'nutrition.js', 'core.js', 'iron-store.js', 'calendar-workouts.js', 'iron-data.js', 'meals.js', 'app.js'].map((name) => [name, fs.readFileSync(path.join(directory, name), 'utf8')]);
+const scripts = ['data.js', 'workouts.js', 'nutrition.js', 'core.js', 'iron-store.js', 'calendar-workouts.js', 'iron-data.js', 'meals.js', 'ai-meal-import.js', 'app.js'].map((name) => [name, fs.readFileSync(path.join(directory, name), 'utf8')]);
 const decode = (s = '') => s.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 class ClassList {
   constructor(value = '') { this.items = new Set(value.split(/\s+/).filter(Boolean)); }
@@ -1152,4 +1152,69 @@ test('explicit finish with skipped sets counts as one completed workout without 
  const legacy=boot(JSON.stringify(plan),{iron:finished.next});
  assert.equal(legacy.get('stat-workout').textContent,'1 / 1');
  assert.match(legacy.get('agenda').innerHTML,/실제 1\/2세트 수행/);
+});
+
+
+const aiFixture=overrides=>JSON.stringify({format:'formday-ai-meal-v1',date:'2026-11-23',start:'12:00',end:'12:30',title:'합성 시험 식단',
+  notes:'실제 식사가 아닌 자동 시험',items:[{name:'시험 음식',amount:100,unit:'g',evidence:'estimate',nutrients:{kcal:120,carbs:15,protein:5,fat:4,unsat:null}}],...overrides});
+function previewAI(app,raw=aiFixture()){
+  app.get('ai-meal-import').click();
+  const paste=app.get('fd-ai-meal-text');paste.value=raw;paste.oninput?.();
+  app.get('fd-ai-meal-preview').click();
+}
+test('AI meal import previews without writes and appends exactly one completed meal using the original calendar store',()=>{
+  const app=boot(JSON.stringify(legacyState()));
+  previewAI(app);
+  assert.equal(app.get('fd-ai-preview').hidden,false);
+  assert.equal(app.get('fd-ai-meal-save').disabled,false);
+  assert.match(app.get('fd-ai-totals').innerHTML,/120 kcal/);
+  assert.match(app.get('fd-ai-totals').innerHTML,/미확인/);
+  assert.equal(app.writes.length,0);
+  app.get('fd-ai-meal-save').click();
+  const saved=JSON.parse(app.map.get(C.STORE));
+  assert.equal(saved.events.length,2);
+  assert.equal(saved.events[0].id,'legacy-workout');
+  const meal=saved.events[1];
+  assert.equal(meal.title,'합성 시험 식단');assert.equal(meal.completed,true);
+  assert.equal(meal.detail.items[0].food.nutrients.unsat,null);
+  assert.equal(meal.detail.items[0].food.nutrients.kcal,120);
+  assert.equal(app.writes.filter(([key])=>key===C.STORE).length,1);
+  assert.equal(app.context.FormdayBridge.getState().events.length,2);
+  previewAI(app);
+  assert.equal(app.get('fd-ai-meal-save').disabled,true);
+  assert.match(app.get('fd-ai-import-status').textContent,/중복 가능 식단/);
+  assert.equal(app.writes.filter(([key])=>key===C.STORE).length,1);
+});
+test('AI import requests actual time when omitted, then invalidates preview on paste edit',()=>{
+  const app=boot(JSON.stringify(legacyState()));previewAI(app,aiFixture({start:null,end:null}));
+  assert.equal(app.get('fd-ai-meal-save').disabled,true);
+  app.get('fd-ai-start').value='12:00';app.get('fd-ai-end').value='12:30';app.get('fd-ai-end').oninput();
+  assert.equal(app.get('fd-ai-meal-save').disabled,false);
+  const input=app.get('fd-ai-meal-text');input.value=aiFixture({title:'수정된 내용'});input.oninput();
+  assert.equal(app.get('fd-ai-meal-save').disabled,true);
+  assert.equal(app.get('fd-ai-preview').hidden,true);assert.equal(app.writes.length,0);
+});
+test('AI importer escapes untrusted food text and does not execute pasted markup',()=>{
+  const app=boot(JSON.stringify(legacyState()));
+  previewAI(app,aiFixture({items:[{name:'<img src=x onerror=alert(1)>',amount:100,unit:'g',evidence:'unknown'}]}));
+  assert.match(app.get('fd-ai-foods').innerHTML,/&lt;img/);
+  assert.doesNotMatch(app.get('fd-ai-foods').innerHTML,/<img/);
+  assert.equal(app.writes.length,0);
+});
+test('AI meal failed local write preserves the input and old records; retry may save only once',()=>{
+  const raw=JSON.stringify(legacyState()),app=boot(raw);previewAI(app);app.failWrites();
+  app.get('fd-ai-meal-save').click();
+  assert.equal(app.map.get(C.STORE),raw);
+  assert.equal(app.get('fd-ai-meal-text').value,aiFixture());
+  app.failWrites(false);app.get('fd-ai-meal-save').click();
+  assert.equal(JSON.parse(app.map.get(C.STORE)).events.length,2);
+  assert.equal(app.writes.filter(([key])=>key===C.STORE).length,1);
+});
+test('AI import cannot overwrite a newer tab revision and keeps the draft',()=>{
+  const app=boot(JSON.stringify(legacyState()));previewAI(app);
+  const external={...C.normalizeState(legacyState()),revision:'other-tab-revision'};
+  app.map.set(C.STORE,JSON.stringify(external));app.get('fd-ai-meal-save').click();
+  assert.equal(app.map.get(C.STORE),JSON.stringify(external));
+  assert.equal(app.get('fd-ai-meal-save').disabled,true);
+  assert.equal(app.get('fd-ai-meal-text').value,aiFixture());
 });
