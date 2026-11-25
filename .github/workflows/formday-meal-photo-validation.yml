@@ -60,3 +60,6 @@ jobs:
           export NODE_PATH="$RUNNER_TEMP/formday-photo-deps/node_modules"
           export FIRESTORE_EMULATOR_HOST="127.0.0.1:8080"
           "$RUNNER_TEMP/formday-photo-deps/node_modules/.bin/firebase" emulators:exec --only firestore --project demo-formday-photo-rules --config "$tmp/firebase.json" "node --test fitplan-dev/meal-photo-rules.emulator.cjs"
+          echo "Testing full repository baseline + photo candidate; not live rules"
+          export FORMDAY_MERGED_RULES_PATH="$GITHUB_WORKSPACE/fitplan-dev/firestore-meal-photo.candidate.rules"
+          "$RUNNER_TEMP/formday-photo-deps/node_modules/.bin/firebase" emulators:exec --only firestore --project demo-formday-photo-rules --config "$tmp/firebase.json" "node --test fitplan-dev/meal-photo-rules.emulator.cjs"

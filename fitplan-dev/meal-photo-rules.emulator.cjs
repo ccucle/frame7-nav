@@ -119,3 +119,38 @@ test('existing calendar and IRON paths still permit the expected owner access an
   }
  }
 });
+
+if(mergedPath) {
+ // baseline compatibility additional: these tests target the complete repo rules
+ // plus the additive photo rule, not any claimed live production configuration.
+ test('existing owner cannot enumerate or delete sync documents, or open arbitrary slots',async()=>{
+  for(const k of ['calendar','iron']){
+   await assertFails(deleteDoc(syncRef(owner,uid,k)));
+   await assertSucceeds(getDocFromServer(syncRef(owner,uid,k)));
+  }
+  await assertFails(getDocsFromServer(collection(owner,'users',uid,'formday_sync')));
+  await assertFails(getDocFromServer(syncRef(owner,uid,'unrelated')));
+  await assertFails(setDoc(syncRef(owner,uid,'unrelated'),syncRecord()));
+ });
+ test('existing calendar and IRON reject invalid schemas after photo rule is added',async()=>{
+  for(const k of ['calendar','iron']){
+   const target=syncRef(owner,uid,k);
+   const before=(await getDocFromServer(target)).data();
+   const missing=syncRecord();delete missing.revision;
+   for(const invalid of [missing,{...syncRecord(),extra:true},{...syncRecord(),format:2},{...syncRecord(),revision:''},{...syncRecord(),revision:'x'.repeat(101)},{...syncRecord(),payload:123},{...syncRecord(),payload:'x'.repeat(600001)},{...syncRecord(),updatedAt:'not a timestamp'}]){
+    await assertFails(setDoc(target,invalid));
+   }
+   assert.deepEqual((await getDocFromServer(target)).data(),before);
+  }
+ });
+ test('photo rules do not grant access to unrelated document paths, even for the owner',async()=>{
+  await env.withSecurityRulesDisabled(ctx=>setDoc(doc(ctx.firestore(),'users',uid,'unrelated','test'),{private:true}));
+  for(const db of [owner,stranger,guest]){
+   const target=doc(db,'users',uid,'unrelated','test');
+   await assertFails(getDocFromServer(target));
+   await assertFails(setDoc(target,{private:false}));
+   await assertFails(deleteDoc(target));
+   await assertFails(getDocsFromServer(collection(db,'users',uid,'unrelated')));
+  }
+ });
+}

@@ -1,0 +1,63 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // FORMDAY only. Existing Google Authentication remains unchanged.
+    // Each owner can access only their own two named snapshot documents.
+    match /users/{userId}/formday_sync/{slot} {
+      allow get: if request.auth != null &&
+        request.auth.uid == userId &&
+        slot in ['calendar', 'iron'];
+
+      allow create, update: if request.auth != null &&
+        request.auth.uid == userId &&
+        slot in ['calendar', 'iron'] &&
+        request.resource.data.keys().hasOnly(
+          ['format', 'revision', 'payload', 'updatedAt']
+        ) &&
+        request.resource.data.keys().hasAll(
+          ['format', 'revision', 'payload', 'updatedAt']
+        ) &&
+        request.resource.data.format == 1 &&
+        request.resource.data.revision is string &&
+        request.resource.data.revision.size() > 0 &&
+        request.resource.data.revision.size() <= 100 &&
+        request.resource.data.payload is string &&
+        request.resource.data.payload.size() <= 600000 &&
+        request.resource.data.updatedAt is timestamp;
+
+      allow list, delete: if false;
+    }
+
+    // PHOTO DRAFT: source-controlled baseline only; verify live Rules before publishing.
+    // FRAGMENT ONLY. Insert inside match /databases/{database}/documents after review.
+    // Keep ALL deployed rules unchanged; do not deploy this fragment as a ruleset.
+    // Test owner, unrelated UID, anonymous, invalid fields/bytes and unchanged existing paths in the emulator.
+    match /users/{uid}/formday_meal_photos/{mealId} {
+      function owner() { return request.auth != null && request.auth.uid == uid; }
+      function validPhoto() {
+        let d = request.resource.data;
+        return mealId.matches('^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$')
+          && d.keys().hasAll(['format','eventId','sha256','mime','size','bytes','updatedAt'])
+          && d.keys().hasOnly(['format','eventId','sha256','mime','size','bytes','updatedAt'])
+          && d.format is int && d.format == 1
+          && d.eventId == mealId
+          && d.sha256 is string && d.sha256.matches('^[a-f0-9]{64}$')
+          && d.mime in ['image/jpeg','image/png','image/webp']
+          && d.size is int && d.size >= 12 && d.size <= 716800
+          && d.bytes is bytes && d.bytes.size() == d.size
+          && d.updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(uid)/formday_sync/calendar);
+      }
+      allow get: if owner();
+      allow create, update: if owner() && validPhoto();
+      allow delete: if owner();
+      allow list: if false;
+    }
+
+    // All unrelated collections remain blocked.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
