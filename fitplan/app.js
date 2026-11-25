@@ -348,6 +348,83 @@
     }
   }
 
+
+  function openAIMealImport() {
+    const AI=window.FormdayAIMealImport;
+    if(!AI){toast('AI 식단 가져오기 기능을 불러오지 못했습니다. 새로고침해 주세요.',true);return;}
+    if(blockedLoad||externalChange){toast('기존 기록을 복구하거나 최신 기록을 먼저 불러와 주세요.',true);return;}
+    if($('#modal-root').children.length)return;
+    const initialDay=detailDay();
+    const example=JSON.stringify({format:AI.FORMAT,date:null,start:null,end:null,title:'식사 제목',notes:'분량 추정 근거',
+      items:[{name:'음식명',amount:100,unit:'g',evidence:'photo_estimate',nutrients:{kcal:null,carbs:null,protein:null,fat:null,unsat:null}}]},null,2);
+    modal('AI 식단 가져오기',
+      '<p class="fd-ai-help">ChatGPT에서 만든 식단 JSON을 붙여넣으세요. 기존 식단은 변경하지 않고, 확인한 한 끼만 추가합니다. 원본 사진은 저장하지 않습니다.</p>'+
+      '<div class="field"><label for="fd-ai-meal-text">AI 식단 JSON</label><textarea id="fd-ai-meal-text" class="fd-ai-paste" maxlength="80000" spellcheck="false" placeholder="ChatGPT에서 복사한 JSON 붙여넣기"></textarea></div>'+
+      '<details><summary>ChatGPT 요청 양식 보기</summary><p class="fd-ai-help">“아래 형식으로 먹은 양 기준 영양성분을 JSON 한 개로 만들어 줘. 실제 날짜·시간을 모르면 null, 영양정보를 모르면 null로 기록해. 단위는 g/ml/serving, 출처는 photo_estimate/estimate/user_label/unknown.”</p><pre>'+esc(example)+'</pre></details>'+
+      '<button type="button" class="btn btn-outline" id="fd-ai-meal-preview">내용 불러오기</button>'+
+      '<section id="fd-ai-preview" class="fd-ai-preview" aria-label="식단 미리보기" hidden><h3 id="fd-ai-title"></h3><div class="fields">'+
+      field('식사 날짜','fd-ai-date','date','', 'required')+
+      field('시작 시간','fd-ai-start','time','', 'required')+
+      field('종료 시간','fd-ai-end','time','', 'required')+
+      '</div><div id="fd-ai-foods"></div><div class="fd-ai-total" id="fd-ai-totals"></div><p class="fd-ai-help" id="fd-ai-notes"></p><p id="fd-ai-import-status" role="status" aria-live="polite"></p></section>',
+      '<div></div><div class="mini-buttons"><button class="btn btn-outline" id="fd-ai-meal-cancel" type="button">취소</button><button class="btn btn-primary" id="fd-ai-meal-save" type="button" disabled>식사 완료로 저장</button></div>',
+      '먼저 이 기기의 캘린더에 저장됩니다. 기존 Google 기기 동기화가 연결되어 있고 충돌이 없을 때만 클라우드에 반영됩니다.');
+    $('.modal').classList.add('fd-ai-meal-modal');
+    // Preserve this form during automatic cloud downloads, just like meal editors.
+    modalController={destroy(){}};
+    let parsed=null,source='';
+    const paste=$('#fd-ai-meal-text'),save=$('#fd-ai-meal-save'),preview=$('#fd-ai-preview'),status=$('#fd-ai-import-status');
+    const schedule=()=>({date:$('#fd-ai-date').value,start:$('#fd-ai-start').value,end:$('#fd-ai-end').value});
+    const resetError=()=>{const node=$('#form-error');node.textContent='';node.classList.add('hide');};
+    const refresh=()=>{
+      save.disabled=true;
+      if(!parsed||paste.value!==source)return;
+      try{
+        if(blockedLoad||externalChange)throw Error('다른 창의 최신 기록을 먼저 확인해 주세요.');
+        AI.prepare(data,parsed,schedule(),new Date());
+        status.textContent='식사 내용과 날짜·시간을 확인한 후 저장하세요. AI 수치는 추정값일 수 있습니다.';
+        save.disabled=false;
+      }catch(error){status.textContent=error.message;}
+    };
+    paste.oninput=()=>{parsed=null;source='';preview.hidden=true;save.disabled=true;resetError();modalDirty=true;};
+    for(const id of ['fd-ai-date','fd-ai-start','fd-ai-end'])$('#'+id).oninput=refresh;
+    $('#fd-ai-meal-cancel').onclick=()=>closeModal();
+    $('#fd-ai-meal-preview').onclick=()=>{
+      save.disabled=true;parsed=null;preview.hidden=true;resetError();modalDirty=true;
+      try{
+        parsed=AI.parse(paste.value);source=paste.value;
+        $('#fd-ai-title').textContent=parsed.title;
+        $('#fd-ai-date').value=parsed.date||initialDay;
+        $('#fd-ai-start').value=parsed.start||'';$('#fd-ai-end').value=parsed.end||'';
+        $('#fd-ai-notes').textContent=parsed.detail.notes;
+        $('#fd-ai-foods').innerHTML=parsed.detail.items.map(i=>{
+          const unit=i.food.basisUnit==='serving'?'회분':i.food.basisUnit;
+          return '<div class="fd-ai-food"><div><strong>'+esc(i.food.name)+'</strong><small>'+esc(i.food.source.label)+'</small></div><span>'+esc(fmt(i.amount,2)+unit)+'</span></div>';
+        }).join('');
+        const totals=N.calculateMeal(parsed.detail);
+        const names={kcal:'열량',carbs:'탄수화물',protein:'단백질',fat:'총 지방',unsat:'불포화지방'};
+        $('#fd-ai-totals').innerHTML=AI.KEYS.map(k=>'<div><small>'+names[k]+'</small><strong>'+esc(totals.missing[k]===totals.itemCount?'미확인':fmt(totals[k],1)+(k==='kcal'?' kcal':'g')+(totals.missing[k]?' + 미확인':''))+'</strong></div>').join('');
+        preview.hidden=false;refresh();
+      }catch(error){parsed=null;formError(error);}
+    };
+    save.onclick=()=>{
+      if(save.disabled||!parsed||paste.value!==source)return;
+      save.disabled=true;
+      try{
+        if(blockedLoad||externalChange)throw Error('최신 기록을 먼저 확인해 주세요.');
+        const result=AI.prepare(data,parsed,schedule(),new Date());
+        if(commit(result.next,'AI 식단을 이 기기에 등록했습니다. 클라우드 동기화 상태를 확인해 주세요.')){
+          const verified=persistence.load();
+          if(verified.error||!verified.data?.events.some(e=>e.id===result.event.id&&e.date===result.event.date&&e.type==='meal'&&e.completed)){
+            formError(Error('저장 결과를 확인하지 못했습니다. 중복 등록하지 말고 캘린더에서 확인해 주세요.'));parsed=null;return;
+          }
+          closeModal(true);openDayDetail(result.event.date);
+        }else refresh();
+      }catch(error){formError(error);refresh();}
+    };
+    paste.focus();
+  }
+
   function openEvent({event=null,date=selected,start='07:00',type=null,scope='occurrence',initialDetail=null,fromDayDetail=false}={}) {
     if(blockedLoad){toast('먼저 기록 백업을 복원해 주세요.',true);return;}
     const edit=!!event,recurring=edit&&event.repeat!=='none',returnToDay=fromDayDetail||daySheetDate!==null;
@@ -665,6 +742,7 @@ function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$
     $('#mini-prev').onclick=()=>{cursor=new Date(cursor.getFullYear(),cursor.getMonth()-1,1);render();};
     $('#mini-next').onclick=()=>{cursor=new Date(cursor.getFullYear(),cursor.getMonth()+1,1);render();};
     $('#settings-btn').onclick=openSettings;$('#ai-btn').onclick=infoAI;
+    $('#ai-meal-import').onclick=openAIMealImport;
     $('#fd-day-close').onclick=()=>closeDayDetail();
     $('#fd-day-handle').onclick=()=>closeDayDetail();
     $('#fd-day-back-today').onclick=()=>{refreshToday();openDayDetail(today);};

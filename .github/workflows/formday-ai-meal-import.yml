@@ -1,0 +1,27 @@
+name: FORMDAY AI meal import regression
+on:
+  pull_request:
+    branches: [fitplan-site-20261123]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'fitplan/**'
+      - 'fitplan-dev/**'
+      - '.github/workflows/formday-ai-meal-import.yml'
+permissions:
+  contents: read
+jobs:
+  ai-meal-import-regression:
+    if: github.event.pull_request.head.ref == 'feat/formday-ai-meal-import-20261126' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: All calendar, nutrition, backup, sync and import tests
+        env:
+          TZ: Asia/Seoul
+        run: node --test fitplan-dev/*.test.cjs
