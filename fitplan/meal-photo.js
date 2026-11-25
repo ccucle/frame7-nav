@@ -64,7 +64,7 @@ function cloud(event,guard,db,uid){
     }
   };
 }
-function mount(container,event){
+function mount(container,event,options={}){
   if(!container?.isConnected||!P?.eligible(event))return;
   const host=document.createElement('section');
   host.className='fd-meal-photo';host.setAttribute('data-meal-ui-only','');
@@ -73,7 +73,8 @@ function mount(container,event){
   container.append(host);
   const q=s=>host.querySelector(s);
   const status=q('[data-photo-status]'),img=q('[data-photo-preview]'),input=q('[data-photo-file]'),save=q('[data-photo-save]'),refresh=q('[data-photo-refresh]'),remove=q('[data-photo-delete]'),expand=q('[data-photo-expand]');
-  let disposed=false,busy=false,ready=false,current=null,draft=null,url=null,epoch=0,unsub=null;
+  let disposed=false,busy=false,writing=false,selecting=false,ready=false,current=null,draft=null,url=null,epoch=0,unsub=null;
+  const probeUrls=new Set();
   const app=getApps().find(a=>a.name==='formday-auth');
   const auth=app?getAuth(app):null,uid=auth?.currentUser?.uid||null;
   const db=app?getFirestore(app):null;
@@ -87,14 +88,20 @@ function mount(container,event){
   }
   function controls(){
     input.disabled=disposed||busy||!ready||!api;
-    save.disabled=disposed||busy||!ready||!draft||!api;
-    remove.disabled=disposed||busy||!ready||!current||!api;
+    save.disabled=disposed||busy||selecting||!ready||!draft||!api;
+    remove.disabled=disposed||busy||selecting||!ready||!current||!api;
     refresh.disabled=disposed||busy||!api;
   }
   function dispose(){
     if(disposed)return;
     disposed=true;epoch++;unsub?.();observer.disconnect();
-    show(null);current=null;draft=null;input.value='';
+    show(null);for(const probeUrl of probeUrls)URL.revokeObjectURL(probeUrl);probeUrls.clear();
+    current=null;draft=null;selecting=false;input.value='';
+  }
+  function canLeave(){
+    if(disposed)return true;
+    if(writing){tell('사진 저장 결과 확인 중입니다. 결과를 확인한 뒤 화면을 이동해 주세요.');return false;}
+    return !(draft||selecting)||window.confirm('선택한 사진이 아직 저장되지 않았습니다. 사진 초안을 취소할까요?');
   }
   const observer=new MutationObserver(()=>{if(!host.isConnected)dispose();});
   observer.observe(document.body,{childList:true,subtree:true});
@@ -103,7 +110,7 @@ function mount(container,event){
   });
   async function load(){
     if(busy||disposed||!api)return;
-    busy=true;ready=false;epoch++;controls();
+    busy=true;ready=false;epoch++;selecting=false;controls();
     draft=null;current=null;show(null);input.value='';
     try{
       current=await api.read();guard();ready=true;show(current);
@@ -113,35 +120,38 @@ function mount(container,event){
   }
   input.onchange=async()=>{
     const file=input.files?.[0],version=++epoch;
-    draft=null;show(current);controls();
+    selecting=!!file;draft=null;show(current);controls();
     if(!file)return;
     try{
       guard();if(file.size>P.MAX_BYTES)throw Error('700KiB 이하의 원본 파일을 선택해 주세요. 원본은 변경하지 않았습니다.');
       const bytes=new Uint8Array(await file.arrayBuffer());guard();P.checkBytes(bytes,file.type);
       const candidate={bytes,mime:file.type,sha256:await digest(bytes)};guard();
       // Decode locally before permitting upload; reject invalid or excessive dimensions.
-      const testUrl=URL.createObjectURL(new Blob([bytes],{type:file.type}));
+      const testUrl=URL.createObjectURL(new Blob([bytes],{type:file.type}));probeUrls.add(testUrl);
       try{
         const probe=new Image();probe.src=testUrl;await probe.decode();
         if(!probe.naturalWidth||!probe.naturalHeight||probe.naturalWidth*probe.naturalHeight>30000000)throw Error('이미지 크기를 확인해 주세요.');
-      }finally{URL.revokeObjectURL(testUrl);}
+      }finally{if(probeUrls.delete(testUrl))URL.revokeObjectURL(testUrl);}
       guard();if(version!==epoch)return;
       draft=candidate;show(draft);tell('원본 미리보기 · 아직 저장되지 않았습니다.');controls();
-    }catch(e){if(version===epoch){draft=null;show(current);tell('사진 선택 실패: '+e.message);controls();}}
+    }catch(e){if(version===epoch){draft=null;show(current);tell('사진 선택 실패: '+e.message);}}
+    finally{if(version===epoch){selecting=false;controls();}}
   };
   async function commit(next){
-    if(busy||!ready||disposed||!api)return;
-    busy=true;epoch++;controls();tell('사진 저장 및 클라우드 재조회 중입니다.');
+    if(busy||selecting||!ready||disposed||!api)return;
+    if(options.canWrite?.()===false){tell('식단 변경 내용을 먼저 저장하고 다시 열어 주세요. 사진 초안은 아직 저장되지 않았습니다.');return;}
+    busy=true;writing=true;epoch++;controls();tell('사진 저장 및 클라우드 재조회 중입니다.');
     try{
       current=await api.save(current?.sha256??null,next);guard();draft=null;input.value='';show(current);
       tell(current?'원본 사진 저장 및 클라우드 재조회 완료.':'사진 삭제 및 클라우드 재조회 완료.');
     }catch(e){ready=false;draft=null;current=null;input.value='';show(null);tell('저장 결과를 확인하지 못했습니다. 중복 저장하지 말고 다시 조회해 주세요. '+(e.message||''));}
-    finally{busy=false;controls();}
+    finally{writing=false;busy=false;controls();}
   }
   save.onclick=()=>{if(draft&&(!current||current.sha256===draft.sha256||window.confirm('이 식단의 기존 사진을 교체할까요?')))commit(draft);};
-  remove.onclick=()=>{if(current&&window.confirm('이 식단의 사진만 삭제할까요? 식단 영양기록은 그대로 유지됩니다.'))commit(null);};
-  refresh.onclick=load;
+  remove.onclick=()=>{if(current&&window.confirm('이 식단의 사진만 삭제할까요? 식단 영양기록은 그대로 유지됩니다.'+(draft?' 선택한 새 사진 초안도 취소됩니다.':'')))commit(null);};
+  refresh.onclick=()=>{if(canLeave())load();};
   expand.onclick=()=>{img.style.maxHeight=img.style.maxHeight==='none'?'260px':'none';expand.textContent=img.style.maxHeight==='none'?'사진 축소':'사진 확대';};
   if(api)load();else{tell('Google 로그인 및 클라우드 연결을 먼저 완료한 뒤 이 식단을 다시 열어 주세요.');controls();}
+  return Object.freeze({canLeave,dispose});
 }
 window.FormdayMealPhotos=Object.freeze({mount});
