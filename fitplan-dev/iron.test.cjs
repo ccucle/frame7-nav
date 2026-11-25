@@ -140,7 +140,7 @@ test('calendar daily totals include partial independent workouts and exclude war
   const partial=independentSession('partial','2026-11-25',40,10,{status:'PARTIAL'});
   partial.exercises[0].sets.push({id:'warmup',weight:1000,reps:1,done:true,warmup:true},{id:'planned',weight:80,reps:10,done:false,warmup:false});
   const day=D.daySummary(C,state,independentState(partial,independentSession('active','2026-11-25',500,1,{status:'ACTIVE'})),'2026-11-25',new Date(2026,10,25));
-  assert.deepEqual(day,{workoutCount:3,completedWorkouts:3,strengthSessions:2,cardioSessions:1,setCount:3,completedSets:2,volume:1000});
+  assert.deepEqual(day,{workoutCount:3,completedWorkouts:2,partialWorkouts:1,strengthSessions:2,cardioSessions:1,setCount:3,completedSets:2,volume:1000});
   const future=D.daySummary(C,state,independentState(partial),'2026-11-25',new Date(2026,10,24));
   assert.equal(future.completedWorkouts,0);
   assert.equal(future.completedSets,0);
@@ -412,4 +412,18 @@ test('missing workout runtime shows an actionable notice from dashboard and glob
   app.notice.hidden=true;app.click(app.indNav);
   assert.equal(app.notice.hidden,false);
   assert.equal(app.body.dataset.fdScreen,'home');
+});
+
+test('daily completion distinguishes partial recorded workouts from completely finished workouts',()=>{
+ const plan=sample('partial-plan','2026-11-25','벤치프레스',40,10);
+ plan.completed=true;
+ plan.detail.exercises[0].sets.push({id:'not-done',weight:80,reps:10,done:false,warmup:false,rpe:null});
+ const state=C.normalizeState({events:[plan],settings:C.defaults});
+ const session=independentSession('legacy','2026-11-25',60,10,{status:'COMPLETED'});
+ session.exercises[0].sets.push({id:'missing',weight:80,reps:10,done:false,warmup:false,rpe:null});
+ const before=JSON.stringify({state,session});
+ const result=D.daySummary(C,state,independentState(session),'2026-11-25',new Date(2026,10,25));
+ assert.equal(result.completedWorkouts,0);assert.equal(result.partialWorkouts,2);
+ assert.equal(result.completedSets,2);assert.equal(result.setCount,4);assert.equal(result.volume,1000);
+ assert.equal(JSON.stringify({state,session}),before);
 });

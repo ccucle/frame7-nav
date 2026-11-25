@@ -371,15 +371,23 @@
       s.status=tr[1];s.activeSince=tr[1]==='ACTIVE'?nowIso(date):null;
     },date);
   }
+  // Finishing a session and finishing every planned set are different.
+  function allSetsDone(s){
+    const exercises=s?.exercises;
+    return Array.isArray(exercises)&&exercises.length>0&&exercises.every(ex=>Array.isArray(ex.sets)&&ex.sets.length>0&&ex.sets.every(set=>set.done===true));
+  }
+  function finalStatus(s){
+    return s?.status==='COMPLETED'&&!allSetsDone(s)?'PARTIAL':s?.status;
+  }
   function finish(data,sessionId,kind,date=new Date()){
     must(kind==='COMPLETED'||kind==='PARTIAL','확정 종류가 올바르지 않습니다.');
     const result=modify(data,sessionId,s=>{
       const done=s.exercises.reduce((sum,e)=>sum+e.sets.filter(x=>x.done).length,0);
       must(done>0,'완료한 세트가 없어 운동을 확정할 수 없습니다.');
-      s.status=kind;s.endedAt=nowIso(date);s.activeSince=null;
+      s.status=kind==='COMPLETED'&&!allSetsDone(s)?'PARTIAL':kind;s.endedAt=nowIso(date);s.activeSince=null;
     },date);
     const session=result.session;
-    if(kind==='COMPLETED'&&session.programId&&session.routineId){
+    if(session.status==='COMPLETED'&&session.programId&&session.routineId){
       const program=result.next.programs.find(x=>x.id===session.programId);
       if(program&&program.mode==='cycle'){
         const current=program.routineIds[program.nextIndex];
@@ -416,5 +424,5 @@
     }
     return {completedSets,volume:Math.round(volume*100)/100,exercises,minutes:Math.round(s.activeMs/60000)};
   }
-  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,updateProgram,deleteProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,isActualSession,recordSummary});
+  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,updateProgram,deleteProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,allSetsDone,finalStatus,isActualSession,recordSummary});
 });

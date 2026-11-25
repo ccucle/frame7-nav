@@ -184,7 +184,8 @@ test('calendar statistics refresh when independent completed or partial workouts
     ]
   }] };
   app.setIronSnapshot({ sessions: [session], routines: [], programs: [] });
-  assert.equal(app.get('stat-workout').textContent, '2 / 2');
+  assert.equal(app.get('stat-workout').textContent, '1 / 2');
+  assert.match(app.get('stat-workout-note').textContent,/부분 완료 1회/);
   assert.match(app.get('workout-progress').innerHTML, /4<small> \/ 5/);
   assert.match(app.get('workout-progress').innerHTML, /2,300/);
   app.setIronSnapshot({ sessions: [{ ...session, status: 'PAUSED' }], routines: [], programs: [] });
@@ -966,7 +967,13 @@ test('calendar save failure preserves a finalized partial workout and can retry 
   assert.equal(actual.completed, false); assert.equal(actual.workoutSessionId, session.id);
   assert.deepEqual(plain(actual.detail.exercises[0].sets.map(set => set.done)), [false, true]);
   assert.equal(app.map.get(I.KEY), independentRaw);
-  assert.equal(app.get('stat-workout').textContent, '1 / 1');
+  assert.equal(app.get('stat-workout').textContent, '0 / 1');
+  assert.match(app.get('stat-workout-note').textContent,/부분 완료 1회/);
+  assert.match(app.get('agenda').innerHTML,/부분 완료/);
+  assert.equal(app.get('agenda').querySelector('[data-toggle="scheduled-workout"]').disabled,true);
+  const before=app.map.get(C.STORE),writes=app.writes.length;
+  app.get('agenda').querySelector('[data-toggle="scheduled-workout"]').click();
+  assert.equal(app.map.get(C.STORE),before);assert.equal(app.writes.length,writes);
   assert.match(app.get('workout-progress').innerHTML, /520/);
 });
 

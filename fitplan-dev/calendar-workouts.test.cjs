@@ -278,3 +278,22 @@ test('fixed preview with only elapsed workout days creates no events',()=>{
   const e=K.previewProgram(C,calendar,empty,id,'2026-11-28','2026-11-28');
   assert.equal(e.count,0);assert.equal(K.registerProgram(C,calendar,empty,id,e.anchor,e.today,e.start,e.end,e).next,null);
 });
+
+test('normal finish with unchecked sets reflects a partial workout, including legacy full-status sessions',()=>{
+ const cal=calendar(event()),partial=finish(cal).session;
+ const legacy={...partial,status:'COMPLETED'};
+ const result=K.applySession(C,cal,legacy).next,actual=C.occurrence(result.events[0],date);
+ assert.equal(actual.completed,false);assert.equal(actual.workoutSessionId,legacy.id);
+ assert.deepEqual(K.completion(actual),{done:1,total:4,state:'partial'});
+ assert.deepEqual(K.calendarCompletion(C.occurrence(cal.events[0],date),legacy),{done:1,total:4,state:'partial',pending:true});
+ assert.equal(K.calendarCompletion({...actual,completed:true},legacy).state,'partial');
+ assert.equal(K.applySession(C,result,legacy).alreadyApplied,true);
+});
+test('explicit partial finish remains partial even if all checked sets have been performed',()=>{
+ const cal=calendar(event()),full=finish(cal,true).session;
+ const partial={...full,status:'PARTIAL'};
+ const result=K.applySession(C,cal,partial).next,actual=C.occurrence(result.events[0],date);
+ assert.equal(actual.completed,false);assert.equal(K.completion(actual).state,'partial');
+ assert.equal(K.calendarCompletion(actual,partial).state,'partial');
+ assert.equal(K.completion(full).state,'complete');
+});

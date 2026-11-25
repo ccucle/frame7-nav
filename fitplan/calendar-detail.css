@@ -176,3 +176,11 @@ html[data-fd-input="pointer"] .fd-day-handle:focus::before { outline: none; }
   dialog.fd-day-sheet[open], dialog.fd-day-sheet[data-closing="true"],
   dialog.fd-day-sheet[open]::backdrop, dialog.fd-day-sheet[data-closing="true"]::backdrop { animation: none; }
 }
+
+/* Partially performed training is not a checked-off calendar event. */
+.fd-day-partial{display:inline-flex;margin-left:5px;padding:2px 6px;border:1px solid var(--fd-warning-border,#8c7046);border-radius:5px;font-size:10px;line-height:1.4;color:var(--fd-warning,#f2ce95);background:var(--fd-warning-bg,#332c20);vertical-align:middle;font-weight:750}
+.agenda-card.partial{border-left:3px solid var(--fd-warning,#d5a34d)}
+.checkbox-btn.partial{color:var(--fd-warning,#f2ce95);border-color:var(--fd-warning-border,#8c7046);background:var(--fd-warning-bg,#332c20);font-weight:800}
+.checkbox-btn:disabled.checked,.checkbox-btn:disabled.partial{opacity:1}
+.month-event.partial,.time-event.partial{border-left:2px solid var(--fd-warning,#d5a34d);text-decoration:none}
+.month-event.partial .event-text,.time-event.partial strong{text-decoration:none}

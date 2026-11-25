@@ -57,8 +57,7 @@ test('full completion advances cycle only from its expected routine',()=>{
   const r2=M.createRoutine(data,'하체',[M.newExercise('스쿼트')],clock);data=r2.next;
   const p=M.createProgram(data,'순환 2분할','cycle',[r.routine.id,r2.routine.id]);data=p.next;
   const b=M.start(data,{routineId:r.routine.id,programId:p.program.id},clock);data=b.next;
-  const ex=b.session.exercises[0];
-  data=M.setValue(data,b.session.id,ex.id,ex.sets[0].id,{done:true},advance(2)).next;
+  for(const ex of b.session.exercises)for(const set of ex.sets)data=M.setValue(data,b.session.id,ex.id,set.id,{done:true},advance(2)).next;
   data=M.finish(data,b.session.id,'COMPLETED',advance(3)).next;
   assert.equal(data.programs[0].nextIndex,1);
   assert.throws(()=>M.finish(data,b.session.id,'COMPLETED',advance(4)),/수정할 진행 중 세션/);
@@ -505,7 +504,8 @@ test('program updates preserve identity, completed sessions and pending routine 
   const [a,b,c]=data.routines.map(r=>r.id);
   const p=M.createProgram(data,'기존','cycle',[a,b,c]);data=p.next;
   const begin=M.start(data,{routineId:a,programId:p.program.id},clock),ex=begin.session.exercises[0];
-  data=M.setValue(begin.next,begin.session.id,ex.id,ex.sets[0].id,{done:true},advance(1)).next;
+  data=begin.next;
+  for(const e of begin.session.exercises)for(const set of e.sets)data=M.setValue(data,begin.session.id,e.id,set.id,{done:true},advance(1)).next;
   data=M.finish(data,begin.session.id,'COMPLETED',advance(2)).next;
   data.programs[0].active=false;
   const before=JSON.stringify(data);
@@ -668,7 +668,7 @@ test('deleting a program only removes that program and leaves routines and sessi
  assert.deepEqual(result.next.sessions,data.sessions);
  const finished=M.finish(result.next,begin.session.id,'COMPLETED',advance(2)).next;
  assert.equal(finished.sessions[0].programId,p.program.id);
- assert.equal(finished.sessions[0].status,'COMPLETED');
+ assert.equal(finished.sessions[0].status,'PARTIAL');
  assert.deepEqual(finished.programs,[keep.program]);
  assert.throws(()=>M.deleteProgram(result.next,p.program.id),/찾을 수 없습니다/);
 });
@@ -779,4 +779,18 @@ test('test-named confirmed records are visibly flagged without deleting or assum
  view.action('record-detail',{id:b.session.id});
  assert.match(view.host.innerHTML,/기록 ID/);assert.match(view.host.innerHTML,/시작 시각/);
  assert.equal(view.api.getSnapshot().sessions.length,1);assert.equal(view.writes.length,0);
+});
+
+test('finish automatically saves partial when any set was skipped, and legacy full labels display as partial',()=>{
+ let data=routine(M.empty(),'가슴').next;data=routine(data,'등').next;
+ const p=M.createProgram(data,'순환','cycle',data.routines.map(r=>r.id)),b=M.start(p.next,{routineId:data.routines[0].id,programId:p.program.id},clock);
+ const e=b.session.exercises[0];
+ const started=M.setValue(b.next,b.session.id,e.id,e.sets[0].id,{done:true},advance(1)).next;
+ const f=M.finish(started,b.session.id,'COMPLETED',advance(2));
+ assert.equal(f.session.status,'PARTIAL');assert.equal(f.next.programs[0].nextIndex,0);
+ assert.equal(M.recordSummary(f.session).completedSets,1);assert.equal(M.allSetsDone(f.session),false);
+ const legacy={...f.session,status:'COMPLETED'},view=ui({...f.next,sessions:[legacy]},{fixedToday:'2026-11-24T12:00:00Z'});
+ view.api.open('history');assert.match(view.host.innerHTML,/부분 완료/);
+ view.action('record-detail',{id:legacy.id});assert.match(view.host.innerHTML,/1\/6세트 완료/);
+ assert.equal(view.api.getSnapshot().sessions[0].status,'COMPLETED');assert.equal(view.writes.length,0);
 });
