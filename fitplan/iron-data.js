@@ -118,7 +118,7 @@
     });
     const reflectedEntries=entries.map(record=>{
       const reflected=record.type==='strength'&&sources.get(record.recordKey)?.find(s=>record.workoutSessionId===s.id);
-      return reflected?{...record,completed:record.completed&&reflected.completed,status:reflected.completed?'COMPLETED':'PARTIAL'}:record;
+      return reflected?{...record,completed:reflected.completed,status:reflected.completed?'COMPLETED':'PARTIAL'}:record;
     });
     return [...reflectedEntries,...independent.filter(record=>!represented.has(record.recordKey))];
   }
@@ -150,7 +150,7 @@
         if(sum.completedSets)result.strengthSessions++;
         if(day<=today){
           const completion=calendarWorkouts.completion(record);
-          if(completion.state==='complete'&&sum.completedSets)result.completedWorkouts++;
+          if(completion.state==='complete'&&completion.done)result.completedWorkouts++;
           else if(completion.state==='partial')result.partialWorkouts++;
         }
       }else if(day<=today&&record.completed){result.completedWorkouts++;result.cardioSessions++;}

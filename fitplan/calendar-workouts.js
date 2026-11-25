@@ -36,20 +36,22 @@
     return {eventId:actual.id,date:actual.date,label:actual.title.trim().slice(0,100),exercises,
       notes:actual.detail.notes||'',baseline:signature(actual)};
   }
-  // A link to a finalized session is not itself proof that all sets were done.
+  // Explicit workout finish does not mean every planned set was performed.
   function completion(record){
     const sets=(record?.detail?.exercises||record?.exercises||[]).flatMap(ex=>ex.sets||[]);
     const done=sets.filter(s=>s.done===true).length,total=sets.length;
-    return {done,total,state:!done?'planned':done===total&&record.status!=='PARTIAL'&&record.completed!==false?'complete':'partial'};
+    const explicitlyFinished=record?.status==='COMPLETED'||(!!record?.workoutSessionId&&record.completed===true);
+    const complete=record?.status!=='PARTIAL'&&(explicitlyFinished||(done===total&&record?.completed!==false));
+    return {done,total,state:!done?'planned':complete?'complete':'partial'};
   }
   function calendarCompletion(event,session){
     const own=completion(event);
     if(!session||session.isSample||!['COMPLETED','PARTIAL'].includes(session.status))return own;
     const actual=completion(session);
     if(event.workoutSessionId===session.id){
-      // Preserve explicitly corrected calendar set values; do not present
-      // a partial finalized session as complete just because a link exists.
-      return {...own,state:own.done>0&&(actual.state!=='complete'||own.state!=='complete')?'partial':own.state};
+      // The session supplies the explicit end state, while reflected calendar
+      // set values remain intact, including any deliberate later corrections.
+      return {...own,state:own.done>0?actual.state:'planned'};
     }
     // Pending reflection can be shown without pretending the calendar was saved.
     if(!event.workoutSessionId&&session.calendarSource?.eventId===event.id&&session.calendarSource.date===event.date){
@@ -67,7 +69,7 @@
     must(!actual.workoutSessionId,'이 일정에는 다른 운동 기록이 연결되어 있습니다. 기존 기록은 유지했습니다.');
     must(signature(actual)===session.calendarSource.baseline,'운동을 시작한 뒤 일정이 변경되었습니다. 완료한 운동은 보관되어 있으며, 변경된 일정은 덮어쓰지 않았습니다.');
     const detail={exercises:copy(session.exercises),notes:session.notes};
-    const completed=M.finalStatus(session)==='COMPLETED'&&M.allSetsDone(session);
+    const completed=session.status==='COMPLETED';
     const updated={...actual,detail,completed,workoutSessionId:session.id};
     const options=event.repeat==='none'?{scope:'single'}:{scope:'occurrence',occurrenceDate:actual.date};
     return {next:C.upsert(state,updated,options),alreadyApplied:false};

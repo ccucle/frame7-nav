@@ -211,7 +211,7 @@ test('switching between all exercises and one at a time preserves edits across n
 });
 test('completing the workout keeps finalized values and leaves immersive session mode',()=>{
   const view=ui({dashboard:true});view.start();view.edit(0,0,'kg',80);view.edit(0,0,'reps',5);view.complete(0);view.edit(0,0,'kg',82.5);view.answers.push(true,false);view.action('finish');
-  assert.equal(active(view),undefined);assert.notEqual(view.document.body.dataset.fiSession,'true');const saved=view.snapshot().sessions[0];assert.equal(saved.status,'PARTIAL');assert.equal(saved.exercises[0].sets[0].weight,82.5);assert.equal(saved.exercises[0].sets[0].reps,5);
+  assert.equal(active(view),undefined);assert.notEqual(view.document.body.dataset.fiSession,'true');const saved=view.snapshot().sessions[0];assert.equal(saved.status,'COMPLETED');assert.equal(saved.exercises[0].sets[0].weight,82.5);assert.equal(saved.exercises[0].sets[0].reps,5);
   assert.equal(view.document.body.dataset.fdScreen,'progress');assert.ok(view.host.querySelector('#fi-history-detail'));
   assert.equal(view.host.querySelector('.fi-hub-nav'),null);assert.equal(view.document.activeElement.id,'fi-history-detail');
   view.action('record-detail',{id:saved.id});assert.equal(view.document.body.dataset.fdScreen,'progress');
@@ -511,9 +511,10 @@ test('failure to save a completed calendar workout never sends an unpersisted re
   assert.equal(JSON.parse(view.db.get(view.root.FormdayIronStore.KEY)).sessions[0].status,'ACTIVE');
   assert.equal(fixture.calls.reflections.length,0);assert.equal(JSON.stringify(fixture.calendar),before);
   view.failStorage(false);view.answers.length=0;view.answers.push(true,false);view.action('finish');
-  assert.equal(view.snapshot().sessions[0].status,'PARTIAL');assert.equal(fixture.calls.reflections.length,1);
-  assert.equal(fixture.calls.reflections[0].persisted.status,'PARTIAL');assert.equal(C.dayEvents(fixture.calendar,fixture.date)[0].workoutSessionId,id);
-  assert.equal(C.dayEvents(fixture.calendar,fixture.date)[0].completed,false);
+  assert.equal(view.snapshot().sessions[0].status,'COMPLETED');assert.equal(fixture.calls.reflections.length,1);
+  assert.equal(fixture.calls.reflections[0].persisted.status,'COMPLETED');assert.equal(C.dayEvents(fixture.calendar,fixture.date)[0].workoutSessionId,id);
+  assert.equal(C.dayEvents(fixture.calendar,fixture.date)[0].completed,true);
+  assert.equal(C.volume(C.dayEvents(fixture.calendar,fixture.date)[0].detail).completedSets,1);
 });
 
 test('calendar routine-swap controls delegate the selected event and date without editing stored routines or starting a session',()=>{

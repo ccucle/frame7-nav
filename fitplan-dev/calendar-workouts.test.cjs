@@ -279,15 +279,16 @@ test('fixed preview with only elapsed workout days creates no events',()=>{
   assert.equal(e.count,0);assert.equal(K.registerProgram(C,calendar,empty,id,e.anchor,e.today,e.start,e.end,e).next,null);
 });
 
-test('normal finish with unchecked sets reflects a partial workout, including legacy full-status sessions',()=>{
- const cal=calendar(event()),partial=finish(cal).session;
- const legacy={...partial,status:'COMPLETED'};
- const result=K.applySession(C,cal,legacy).next,actual=C.occurrence(result.events[0],date);
- assert.equal(actual.completed,false);assert.equal(actual.workoutSessionId,legacy.id);
- assert.deepEqual(K.completion(actual),{done:1,total:4,state:'partial'});
- assert.deepEqual(K.calendarCompletion(C.occurrence(cal.events[0],date),legacy),{done:1,total:4,state:'partial',pending:true});
- assert.equal(K.calendarCompletion({...actual,completed:true},legacy).state,'partial');
- assert.equal(K.applySession(C,result,legacy).alreadyApplied,true);
+test('explicit finish reflects completion with actual set flags, including old calendar copies',()=>{
+ const cal=calendar(event()),partial=finish(cal).session,session={...partial,status:'COMPLETED'};
+ const result=K.applySession(C,cal,session).next,actual=C.occurrence(result.events[0],date);
+ assert.equal(actual.completed,true);assert.equal(actual.workoutSessionId,session.id);
+ assert.deepEqual(K.completion(actual),{done:1,total:4,state:'complete'});
+ assert.deepEqual(K.calendarCompletion(C.occurrence(cal.events[0],date),session),{done:1,total:4,state:'complete',pending:true});
+ assert.equal(K.calendarCompletion({...actual,completed:false},session).state,'complete');
+ assert.deepEqual(actual.detail.exercises.map(e=>e.sets.map(s=>s.done)),[[false,true,false],[false]]);
+ assert.equal(C.volume(actual.detail).volume,500);
+ assert.equal(K.applySession(C,result,session).alreadyApplied,true);
 });
 test('explicit partial finish remains partial even if all checked sets have been performed',()=>{
  const cal=calendar(event()),full=finish(cal,true).session;

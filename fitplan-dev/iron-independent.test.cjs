@@ -668,7 +668,7 @@ test('deleting a program only removes that program and leaves routines and sessi
  assert.deepEqual(result.next.sessions,data.sessions);
  const finished=M.finish(result.next,begin.session.id,'COMPLETED',advance(2)).next;
  assert.equal(finished.sessions[0].programId,p.program.id);
- assert.equal(finished.sessions[0].status,'PARTIAL');
+ assert.equal(finished.sessions[0].status,'COMPLETED');
  assert.deepEqual(finished.programs,[keep.program]);
  assert.throws(()=>M.deleteProgram(result.next,p.program.id),/찾을 수 없습니다/);
 });
@@ -781,16 +781,19 @@ test('test-named confirmed records are visibly flagged without deleting or assum
  assert.equal(view.api.getSnapshot().sessions.length,1);assert.equal(view.writes.length,0);
 });
 
-test('finish automatically saves partial when any set was skipped, and legacy full labels display as partial',()=>{
+test('explicit finish completes a workout and advances its program without marking skipped sets done',()=>{
  let data=routine(M.empty(),'가슴').next;data=routine(data,'등').next;
  const p=M.createProgram(data,'순환','cycle',data.routines.map(r=>r.id)),b=M.start(p.next,{routineId:data.routines[0].id,programId:p.program.id},clock);
- const e=b.session.exercises[0];
- const started=M.setValue(b.next,b.session.id,e.id,e.sets[0].id,{done:true},advance(1)).next;
+ const e=b.session.exercises[0],total=b.session.exercises.reduce((n,ex)=>n+ex.sets.length,0);
+ const started=M.setValue(b.next,b.session.id,e.id,e.sets[0].id,{weight:42.5,reps:7,done:true},advance(1)).next;
  const f=M.finish(started,b.session.id,'COMPLETED',advance(2));
- assert.equal(f.session.status,'PARTIAL');assert.equal(f.next.programs[0].nextIndex,0);
+ assert.equal(f.session.status,'COMPLETED');assert.equal(f.next.programs[0].nextIndex,1);
  assert.equal(M.recordSummary(f.session).completedSets,1);assert.equal(M.allSetsDone(f.session),false);
- const legacy={...f.session,status:'COMPLETED'},view=ui({...f.next,sessions:[legacy]},{fixedToday:'2026-11-24T12:00:00Z'});
- view.api.open('history');assert.match(view.host.innerHTML,/부분 완료/);
- view.action('record-detail',{id:legacy.id});assert.match(view.host.innerHTML,/1\/6세트 완료/);
- assert.equal(view.api.getSnapshot().sessions[0].status,'COMPLETED');assert.equal(view.writes.length,0);
+ assert.equal(f.session.exercises[0].sets[0].weight,42.5);assert.equal(f.session.exercises[0].sets[0].reps,7);
+ assert.deepEqual(f.session.exercises,started.sessions[0].exercises);
+ const view=ui(f.next,{fixedToday:'2026-11-24T12:00:00Z'});view.api.open('history');
+ assert.match(view.host.innerHTML,new RegExp('실제 1/'+total+'세트'));
+ view.action('record-detail',{id:f.session.id});assert.match(view.host.innerHTML,/운동 완료/);
+ assert.match(view.host.innerHTML,new RegExp('1/'+total+'세트 완료'));
+ assert.equal(view.writes.length,0);
 });

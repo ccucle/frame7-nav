@@ -414,7 +414,7 @@ test('missing workout runtime shows an actionable notice from dashboard and glob
   assert.equal(app.body.dataset.fdScreen,'home');
 });
 
-test('daily completion distinguishes partial recorded workouts from completely finished workouts',()=>{
+test('daily completion distinguishes explicit workout finish from planned-set completion',()=>{
  const plan=sample('partial-plan','2026-11-25','벤치프레스',40,10);
  plan.completed=true;
  plan.detail.exercises[0].sets.push({id:'not-done',weight:80,reps:10,done:false,warmup:false,rpe:null});
@@ -423,7 +423,7 @@ test('daily completion distinguishes partial recorded workouts from completely f
  session.exercises[0].sets.push({id:'missing',weight:80,reps:10,done:false,warmup:false,rpe:null});
  const before=JSON.stringify({state,session});
  const result=D.daySummary(C,state,independentState(session),'2026-11-25',new Date(2026,10,25));
- assert.equal(result.completedWorkouts,0);assert.equal(result.partialWorkouts,2);
+ assert.equal(result.completedWorkouts,1);assert.equal(result.partialWorkouts,1);
  assert.equal(result.completedSets,2);assert.equal(result.setCount,4);assert.equal(result.volume,1000);
  assert.equal(JSON.stringify({state,session}),before);
 });
