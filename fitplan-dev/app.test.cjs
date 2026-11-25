@@ -1126,3 +1126,30 @@ test('bulk strength completion requires confirmation and does not turn sample or
  s.get('agenda').querySelector('[data-toggle="scheduled-workout"]').click();
  assert.equal(s.map.get(C.STORE),sampleRaw);assert.equal(s.writes.length,0);
 });
+
+test('explicit finish with skipped sets counts as one completed workout without fabricating calendar sets',()=>{
+ const raw=JSON.stringify(scheduledFixture()),app=boot(raw,{iron:routineFixture()}),bridge=app.context.FormdayBridge;
+ const started=startScheduled(app),s=started.session;
+ const performed=I.modify(started.next,s.id,session=>{
+   session.exercises[0].sets[1].weight=57.5;session.exercises[0].sets[1].reps=6;session.exercises[0].sets[1].done=true;
+ },new Date('2026-11-23T18:15:00Z'));
+ const finished=I.finish(performed.next,s.id,'COMPLETED',new Date('2026-11-23T18:20:00Z'));
+ app.setIronSnapshot(finished.next);
+ assert.equal(app.get('stat-workout').textContent,'1 / 1');
+ assert.match(app.get('agenda').innerHTML,/실제 1\/2세트 수행/);
+ assert.match(app.get('agenda').innerHTML,/캘린더 반영 대기/);
+ assert.equal(bridge.reflectWorkoutSession(finished.session).ok,true);
+ const actual=bridge.getScheduledWorkouts('2026-11-23')[0].event;
+ assert.equal(actual.completed,true);
+ assert.deepEqual(plain(actual.detail.exercises[0].sets.map(s=>[s.weight,s.reps,s.done])),[[20,12,false],[57.5,6,true]]);
+ assert.equal(app.get('stat-workout').textContent,'1 / 1');
+ assert.match(app.get('agenda').innerHTML,/실제 1\/2세트 수행 · 미수행 1세트/);
+ assert.match(app.get('workout-progress').innerHTML,/345/);
+ const before=app.map.get(C.STORE),writes=app.writes.length;
+ app.get('agenda').querySelector('[data-toggle="scheduled-workout"]').click();
+ assert.equal(app.map.get(C.STORE),before);assert.equal(app.writes.length,writes);
+ const plan=bridge.getState();plan.events[0].completed=false;
+ const legacy=boot(JSON.stringify(plan),{iron:finished.next});
+ assert.equal(legacy.get('stat-workout').textContent,'1 / 1');
+ assert.match(legacy.get('agenda').innerHTML,/실제 1\/2세트 수행/);
+});
