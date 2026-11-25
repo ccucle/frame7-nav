@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>FORMDAY · 식사 사진 운영 시험</title>
+<style>
+:root{color-scheme:light;--ink:#172b26;--muted:#52665f;--accent:#216d58;--border:#d7e2dc}*{box-sizing:border-box}
+body{margin:0;background:#f5f8f6;color:var(--ink);font:16px/1.6 system-ui,-apple-system,sans-serif}
+main{width:min(100% - 32px,680px);margin:32px auto 64px}h1{font-size:24px;line-height:1.35;margin:10px 0}h3{margin:0}
+p{margin:0 0 12px}.eyebrow{font-size:12px;letter-spacing:.1em;font-weight:700;color:var(--accent)}.panel{background:white;border:1px solid var(--border);border-radius:14px;padding:18px;margin:16px 0}.helper{font-size:14px;color:var(--muted)}
+button,select{font:inherit;min-height:44px;border:1px solid var(--border);border-radius:8px;background:white;color:var(--ink);padding:8px 12px}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}select{width:100%;margin:8px 0}a{color:var(--accent);font-weight:600}.btn-primary{color:white;background:var(--accent);border-color:var(--accent)}.danger{color:#a13737}input[type=file]{width:100%;margin-top:8px;font:inherit}img{display:block;max-width:100%} [hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+<p class="eyebrow">FORMDAY / PRIVATE RECORDS · PILOT</p>
+<h1>식사 사진 운영 시험</h1>
+<p class="helper">기존 FORMDAY Google 계정과 동기화된 완료 식단을 사용합니다. 운동·식단·뿔동이 기록은 변경하지 않습니다.</p>
+<section class="panel">
+<p><strong>시험 전 안내</strong></p>
+<p class="helper">기존 사진이 없는 완료 식단을 선택하고 개인정보가 없는 JPEG, PNG 또는 WebP 파일(700KiB 이하)로 시험하세요. 원본에는 EXIF 등 위치·기기 정보가 포함될 수 있습니다. 사진은 별도 저장되며 현재 기존 JSON 백업에는 포함되지 않습니다. 시험이 끝나면 사진만 삭제하고 삭제 확인을 읽어 주세요.</p>
+<p id="pilot-status" role="status" aria-live="polite">로그인 상태 확인 중…</p>
+<button type="button" id="load-meals" class="btn-primary" disabled>완료 식단 조회</button>
+</section>
+<section class="panel" id="meal-section" hidden>
+<label for="meal-select">사진을 연결할 기존 식단</label>
+<select id="meal-select" disabled><option value="">식단 선택</option></select>
+<button type="button" id="open-meal" disabled>사진 열기</button>
+<div id="photo-target"></div>
+</section>
+<a href="./">FORMDAY 메인으로 돌아가기</a>
+</main>
+<script defer src="data.js?v=0.3.0"></script>
+<script defer src="nutrition.js?v=0.3.0"></script>
+<script defer src="core.js?v=0.8.13"></script>
+<script defer src="sync-policy.js?v=0.8.21"></script>
+<script defer src="meal-photo-policy.js?v=pilot1"></script>
+<script type="module" src="meal-photo.js?v=pilot1"></script>
+<script type="module" src="meal-photo-pilot.js?v=pilot1"></script>
+</body>
+</html>
