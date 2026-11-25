@@ -76,10 +76,10 @@ function mount(container,event){
     if(photo){url=URL.createObjectURL(new Blob([photo.bytes],{type:photo.mime}));img.src=url;img.hidden=false;expand.hidden=false;img.style.maxHeight='260px';expand.textContent='사진 확대';}
   }
   function controls(){
-    input.disabled=busy||!ready||!api;
-    save.disabled=busy||!ready||!draft||!api;
-    remove.disabled=busy||!ready||!current||!api;
-    refresh.disabled=busy||!api;
+    input.disabled=disposed||busy||!ready||!api;
+    save.disabled=disposed||busy||!ready||!draft||!api;
+    remove.disabled=disposed||busy||!ready||!current||!api;
+    refresh.disabled=disposed||busy||!api;
   }
   function dispose(){
     if(disposed)return;
@@ -93,7 +93,7 @@ function mount(container,event){
   });
   async function load(){
     if(busy||disposed||!api)return;
-    busy=true;ready=false;controls();
+    busy=true;ready=false;epoch++;controls();
     draft=null;current=null;show(null);input.value='';
     try{
       current=await api.read();guard();ready=true;show(current);
@@ -121,7 +121,7 @@ function mount(container,event){
   };
   async function commit(next){
     if(busy||!ready||disposed||!api)return;
-    busy=true;controls();tell('사진 저장 및 클라우드 재조회 중입니다.');
+    busy=true;epoch++;controls();tell('사진 저장 및 클라우드 재조회 중입니다.');
     try{
       current=await api.save(current?.sha256??null,next);guard();draft=null;input.value='';show(current);
       tell(current?'원본 사진 저장 및 클라우드 재조회 완료.':'사진 삭제 및 클라우드 재조회 완료.');
