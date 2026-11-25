@@ -1,0 +1,27 @@
+name: FORMDAY photo pilot verification
+on:
+  pull_request:
+    branches: [fitplan-site-20261123]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'fitplan/**'
+      - 'fitplan-dev/**'
+      - '.github/workflows/formday-photo-pilot.yml'
+permissions:
+  contents: read
+jobs:
+  pilot-regression:
+    if: github.event.pull_request.head.ref == 'test/formday-meal-photo-live-pilot-20261125' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Full regression and pilot checks
+        env:
+          TZ: Asia/Seoul
+        run: node --test fitplan-dev/*.test.cjs
