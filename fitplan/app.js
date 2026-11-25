@@ -339,7 +339,9 @@
     modal(titleLabel,controls,`<div>${edit?`<button class="danger" id="delete-event">${recurring?(scope==='series'?'반복 전체 삭제':'이 날짜 삭제'):'일정 삭제'}</button>`:''}</div><div class="mini-buttons"><button class="btn btn-outline" id="cancel-event">취소</button><button class="btn btn-primary" id="save-event">${edit?'변경 저장':'일정 등록'}</button></div>`,recurring?repeatNote:'',currentType==='strength');
     $('.modal').classList.add('fd-event-form');
     $('#modal-title').setAttribute('tabindex','-1');
+    const mountPhoto=()=>{if(edit&&currentType==='meal'&&event.type==='meal'&&window.FormdayMealPhotoPolicy?.eligible(event))window.FormdayMealPhotos?.mount($('#dynamic-details'),C.clone(event));};
     mountDetails(currentType,item.detail,date,recurring?scope:'single');
+    mountPhoto();
     modalDirty=false;
     const drafts={[currentType]:item.detail};
     if($('#f-routine'))$('#f-routine').onchange=()=>{
@@ -359,6 +361,7 @@
       $('#f-title-field').classList.toggle('hide',currentType!=='strength');
       $$('[data-pick]').forEach(b=>b.classList.toggle('active',b===button));
       mountDetails(currentType,drafts[currentType]||{},date,'single');
+      mountPhoto();
       $('#f-completed').checked=false;$('#completion-label').textContent=completionLabel();modalDirty=true;
     });
     $('#f-repeat').onchange=()=>{$('#until-field').classList.toggle('hide',$('#f-repeat').value==='none');modalDirty=true;};
