@@ -57,8 +57,7 @@ test('full completion advances cycle only from its expected routine',()=>{
   const r2=M.createRoutine(data,'하체',[M.newExercise('스쿼트')],clock);data=r2.next;
   const p=M.createProgram(data,'순환 2분할','cycle',[r.routine.id,r2.routine.id]);data=p.next;
   const b=M.start(data,{routineId:r.routine.id,programId:p.program.id},clock);data=b.next;
-  const ex=b.session.exercises[0];
-  data=M.setValue(data,b.session.id,ex.id,ex.sets[0].id,{done:true},advance(2)).next;
+  for(const ex of b.session.exercises)for(const set of ex.sets)data=M.setValue(data,b.session.id,ex.id,set.id,{done:true},advance(2)).next;
   data=M.finish(data,b.session.id,'COMPLETED',advance(3)).next;
   assert.equal(data.programs[0].nextIndex,1);
   assert.throws(()=>M.finish(data,b.session.id,'COMPLETED',advance(4)),/수정할 진행 중 세션/);
@@ -505,7 +504,8 @@ test('program updates preserve identity, completed sessions and pending routine 
   const [a,b,c]=data.routines.map(r=>r.id);
   const p=M.createProgram(data,'기존','cycle',[a,b,c]);data=p.next;
   const begin=M.start(data,{routineId:a,programId:p.program.id},clock),ex=begin.session.exercises[0];
-  data=M.setValue(begin.next,begin.session.id,ex.id,ex.sets[0].id,{done:true},advance(1)).next;
+  data=begin.next;
+  for(const e of begin.session.exercises)for(const set of e.sets)data=M.setValue(data,begin.session.id,e.id,set.id,{done:true},advance(1)).next;
   data=M.finish(data,begin.session.id,'COMPLETED',advance(2)).next;
   data.programs[0].active=false;
   const before=JSON.stringify(data);
@@ -779,4 +779,21 @@ test('test-named confirmed records are visibly flagged without deleting or assum
  view.action('record-detail',{id:b.session.id});
  assert.match(view.host.innerHTML,/기록 ID/);assert.match(view.host.innerHTML,/시작 시각/);
  assert.equal(view.api.getSnapshot().sessions.length,1);assert.equal(view.writes.length,0);
+});
+
+test('explicit finish completes a workout and advances its program without marking skipped sets done',()=>{
+ let data=routine(M.empty(),'가슴').next;data=routine(data,'등').next;
+ const p=M.createProgram(data,'순환','cycle',data.routines.map(r=>r.id)),b=M.start(p.next,{routineId:data.routines[0].id,programId:p.program.id},clock);
+ const e=b.session.exercises[0],total=b.session.exercises.reduce((n,ex)=>n+ex.sets.length,0);
+ const started=M.setValue(b.next,b.session.id,e.id,e.sets[0].id,{weight:42.5,reps:7,done:true},advance(1)).next;
+ const f=M.finish(started,b.session.id,'COMPLETED',advance(2));
+ assert.equal(f.session.status,'COMPLETED');assert.equal(f.next.programs[0].nextIndex,1);
+ assert.equal(M.recordSummary(f.session).completedSets,1);assert.equal(M.allSetsDone(f.session),false);
+ assert.equal(f.session.exercises[0].sets[0].weight,42.5);assert.equal(f.session.exercises[0].sets[0].reps,7);
+ assert.deepEqual(f.session.exercises,started.sessions[0].exercises);
+ const view=ui(f.next,{fixedToday:'2026-11-24T12:00:00Z'});view.api.open('history');
+ assert.match(view.host.innerHTML,new RegExp('실제 1/'+total+'세트'));
+ view.action('record-detail',{id:f.session.id});assert.match(view.host.innerHTML,/운동 완료/);
+ assert.match(view.host.innerHTML,new RegExp('1/'+total+'세트 완료'));
+ assert.equal(view.writes.length,0);
 });

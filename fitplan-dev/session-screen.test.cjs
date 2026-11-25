@@ -513,6 +513,8 @@ test('failure to save a completed calendar workout never sends an unpersisted re
   view.failStorage(false);view.answers.length=0;view.answers.push(true,false);view.action('finish');
   assert.equal(view.snapshot().sessions[0].status,'COMPLETED');assert.equal(fixture.calls.reflections.length,1);
   assert.equal(fixture.calls.reflections[0].persisted.status,'COMPLETED');assert.equal(C.dayEvents(fixture.calendar,fixture.date)[0].workoutSessionId,id);
+  assert.equal(C.dayEvents(fixture.calendar,fixture.date)[0].completed,true);
+  assert.equal(C.volume(C.dayEvents(fixture.calendar,fixture.date)[0].detail).completedSets,1);
 });
 
 test('calendar routine-swap controls delegate the selected event and date without editing stored routines or starting a session',()=>{
