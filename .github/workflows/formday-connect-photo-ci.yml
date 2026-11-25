@@ -21,4 +21,4 @@ jobs:
         with:
           node-version: '22'
       - name: Synthetic photo attachment core tests (no credentials or network calls)
-        run: node --test formday-connect/test/meal-photo-attachment.test.mjs
+        run: node --test formday-connect/test/meal-photo-attachment.test.mjs formday-connect/test/photo-file-handler.test.mjs
