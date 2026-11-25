@@ -1,0 +1,24 @@
+// FRAGMENT ONLY. Insert inside match /databases/{database}/documents after review.
+// Keep ALL deployed rules unchanged; do not deploy this fragment as a ruleset.
+// Test owner, unrelated UID, anonymous, invalid fields/bytes and unchanged existing paths in the emulator.
+match /users/{uid}/formday_meal_photos/{mealId} {
+  function owner() { return request.auth != null && request.auth.uid == uid; }
+  function validPhoto() {
+    let d = request.resource.data;
+    return mealId.matches('^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$')
+      && d.keys().hasAll(['format','eventId','sha256','mime','size','bytes','updatedAt'])
+      && d.keys().hasOnly(['format','eventId','sha256','mime','size','bytes','updatedAt'])
+      && d.format is int && d.format == 1
+      && d.eventId == mealId
+      && d.sha256 is string && d.sha256.matches('^[a-f0-9]{64}$')
+      && d.mime in ['image/jpeg','image/png','image/webp']
+      && d.size is int && d.size >= 12 && d.size <= 716800
+      && d.bytes is bytes && d.bytes.size() == d.size
+      && d.updatedAt == request.time
+      && exists(/databases/$(database)/documents/users/$(uid)/formday_sync/calendar);
+  }
+  allow get: if owner();
+  allow create, update: if owner() && validPhoto();
+  allow delete: if owner();
+  allow list: if false;
+}

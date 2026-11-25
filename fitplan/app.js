@@ -8,7 +8,7 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const fmt = (n, digits = 0) => (Number(n) || 0).toLocaleString('ko-KR', {maximumFractionDigits: digits});
   const styl = type => { const t = TYPES[type]; return `--c:${t.color};--soft:${t.soft};--txt:${t.text}`; };
-  let now = new Date(), today = iso(now), toastTimer, undoState = null, modalController = null, modalDirty = false, priorFocus = null;
+  let now = new Date(), today = iso(now), toastTimer, undoState = null, modalController = null, photoController = null, modalDirty = false, priorFocus = null;
   let storageAccessError = '';
   let persistence;
   try { persistence = C.makeStore(window.localStorage); }
@@ -145,6 +145,7 @@
   }
   function loadLatest() {
     if (modalDirty && !confirm('입력 중인 변경을 취소하고 다른 탭의 최신 기록을 불러올까요?')) return;
+    if(photoController?.canLeave()===false)return;
     const fresh = persistence.load();
     if (fresh.error) { blockedLoad=fresh.error;corruptRaw=fresh.raw;showStorageState(fresh.error,true); return; }
     if (fresh.data) data=fresh.data;
@@ -288,13 +289,15 @@
 
   function closeModal(force=false) {
     if(!force && modalDirty && !confirm('저장하지 않은 변경을 취소할까요?'))return false;
+    if(!force&&photoController?.canLeave()===false)return false;
+    photoController?.dispose();photoController=null;
     modalController?.destroy();modalController=null;modalDirty=false;
     $('#modal-root').innerHTML='';$('.app').inert=false;$('.mobile-nav').inert=false;
     resumeDaySheet();
     if(priorFocus?.isConnected)priorFocus.focus({preventScroll:true});priorFocus=null;return true;
   }
   function modal(title,body,actions,note='',wide=false) {
-    if($('#modal-root').children.length)closeModal(true);
+    if($('#modal-root').children.length){if(photoController?.canLeave()===false)throw Error('사진 초안을 먼저 확인해 주세요.');closeModal(true);}
     priorFocus=document.activeElement;
     suspendDaySheet();
     $('#modal-root').innerHTML=`<div class="modal-overlay" id="overlay"><section class="modal ${wide?'modal-workout':''}" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-head"><h2 id="modal-title">${esc(title)}</h2><button class="circle-button" id="modal-close" aria-label="닫기">×</button></div><div class="modal-body">${body}<p id="form-error" class="form-error hide" role="alert"></p></div><div class="modal-actions">${actions}</div>${note?`<p class="modal-note">${esc(note)}</p>`:''}</section></div>`;
@@ -330,6 +333,7 @@
     return {weight:v('f-bodyweight')===''?null:n('f-bodyweight'),bodyfat:v('f-bodyfat')===''?null:n('f-bodyfat')};
   }
   function mountDetails(type,detail,eventDate,scope) {
+    photoController?.dispose();photoController=null;
     modalController?.destroy();modalController=null;
     $('#dynamic-details').innerHTML=detailMarkup(type,detail);
     $('.modal').classList.toggle('modal-workout',type==='strength');
@@ -367,7 +371,9 @@
     modal(titleLabel,controls,`<div>${edit?`<button class="danger" id="delete-event">${recurring?(scope==='series'?'반복 전체 삭제':'이 날짜 삭제'):'일정 삭제'}</button>`:''}</div><div class="mini-buttons"><button class="btn btn-outline" id="cancel-event">취소</button><button class="btn btn-primary" id="save-event">${edit?'변경 저장':'일정 등록'}</button></div>`,recurring?repeatNote:'',currentType==='strength');
     $('.modal').classList.add('fd-event-form');
     $('#modal-title').setAttribute('tabindex','-1');
+    const mountPhoto=()=>{if(edit&&currentType==='meal'&&event.type==='meal'&&window.FormdayMealPhotoPolicy?.eligible(event))photoController=window.FormdayMealPhotos?.mount($('#dynamic-details'),C.clone(event),{canWrite:()=>!modalDirty})||null;};
     mountDetails(currentType,item.detail,date,recurring?scope:'single');
+    mountPhoto();
     modalDirty=false;
     $('#f-completed').disabled=linkedTraining&&currentType==='strength';
     if(linkedTraining&&currentType==='strength')$('#f-completed').checked=K.calendarCompletion(item,trainingIndex().get(item.id+':'+date)).state==='complete';
@@ -382,6 +388,7 @@
     };
     $$('[data-pick]').forEach(button=>button.onclick=()=>{
       if(button.dataset.pick===currentType)return;
+      if(photoController?.canLeave()===false)return;
       try{drafts[currentType]=modalController?.draft?modalController.draft():readDetail(currentType);}catch(error){formError(error);return;}
       currentType=button.dataset.pick;
       $('.modal').classList.toggle('modal-workout',currentType==='strength');
@@ -389,6 +396,7 @@
       $('#f-title-field').classList.toggle('hide',currentType!=='strength');
       $$('[data-pick]').forEach(b=>b.classList.toggle('active',b===button));
       mountDetails(currentType,drafts[currentType]||{},date,'single');
+      mountPhoto();
       $('#f-completed').checked=false;$('#f-completed').disabled=linkedTraining&&currentType==='strength';$('#completion-label').textContent=completionLabel();modalDirty=true;
     });
     $('#f-repeat').onchange=()=>{$('#until-field').classList.toggle('hide',$('#f-repeat').value==='none');modalDirty=true;};
@@ -413,9 +421,11 @@
     if(edit)$('#delete-event').onclick=()=>{
       const prompt=recurring?(scope==='series'?'이 반복 계획과 모든 날짜의 기록을 삭제할까요?':'이 날짜의 일정만 삭제할까요?'):'이 일정을 삭제할까요?';
       if(!confirm(prompt+' 마지막 변경 되돌리기로 복구할 수 있습니다.'))return;
+      if(photoController?.canLeave()===false)return;
       try {if(commit(C.remove(data,event.id,date,recurring?scope:'series'),'일정을 삭제했습니다. 되돌리기로 복구할 수 있습니다.'))closeModal(true);}catch(error){formError(error);}
     };
     $('#save-event').onclick=()=>{
+      if(photoController?.canLeave()===false)return;
       try {
         const detail=readDetail(currentType),dateValue=recurring?item.date:$('#f-date').value;
         const startValue=$('#f-start').value,endValue=$('#f-end').value;

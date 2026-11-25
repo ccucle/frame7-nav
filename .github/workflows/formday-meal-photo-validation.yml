@@ -1,0 +1,65 @@
+name: FORMDAY photo validation (synthetic only)
+on:
+  pull_request:
+    branches: [fitplan-site-20261123]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'fitplan/**'
+      - 'fitplan-dev/**'
+      - '.github/workflows/formday-meal-photo-validation.yml'
+permissions:
+  contents: read
+concurrency:
+  group: formday-photo-validation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  native-regression:
+    if: github.event.pull_request.number == 39 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Native Node regression suite
+        env:
+          TZ: Asia/Seoul
+        run: node --test fitplan-dev/*.test.cjs
+  photo-rules-fixture:
+    if: github.event.pull_request.number == 39 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install test-only Firebase tooling
+        run: |
+          npm install --prefix "$RUNNER_TEMP/formday-photo-deps" --no-save --ignore-scripts --no-audit --no-fund firebase-tools@15.37.0 firebase@13.4.0 @firebase/rules-unit-testing@6.0.0
+      - name: Test proposed photo rules in isolated demo project
+        env:
+          CI: 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          unset GOOGLE_APPLICATION_CREDENTIALS FIREBASE_TOKEN GCLOUD_PROJECT GOOGLE_CLOUD_PROJECT FORMDAY_MERGED_RULES_PATH
+          tmp="$RUNNER_TEMP/formday-photo-emulator"
+          mkdir -p "$tmp"
+          printf '%s\n' 'rules_version = "2"; service cloud.firestore { match /databases/{database}/documents { match /{document=**} { allow read, write: if false; } } }' > "$tmp/deny-all.rules"
+          printf '%s\n' '{"firestore":{"rules":"deny-all.rules"},"emulators":{"firestore":{"host":"127.0.0.1","port":8080},"ui":{"enabled":false},"singleProjectMode":true}}' > "$tmp/firebase.json"
+          export NODE_PATH="$RUNNER_TEMP/formday-photo-deps/node_modules"
+          export FIRESTORE_EMULATOR_HOST="127.0.0.1:8080"
+          "$RUNNER_TEMP/formday-photo-deps/node_modules/.bin/firebase" emulators:exec --only firestore --project demo-formday-photo-rules --config "$tmp/firebase.json" "node --test fitplan-dev/meal-photo-rules.emulator.cjs"
+          echo "Testing full repository baseline + photo candidate; not live rules"
+          export FORMDAY_MERGED_RULES_PATH="$GITHUB_WORKSPACE/fitplan-dev/firestore-meal-photo.candidate.rules"
+          "$RUNNER_TEMP/formday-photo-deps/node_modules/.bin/firebase" emulators:exec --only firestore --project demo-formday-photo-rules --config "$tmp/firebase.json" "node --test fitplan-dev/meal-photo-rules.emulator.cjs"
