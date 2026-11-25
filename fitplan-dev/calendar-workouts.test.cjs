@@ -278,3 +278,23 @@ test('fixed preview with only elapsed workout days creates no events',()=>{
   const e=K.previewProgram(C,calendar,empty,id,'2026-11-28','2026-11-28');
   assert.equal(e.count,0);assert.equal(K.registerProgram(C,calendar,empty,id,e.anchor,e.today,e.start,e.end,e).next,null);
 });
+
+test('explicit finish reflects completion with actual set flags, including old calendar copies',()=>{
+ const cal=calendar(event()),partial=finish(cal).session,session={...partial,status:'COMPLETED'};
+ const result=K.applySession(C,cal,session).next,actual=C.occurrence(result.events[0],date);
+ assert.equal(actual.completed,true);assert.equal(actual.workoutSessionId,session.id);
+ assert.deepEqual(K.completion(actual),{done:1,total:4,state:'complete'});
+ assert.deepEqual(K.calendarCompletion(C.occurrence(cal.events[0],date),session),{done:1,total:4,state:'complete',pending:true});
+ assert.equal(K.calendarCompletion({...actual,completed:false},session).state,'complete');
+ assert.deepEqual(actual.detail.exercises.map(e=>e.sets.map(s=>s.done)),[[false,true,false],[false]]);
+ assert.equal(C.volume(actual.detail).volume,500);
+ assert.equal(K.applySession(C,result,session).alreadyApplied,true);
+});
+test('explicit partial finish remains partial even if all checked sets have been performed',()=>{
+ const cal=calendar(event()),full=finish(cal,true).session;
+ const partial={...full,status:'PARTIAL'};
+ const result=K.applySession(C,cal,partial).next,actual=C.occurrence(result.events[0],date);
+ assert.equal(actual.completed,false);assert.equal(K.completion(actual).state,'partial');
+ assert.equal(K.calendarCompletion(actual,partial).state,'partial');
+ assert.equal(K.completion(full).state,'complete');
+});

@@ -89,7 +89,7 @@
         source.date===session.date&&typeof source.baseline==='string'&&source.baseline.length>0
         ?'calendar:'+source.eventId+':'+source.date:null;
       result.set(key,{id:session.id,date:session.date,start:'',end:'',type:'strength',
-        title:session.label,completed:true,isSample:false,source:'iron',recordKey:key,
+        title:session.label,completed:calendarWorkouts.completion(session).state==='complete',isSample:false,source:'iron',recordKey:key,
         status:session.status,calendarKey,calendarBaseline:calendarKey?source.baseline:null,detail:{exercises:session.exercises||[]}});
     }
     return [...result.values()];
@@ -116,7 +116,11 @@
         return !sessions.some(session=>session.calendarBaseline===signature);
       }catch(error){return true;}
     });
-    return [...entries,...independent.filter(record=>!represented.has(record.recordKey))];
+    const reflectedEntries=entries.map(record=>{
+      const reflected=record.type==='strength'&&sources.get(record.recordKey)?.find(s=>record.workoutSessionId===s.id);
+      return reflected?{...record,completed:reflected.completed,status:reflected.completed?'COMPLETED':'PARTIAL'}:record;
+    });
+    return [...reflectedEntries,...independent.filter(record=>!represented.has(record.recordKey))];
   }
   function records(core,state,independent){
     // Read-only projection: no migration, storage writes or routine targets.
@@ -138,12 +142,17 @@
     const today=core.iso(clock||new Date());
     const entries=combineRecords(calendarRecords(core,state,day),independentRecords(core,independent).filter(e=>e.date===day&&e.date<=today));
     const workouts=entries.filter(e=>e.type==='strength'||e.type==='cardio');
-    const result={workoutCount:workouts.length,completedWorkouts:0,strengthSessions:0,cardioSessions:0,setCount:0,completedSets:0,volume:0};
+    const result={workoutCount:workouts.length,completedWorkouts:0,partialWorkouts:0,strengthSessions:0,cardioSessions:0,setCount:0,completedSets:0,volume:0};
     for(const record of workouts){
       if(record.type==='strength'){
         const sum=strengthSummary(record.detail,day<=today);
         result.setCount+=sum.setCount;result.completedSets+=sum.completedSets;result.volume+=sum.volume;
-        if(sum.completedSets){result.completedWorkouts++;result.strengthSessions++;}
+        if(sum.completedSets)result.strengthSessions++;
+        if(day<=today){
+          const completion=calendarWorkouts.completion(record);
+          if(completion.state==='complete'&&completion.done)result.completedWorkouts++;
+          else if(completion.state==='partial')result.partialWorkouts++;
+        }
       }else if(day<=today&&record.completed){result.completedWorkouts++;result.cardioSessions++;}
     }
     result.volume=Math.round(result.volume*100)/100;
