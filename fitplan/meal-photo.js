@@ -36,6 +36,16 @@ function cloud(event,guard,db,uid){
     },
     async save(expected,next){
       guard();
+      // Revalidate and take an independent byte snapshot at the write boundary.
+      // A UI preview (or a future Connect caller) is not integrity proof.
+      if(next!==null){
+        P.checkBytes(next?.bytes,next?.mime);
+        const bytes=next.bytes.slice();
+        if(!P.validHash(next.sha256)||await digest(bytes)!==next.sha256)
+          throw Error('저장할 사진의 원본 무결성이 일치하지 않습니다.');
+        next={bytes,mime:next.mime,sha256:next.sha256};
+      }
+      guard();
       await runTransaction(db,async tx=>{
         guard();
         const cal=await tx.get(calendar);guard();checkedCalendar(cal,event);
