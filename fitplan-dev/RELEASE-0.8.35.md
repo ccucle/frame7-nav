@@ -1,0 +1,6 @@
+# FORMDAY v0.8.35 — background clocks
+- The active workout is no longer paused on visibilitychange or stashed on pagehide/reload. Stored activeSince + activeMs is authoritative. Manual pause, stash, resume, finish still use the existing guarded state transitions.
+- No one-hour cap on a running segment; retain the existing 30-day representable active-time limit. Warn about stale sessions after 24h as before. No automatic finalization.
+- Rest countdown remains an absolute deadline; optional same-browser localStorage cache scoped to session ID + startedAt, source validation, current revision and raw cache comparison. No change to workout/cloud schema; rest-only interactions do not write workout snapshots. Resume respects manual rest pause and exercise pause. Old records without timer cache remain valid.
+- Browser suspension does not require interval execution. No guaranteed background alarm; stale expiry is consumed silently on return/reload. Unsaved invalid inputs/storage conflicts retain the existing conservative freeze while the live page is available. Abrupt termination cannot recover unsaved invalid input.
+- No new backend, paid service, Firebase rule or personal data change. Tests use synthetic clocks. Real iPhone screen lock/PWA lifecycle and audio are separate device validation.

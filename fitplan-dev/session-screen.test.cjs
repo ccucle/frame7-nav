@@ -80,7 +80,7 @@ class Element extends Events{
   }
 }
 function ui(options={}){
-  let now=Date.parse('2026-11-24T02:00:00.000Z');
+  let now=options.now??Date.parse('2026-11-24T02:00:00.000Z');
   class Clock extends Date{constructor(...args){super(...(args.length?args:[now]));}static now(){return now;}}
   const document=new Events();document.hidden=false;document.body=new Element('body',document);document.body.dataset.fdScreen='home';
   document.createElement=tag=>new Element(tag,document);document.querySelector=s=>document.body.querySelector(s);document.querySelectorAll=s=>document.body.querySelectorAll(s);document.getElementById=id=>document.querySelector('#'+id);
@@ -134,6 +134,7 @@ function ui(options={}){
   const start=(names=['벤치프레스','스쿼트'])=>{api.open('home');action('start-free');assert.equal(choose(names),true);};
   return {api,root,document,host,db,writes,answers,prompts,snapshot,action,choose,row,field,edit,complete,start,audioEvents,sheet:()=>host.querySelector('#fi-session-sheet'),
     get picker(){return picker;},get pickerActive(){return pickerActive;},failStorage(value=true){failWrite=value;},
+    elapse(ms){now+=ms;},now:()=>now,
     advance(ms){now+=ms;for(const [id,item]of [...timeouts])if(item.at<=now){timeouts.delete(id);item.fn();}for(const fn of intervals)fn();},hide(){document.hidden=true;document.emit('visibilitychange');},show(){document.hidden=false;document.emit('visibilitychange');},
     timer(){return host.querySelector('#fi-timer-number')?.textContent;}};
 }
@@ -194,10 +195,12 @@ test('pause persists unblurred input and freezes the rest timer until resume',()
   view.advance(30000);assert.equal(view.timer(),remaining);view.action('resume');view.advance(10000);assert.notEqual(view.timer(),remaining);
   assert.equal(view.timer(),'00:40');
 });
-test('phone visibility transition saves visible fields before pausing and retains them on return',()=>{
+test('normal phone backgrounding saves visible fields without pausing and counts suspended wall time',()=>{
   const view=ui();view.start();view.edit(0,1,'kg',67.5);view.edit(1,2,'reps',11);view.hide();
-  assert.equal(active(view).status,'PAUSED');assert.equal(active(view).exercises[0].sets[1].weight,67.5);assert.equal(active(view).exercises[1].sets[2].reps,11);
-  view.show();assert.equal(view.field(0,1,'kg').value,'67.5');assert.equal(view.field(1,2,'reps').value,'11');assert.equal(active(view).status,'PAUSED');
+  assert.equal(active(view).status,'ACTIVE');assert.equal(active(view).exercises[0].sets[1].weight,67.5);assert.equal(active(view).exercises[1].sets[2].reps,11);
+  view.elapse(180000);view.show();assert.equal(view.field(0,1,'kg').value,'67.5');assert.equal(view.field(1,2,'reps').value,'11');assert.equal(active(view).status,'ACTIVE');
+  assert.equal(view.host.querySelector('#fi-duration').textContent,'00:03:00');
+  view.action('pause');assert.equal(active(view).activeMs,180000);
 });
 test('opening and confirming the exercise picker preserves current inputs and does not complete added sets',()=>{
   const view=ui();view.start();view.edit(0,0,'kg',68);view.edit(1,1,'reps',12);view.action('add-session-ex');assert.equal(view.pickerActive,true);
@@ -362,7 +365,7 @@ test('set settings toggle preserves edits and uses accessible vector completion 
   for(const action of ['save-session-set','complete-exercise']){const button=view.host.querySelector('[data-fi-action="'+action+'"]');assert.ok(button.querySelector('svg.fs-symbol'));assert.ok(button.getAttribute('aria-label'));}
 });
 test('failed pagehide persistence freezes exercise and rest time until a safe retry',()=>{
-  const view=ui();view.start();view.edit(0,0,'rest',60);view.complete(0);view.advance(8000);view.failStorage();view.root.emit('pagehide');view.advance(120000);
+  const view=ui();view.start();view.edit(0,0,'rest',60);view.complete(0);view.advance(8000);view.edit(1,0,'reps',8);view.failStorage();view.root.emit('pagehide');view.advance(120000);
   assert.equal(view.host.querySelector('#fi-duration').textContent,'00:00:08');assert.equal(view.timer(),'00:52');view.failStorage(false);const input=view.edit(1,0,'reps',9);view.host.emit('change',{target:input});
   assert.equal(active(view).activeMs,8000);view.advance(5000);assert.equal(view.host.querySelector('#fi-duration').textContent,'00:00:13');assert.equal(view.timer(),'00:47');
 });
@@ -459,21 +462,24 @@ test('opening the same calendar workout resumes its paused session and rest time
   assert.equal(view.timer(),'00:50');view.advance(10000);assert.equal(view.timer(),'00:40');
 });
 
-test('a linked active workout stashed by a full reload resumes from SAVED with the same recorded sets',()=>{
+test('a linked active workout survives a full reload without pausing or losing recorded sets',()=>{
   const fixture=scheduledFixture(),view=ui({bridge:fixture.bridge});
   view.api.open('calendar',{eventId:fixture.eventId,date:fixture.date});
   view.edit(0,1,'kg',75);view.edit(1,2,'reps',9);view.complete(0,1);
   const original=active(view);assert.equal(original.status,'ACTIVE');
-  const reloaded=ui({storage:new Map(view.db),bridge:fixture.bridge}),stashed=active(reloaded);
-  assert.equal(stashed.status,'SAVED');assert.equal(stashed.id,original.id);
+  const reloaded=ui({storage:new Map(view.db),bridge:fixture.bridge,now:view.now()+30000}),stashed=active(reloaded);
+  assert.equal(stashed.status,'ACTIVE');assert.equal(stashed.id,original.id);
   assert.deepEqual(trainingValues(stashed),trainingValues(original));
-  assert.equal(JSON.parse(reloaded.db.get(reloaded.root.FormdayIronStore.KEY)).sessions[0].status,'SAVED');
+  assert.equal(JSON.parse(reloaded.db.get(reloaded.root.FormdayIronStore.KEY)).sessions[0].status,'ACTIVE');
+  assert.equal(reloaded.writes.length,0);
   reloaded.api.open('calendar',{eventId:fixture.eventId,date:fixture.date});
   const resumed=active(reloaded);
   assert.equal(resumed.status,'ACTIVE');assert.equal(resumed.id,original.id);assert.equal(reloaded.snapshot().sessions.length,1);
   assert.equal(resumed.date,original.date);assert.deepEqual(resumed.calendarSource,original.calendarSource);
   assert.deepEqual(trainingValues(resumed),trainingValues(original));assert.equal(resumed.notes,original.notes);
   assert.equal(reloaded.field(0,1,'kg').value,'75');assert.equal(reloaded.field(1,2,'reps').value,'9');
+  assert.equal(reloaded.host.querySelector('#fi-duration').textContent,'00:00:30');
+  assert.equal(reloaded.timer(),'01:00');
   assert.equal(reloaded.sheet()?.open,true);assert.equal(fixture.calls.prepares.length,1);assert.equal(fixture.calls.reflections.length,0);
 });
 
@@ -673,4 +679,67 @@ test('partial workout retains existing no-offer behavior',()=>{
   const view=ui();view.start(['벤치프레스']);view.complete(0);
   view.answers.push(true);view.action('partial');assert.equal(offer(view),null);
   assert.equal(view.snapshot().sessions[0].status,'PARTIAL');assert.equal(view.snapshot().routines.length,0);
+});
+
+
+test('lock and app switch keep both clocks running even when no JS callbacks execute',()=>{
+  const view=ui({audio:true});view.start(['벤치프레스']);view.edit(0,0,'rest',60);view.complete(0);
+  view.advance(10000);view.hide();const writes=view.writes.length;
+  view.elapse(20000);view.show();assert.equal(view.timer(),'00:30');
+  assert.equal(view.host.querySelector('#fi-duration').textContent,'00:00:30');
+  assert.equal(active(view).status,'ACTIVE');assert.equal(view.writes.length,writes);
+  view.hide();const alerts=view.audioEvents.filter(x=>x==='start').length;
+  view.elapse(45000);view.show();assert.equal(view.timer(),'00:00');
+  assert.equal(view.host.querySelector('.fs-rest').dataset.state,'done');
+  assert.equal(view.host.querySelector('#fi-duration').textContent,'00:01:15');
+  assert.equal(view.audioEvents.filter(x=>x==='start').length,alerts,'no late sound after suspended expiry');
+  view.action('pause');assert.equal(active(view).activeMs,75000);
+});
+test('pagehide and pageshow do not pause the workout or reset an in-progress rest countdown',()=>{
+  const view=ui();view.start(['스쿼트']);view.edit(0,0,'rest',90);view.complete(0);
+  view.advance(10000);const before=view.db.get(view.root.FormdayIronStore.KEY);
+  view.root.emit('pagehide');view.elapse(25000);view.root.emit('pageshow',{persisted:true});
+  assert.equal(active(view).status,'ACTIVE');assert.equal(view.db.get(view.root.FormdayIronStore.KEY),before);
+  assert.equal(view.timer(),'00:55');assert.equal(view.host.querySelector('#fi-duration').textContent,'00:00:35');
+});
+test('force-quit and reopen restore an absolute deadline and exercise clock without replaying expired sound',()=>{
+  const a=ui();a.start(['스쿼트']);a.edit(0,0,'rest',60);a.complete(0);a.advance(10000);
+  const b=ui({storage:new Map(a.db),now:a.now()+20000,audio:true});
+  b.api.open('session');assert.equal(b.timer(),'00:30');assert.equal(b.host.querySelector('#fi-duration').textContent,'00:00:30');
+  assert.equal(b.snapshot().sessions[0].id,a.snapshot().sessions[0].id);
+  const c=ui({storage:new Map(b.db),now:b.now()+60000,audio:true});c.api.open('session');
+  assert.equal(c.timer(),'00:00');assert.equal(c.host.querySelector('#fi-duration').textContent,'00:01:30');
+  assert.equal(c.audioEvents.filter(x=>x==='start').length,0);assert.equal(c.snapshot().sessions.length,1);
+});
+test('explicit workout pause is respected through a closed app, and rest resumes only after user resumes',()=>{
+  const a=ui();a.start(['벤치프레스']);a.edit(0,0,'rest',90);a.complete(0);a.advance(15000);a.action('pause');
+  const b=ui({storage:new Map(a.db),now:a.now()+120000});b.api.open('session');
+  assert.equal(active(b).status,'PAUSED');assert.equal(b.timer(),'01:15');assert.equal(b.host.querySelector('#fi-duration').textContent,'00:00:15');
+  b.elapse(30000);b.show();assert.equal(b.timer(),'01:15');
+  b.action('resume');b.advance(10000);assert.equal(b.timer(),'01:05');assert.equal(b.host.querySelector('#fi-duration').textContent,'00:00:25');
+});
+test('manually paused rest countdown remains paused even while exercise keeps running through reload',()=>{
+  const a=ui();a.start(['벤치프레스']);a.edit(0,0,'rest',60);a.complete(0);a.advance(12000);a.action('timer-toggle');
+  const b=ui({storage:new Map(a.db),now:a.now()+30000});b.api.open('session');
+  assert.equal(active(b).status,'ACTIVE');assert.equal(b.host.querySelector('#fi-duration').textContent,'00:00:42');
+  assert.equal(b.timer(),'00:48');assert.equal(b.host.querySelector('.fs-rest').dataset.state,'paused');
+  b.advance(20000);assert.equal(b.timer(),'00:48');
+});
+test('closing rest and ending a workout cannot resurrect a stale countdown after reload',()=>{
+  const a=ui();a.start(['벤치프레스']);a.complete(0);a.action('timer-skip');
+  const b=ui({storage:new Map(a.db),now:a.now()+1000});b.api.open('session');
+  assert.equal(b.host.querySelector('.fs-rest').hidden,true);
+  b.complete(0,1);b.answers.push(true);b.action('finish');b.action('skip-routine-offer');
+  const c=ui({storage:new Map(b.db),now:b.now()+1000});c.start(['스쿼트']);
+  assert.equal(c.host.querySelector('.fs-rest').hidden,true);
+});
+test('background pause failure cannot overwrite another tab timer or finalized exercise data',()=>{
+  const a=ui();a.start(['벤치프레스']);a.complete(0);
+  const M=a.root.FormdayIronStore,s=active(a),key='formday_iron_rest_clock_v1';
+  const b=ui({storage:a.db,now:a.now()+1000});b.api.open('session');b.action('timer-add');
+  const newest=a.db.get(key);
+  a.action('timer-subtract');
+  assert.equal(a.db.get(key),newest,'stale tab may not replace newer deadline');
+  assert.equal(a.snapshot().sessions[0].id,s.id);
+  assert.equal(JSON.parse(a.db.get(M.KEY)).sessions[0].status,'ACTIVE');
 });
