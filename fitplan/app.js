@@ -937,7 +937,7 @@ function renderWorkoutAgenda(e,date,opened){
     document.addEventListener('keydown',e=>{
       // Native confirmation dialog owns focus and Escape; never open a
       // background calendar editor while a deletion is awaiting confirmation.
-      if(document.getElementById('fi-program-delete-dialog')?.open)return;
+      if(document.getElementById('fi-program-delete-dialog')?.open||document.getElementById('fi-routine-offer-dialog')?.open)return;
       if($('#modal-root').children.length){
         if(e.key==='Escape'){e.preventDefault();closeModal();return;}
         if(e.key==='Tab'){

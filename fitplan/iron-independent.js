@@ -977,9 +977,13 @@
     const skip=button('skip-routine-offer','그냥 기록만 저장','safe','autofocus');
     dialog.innerHTML='<section class="fi-routine-offer-content"><span class="fi-routine-offer-check" aria-hidden="true">✓</span>'+
       '<p class="fi-routine-offer-kicker">운동 기록 저장 완료</p>'+
-      (step==='name'?'<h2 id="fi-routine-offer-title">새 루틴 이름을 입력하세요</h2><p id="fi-routine-offer-description">오늘 운동 기록은 이미 저장됐습니다. 루틴은 별도로 추가합니다.</p><label for="fi-routine-offer-name">루틴 이름</label><input id="fi-routine-offer-name" type="text" maxlength="100" autocomplete="off" value="'+esc(request.label)+'"><p id="fi-routine-offer-error" role="alert" hidden></p>':
+      (step==='name'?'<h2 id="fi-routine-offer-title">새 루틴 이름을 입력하세요</h2><p id="fi-routine-offer-description">오늘 운동 기록은 이미 저장됐습니다. 루틴은 별도로 추가합니다.</p><label for="fi-routine-offer-name">루틴 이름</label><input id="fi-routine-offer-name" type="text" maxlength="100" autocomplete="off" value="" placeholder="'+esc(request.label)+'"><p id="fi-routine-offer-error" role="alert" hidden></p>':
         '<h2 id="fi-routine-offer-title">이번 자유운동을 루틴으로 저장할까요?</h2><p id="fi-routine-offer-description">저장하지 않아도 오늘 운동 기록은 그대로 유지됩니다. 나중에 운동 기록에서 루틴으로 저장할 수 있습니다.</p>')+
-      '<div class="fi-routine-offer-actions">'+skip+button(step==='name'?'confirm-routine-offer':'name-routine-offer',step==='name'?'새 루틴 저장':'루틴으로 저장','secondary')+'</div></section>';
+      '<div class="fi-routine-offer-actions">'+skip+button(step==='name'?'confirm-routine-offer':'name-routine-offer',step==='name'?'새 루틴 저장':'루틴으로 저장','secondary',step==='name'?'disabled':'')+'</div></section>';
+    if(step==='name'){
+      const name=dialog.querySelector('#fi-routine-offer-name'),save=dialog.querySelector('[data-fi-action="confirm-routine-offer"]');
+      name.addEventListener('input',()=>{const value=name.value.trim();save.disabled=!value||value.length>100;});
+    }
     dialog.querySelector('[data-fi-action="skip-routine-offer"]')?.focus?.({preventScroll:true});
   }
   function offerRoutineSave(id){
