@@ -529,6 +529,11 @@ test('each date-specific registration action carries the selected date and cance
     const app = boot(raw, { mealMount: dummyMealController }), bridge = app.context.FormdayBridge;
     bridge.openDayDetail('2026-11-26');
     app.document.querySelector('[data-day-create="' + type + '"]').click();
+    if(type==='strength'){
+      assert.ok(app.get('fd-weight-close'));
+      app.document.querySelector('[data-weight-route="free"]').click();
+      app.get('fd-free-direct').click();
+    }
     assert.equal(app.get('f-date').value, '2026-11-26', type + ' defaults to the selected detail date');
     assert.equal(app.get('fd-day-sheet').open, false, 'the existing form is not hidden under a native dialog');
     assert.equal(app.get('f-title-field').classList.contains('hide'), type !== 'strength');
@@ -677,19 +682,19 @@ test('declining to discard a dirty date-specific form leaves the form active and
 });
 
 test('a saved routine becomes a plan on the selected day without mutating the routine or copying completion state', () => {
-  const iron = { routines: [{ id: 'chest-plan', name: '가슴 루틴', exercises: [{ id: 'bench-source', name: '벤치프레스', notes: '원본 루틴 메모', sets: [
+  const iron = { ...I.empty(), routines: [{ id: 'chest-plan', name: '가슴 루틴', exercises: [{ id: 'bench-source', name: '벤치프레스', notes: '원본 루틴 메모', sets: [
     { id: 'warm-source', weight: 20, reps: 15, warmup: true, done: true, restSec: 60 },
     { id: 'work-source', weight: 60, reps: 10, warmup: false, done: true, restSec: 90 }
   ] }] }], programs: [], sessions: [] };
   const originalIron = JSON.stringify(iron), raw = JSON.stringify(stateWith()), app = boot(raw, { iron });
   app.context.FormdayBridge.openDayDetail('2026-11-26');
   app.document.querySelector('[data-day-create="strength"]').click();
-  app.get('f-routine').value = 'chest-plan'; app.get('f-routine').onchange();
-  assert.equal(app.get('f-title').value, '가슴 루틴');
-  assert.equal(app.get('f-date').value, '2026-11-26');
-  assert.equal(app.get('f-completed').checked, false);
+  app.document.querySelector('[data-weight-route="routine"]').click();
+  app.document.querySelector('[data-register-routine="chest-plan"]').click();
+  assert.equal(app.get('fd-routine-date').value, '2026-11-26');
+  assert.equal(app.get('workout-editor'), null);
   assert.equal(app.writes.length, 0);
-  app.get('save-event').click();
+  app.get('fd-routine-register').click();
   const saved = JSON.parse(app.map.get(C.STORE));
   assert.equal(saved.events.length, 1);
   const plan = saved.events[0], exercise = plan.detail.exercises[0];
@@ -732,12 +737,17 @@ test('a workout title survives a category round trip but does not become a cardi
   const app = boot(JSON.stringify(stateWith()));
   app.context.FormdayBridge.openDayDetail('2026-11-26');
   app.document.querySelector('[data-day-create="strength"]').click();
+  app.document.querySelector('[data-weight-route="free"]').click();
+  app.get('fd-free-direct').click();
   app.get('f-title').value = '목요일 상체 훈련';
   app.document.querySelector('[data-pick="cardio"]').click();
   assert.equal(app.get('f-title-field').classList.contains('hide'), true);
   app.document.querySelector('[data-pick="strength"]').click();
   assert.equal(app.get('f-title-field').classList.contains('hide'), false);
   assert.equal(app.get('f-title').value, '목요일 상체 훈련');
+  const editor=app.get('workout-editor'),add=editor.querySelector('[data-fw-action="add-exercise"]');
+  for(const listener of editor.listeners.get('click')||[])listener({target:add,preventDefault(){}});
+  editor.querySelector('[data-fw-field="name"]').value='벤치프레스';
   app.get('save-event').click();
   const workout = JSON.parse(app.map.get(C.STORE)).events[0];
   assert.equal(workout.type, 'strength');
@@ -1051,22 +1061,22 @@ test('program registration dialog previews and saves a cycle atomically on exist
   assert.equal(bridge.canCloudApply(),false);
   assert.match(app.get('fd-program-preview').innerHTML,/2개 등록 예정/);
   assert.equal(app.writes.length,0);
-  app.get('fd-program-next').click();
-  assert.equal(app.get('fd-program-date').value,'2026-11-24');
+  assert.equal(app.get('fd-program-next'),null);
+  assert.match(app.get('modal-root').innerHTML,/오늘부터 순환운동을 등록할까요/);
   app.get('fd-program-start').value='09:00';app.get('fd-program-end').value='10:00';
   app.get('fd-program-end').onchange();
   app.get('fd-program-apply').click();
   const saved=C.normalizeState(JSON.parse(app.map.get(C.STORE)));
   assert.equal(saved.events.length,3);
-  assert.deepEqual(saved.events.slice(1).map(e=>[e.date,e.title,e.start,e.end]),[['2026-11-24','하체 루틴','09:00','10:00'],['2026-11-25','가슴 루틴','09:00','10:00']]);
+  assert.deepEqual(saved.events.slice(1).map(e=>[e.date,e.title,e.start,e.end]),[['2026-11-23','하체 루틴','09:00','10:00'],['2026-11-24','가슴 루틴','09:00','10:00']]);
   assert.equal(saved.events[0].title,initial.events[0].title);
   assert.equal(app.writes.filter(([key])=>key===C.STORE).length,1);
   assert.equal(JSON.stringify(iron),originalIron);
   assert.equal(bridge.getScheduledWorkouts('2026-11-24').length,1);
-  assert.equal(bridge.prepareScheduledWorkout(saved.events[1].id,'2026-11-24').label,'하체 루틴');
+  assert.equal(bridge.prepareScheduledWorkout(saved.events[1].id,'2026-11-23').label,'하체 루틴');
   assert.equal(app.get('fd-program-apply'),null);
 });
-test('fixed program registration recognizes this week and next week and blocks past date',()=>{
+test('fixed program registration counts the remaining current week and ends on the selected Saturday',()=>{
   const {iron,id}=calendarProgramFixture('fixed'),raw=JSON.stringify(legacyState()),app=boot(raw,{iron}),bridge=app.context.FormdayBridge;
   assert.equal(bridge.openProgramRegistration(id),true);
   assert.match(app.get('fd-program-preview').innerHTML,/지난 날짜 · 제외/);
@@ -1075,12 +1085,13 @@ test('fixed program registration recognizes this week and next week and blocks p
   assert.equal(app.get('fd-program-apply').disabled,true);
   assert.match(app.get('form-error').textContent,/과거 날짜/);
   assert.equal(app.writes.length,0);
-  app.get('fd-program-next').click();
-  assert.equal(app.get('fd-program-date').value,'2026-11-29');
-  assert.match(app.get('fd-program-preview').innerHTML,/4개 등록 예정/);
+  app.get('fd-program-date').value='2026-11-23';app.get('fd-program-date').onchange();
+  app.get('fd-program-weeks').value='2';app.get('fd-program-weeks').onchange();
+  assert.match(app.get('modal-root').innerHTML,/몇 주 등록할까요/);
+  assert.match(app.get('fd-program-preview').innerHTML,/7개 등록 예정/);
   app.get('fd-program-apply').click();
   const saved=C.normalizeState(JSON.parse(app.map.get(C.STORE)));
-  assert.deepEqual(saved.events.slice(1).map(e=>e.date),['2026-11-29','2026-11-30','2026-12-02','2026-12-05']);
+  assert.deepEqual(saved.events.slice(1).map(e=>e.date),['2026-11-23','2026-11-25','2026-11-28','2026-11-29','2026-11-30','2026-12-02','2026-12-05']);
 });
 test('program registration retains preview on storage failure and retry does not duplicate',()=>{
   const {iron,id}=calendarProgramFixture('cycle'),raw=JSON.stringify(legacyState()),app=boot(raw,{iron}),bridge=app.context.FormdayBridge;
@@ -1270,4 +1281,36 @@ test('category-only meal changed into another type must receive actual clock inp
  app.get('save-event').click();assert.equal(app.writes.length,0);
  app.get('f-start').value='17:00';app.get('f-end').value='17:30';app.get('save-event').click();
  const saved=JSON.parse(app.map.get(C.STORE)).events[0];assert.equal(saved.type,'cardio');assert.equal(saved.start,'17:00');
+});
+
+test('free schedule stores an unstarted plan only and shows registered workouts before the registration choices',()=>{
+  const app=boot(JSON.stringify(stateWith())),bridge=app.context.FormdayBridge;
+  bridge.openDayDetail('2026-11-26');
+  app.document.querySelector('[data-day-create="strength"]').click();
+  app.document.querySelector('[data-weight-route="free"]').click();
+  app.get('fd-free-empty').click();
+  assert.equal(app.get('fd-free-date').value,'2026-11-26');
+  assert.equal(app.writes.length,0);
+  app.get('fd-free-save').click();
+  const stored=JSON.parse(app.map.get(C.STORE)),plan=stored.events[0];
+  assert.equal(stored.events.length,1);assert.equal(plan.title,'자유운동');
+  assert.equal(plan.detail.freePlan,true);assert.deepEqual(plan.detail.exercises,[]);assert.equal(plan.completed,false);
+  assert.match(app.get('agenda').innerHTML,/시작할 때 종목 선택/);
+  assert.equal(app.get('agenda').querySelector('[data-toggle="'+plan.id+'"]').disabled,true);
+  assert.equal(bridge.prepareScheduledWorkout(plan.id,plan.date).freePlan,true);
+  app.document.querySelector('[data-day-create="strength"]').click();
+  const markup=app.get('modal-root').innerHTML;
+  assert.ok(markup.indexOf('fd-weight-existing')<markup.indexOf('data-weight-route="routine"'));
+  app.get('fd-weight-close').click();
+  assert.equal(JSON.parse(app.map.get(C.STORE)).events.length,1);
+});
+test('registered strength cards precede other entries and set details start folded',()=>{
+  const cardio={id:'early-cardio',date:'2026-11-23',start:'06:00',end:'06:30',type:'cardio',title:'이른 러닝',repeat:'none',completed:false,detail:{cardio:'러닝',minutes:30,distance:3,intensity:'보통'}};
+  const app=boot(JSON.stringify(stateWith(cardio,...legacyState().events)));
+  app.context.FormdayBridge.openDayDetail('2026-11-23');
+  const markup=app.get('agenda').innerHTML;
+  assert.ok(markup.indexOf('fd-weight-card')<markup.indexOf('이른 러닝'));
+  assert.match(markup,/<details class="fd-plan-disclosure" data-fold-key="[^"]+">/);
+  assert.match(markup,/<details class="fd-plan-exercise" data-fold-key="[^"]+">/);
+  assert.doesNotMatch(markup,/<details class="fd-plan-(?:disclosure|exercise)"[^>]* open>/);
 });

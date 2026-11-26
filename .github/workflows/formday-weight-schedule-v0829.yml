@@ -1,0 +1,16 @@
+name: FORMDAY v0.8.29 checks
+on:
+  pull_request:
+    branches: [fitplan-site-20261123]
+jobs:
+  regression:
+    if: github.head_ref == 'formday-weight-schedule-v0829'
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Seoul
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test fitplan-dev/*.test.cjs

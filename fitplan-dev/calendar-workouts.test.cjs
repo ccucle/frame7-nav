@@ -298,3 +298,29 @@ test('explicit partial finish remains partial even if all checked sets have been
  assert.equal(K.calendarCompletion(actual,partial).state,'partial');
  assert.equal(K.completion(full).state,'complete');
 });
+
+test('fixed multiweek program skips elapsed dates and ends on the final Saturday',()=>{
+  const {iron,id}=programFixture('fixed'),cal=programCalendar(),today='2026-11-26';
+  const p=K.previewProgram(C,cal,iron,id,today,today,'07:00','08:00',2);
+  assert.equal(p.weeks,2);assert.equal(p.first,'2026-11-22');assert.equal(p.last,'2026-12-05');
+  assert.deepEqual(p.rows.filter(r=>r.status==='new').map(r=>r.date),['2026-11-26','2026-11-28','2026-11-30','2026-12-01','2026-12-03','2026-12-05']);
+  const result=K.registerProgram(C,cal,iron,id,today,today,p.start,p.end,p,2);
+  assert.equal(result.count,6);assert.equal(cal.events.length,0);
+  assert.equal(K.previewProgram(C,result.next,iron,id,today,today,p.start,p.end,2).count,0);
+  for(const n of [0,13,1.5])assert.throws(()=>K.previewProgram(C,cal,iron,id,today,today,p.start,p.end,n),/주 수/);
+});
+test('empty free plan is not a fake workout and reflects actual selected sets on completion',()=>{
+  const cal=K.registerFreePlan(C,programCalendar(),date,date,'07:00','08:00','자유운동');
+  const e=cal.events[0],p=K.prepareStart(C,cal,e.id,date);
+  assert.equal(e.completed,false);assert.deepEqual(e.detail.exercises,[]);assert.equal(p.freePlan,true);
+  assert.equal(C.normalizeState(clone(cal)).events[0].detail.freePlan,true);
+  assert.throws(()=>C.toggleComplete(cal,e.id,date),/운동/);
+  assert.throws(()=>K.registerFreePlan(C,cal,date,date,'09:00','10:00','자유운동'),/이미/);
+  const started=M.startCalendar(M.empty(),{...p,exercises:[M.newExercise('스쿼트')]},clock);
+  const x=started.session.exercises[0],next=M.setValue(started.next,started.session.id,x.id,x.sets[0].id,{done:true},clock).next;
+  const ended=M.finish(next,started.session.id,'PARTIAL',new Date(clock.getTime()+600000));
+  const saved=K.applySession(C,cal,ended.session).next.events[0];
+  assert.equal(saved.detail.exercises[0].name,'스쿼트');assert.equal(Object.hasOwn(saved.detail,'freePlan'),false);
+  assert.equal(saved.workoutSessionId,ended.session.id);assert.equal(C.volume(saved.detail).completedSets,1);
+  assert.deepEqual(cal.events[0].detail.exercises,[]);
+});
