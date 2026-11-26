@@ -232,3 +232,24 @@ test('destroy removes listeners and ignores catalog responses after unmount', as
   finish({ meta: {}, foods: [] }); await tick();
   assert.equal(h.html('results'), previous);
 });
+
+test('manual comment template is optional, preserves old notes, and cannot duplicate headings',()=>{
+ const h=harness({...meal(),notes:'기존 메모'});
+ h.click('comment-template');
+ const notes=h.controller.read().notes;
+ assert.ok(notes.startsWith('기존 메모'));
+ assert.match(notes,/음식별 코멘트:\n- 단백질 바:/);
+ assert.match(notes,/식사별 코멘트:/);
+ assert.match(notes,/사용자 메모:/);
+ h.click('comment-template');
+ assert.equal(h.controller.read().notes,notes);
+ h.input('notes',notes+'직접 작성한 메모');
+ assert.equal(h.controller.read().notes,notes+'직접 작성한 메모');
+ h.controller.destroy();
+});
+test('manual comment template never truncates an existing memo',()=>{
+ const notes='가'.repeat(1995),h=harness({...meal(),notes});
+ h.click('comment-template');
+ assert.equal(h.controller.read().notes,notes);
+ h.controller.destroy();
+});

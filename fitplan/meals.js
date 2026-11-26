@@ -76,7 +76,7 @@
     if (source._mealEditor && source._mealEditor.customDraft) customForm = copy(source._mealEditor.customDraft);
     const restoredForm = customForm;
 
-    container.innerHTML = `<section class="fm-editor" aria-label="식사 기록"><div class="fm-intro"><div><h3>한 끼의 음식을 모아 기록하세요</h3><p>섭취량에 맞춰 열량과 영양성분을 함께 계산합니다.</p></div><span class="fm-badge">MEAL LOG</span></div><div data-fm-summary></div><div class="fm-section-title"><h4>이번 식사</h4><span data-fm-count></span></div><div class="fm-items" data-fm-items></div><div class="fm-meal-actions"><button type="button" class="fm-button fm-button-primary" data-fm-action="show-search">＋ 음식 검색·추가</button><button type="button" class="fm-button fm-button-quiet" data-fm-action="new-custom">제품 직접 입력</button></div><div data-fm-custom></div><div class="fm-search-panel" data-fm-search-panel><div class="fm-search-heading"><div><h4>식품 찾기</h4><p>일반 식품은 공식 데이터로, 브랜드 제품은 표시사항으로.</p></div></div><div data-meal-ui-only><label class="fm-search-label" for="${prefix}-search"><span>음식·브랜드 검색</span><input id="${prefix}-search" type="search" data-fm-field="search" placeholder="닭가슴살, 계란, chicken…" autocomplete="off"></label><div class="fm-tabs" role="tablist" aria-label="식품 목록"><button type="button" role="tab" data-fm-action="tab" data-tab="all" aria-selected="true">전체</button><button type="button" role="tab" data-fm-action="tab" data-tab="favorites" aria-selected="false">즐겨찾기</button><button type="button" role="tab" data-fm-action="tab" data-tab="custom" aria-selected="false">내 식품</button></div></div><div data-fm-results></div></div><p class="fm-error" data-fm-error role="alert" hidden></p><label class="fm-notes" for="${prefix}-notes"><span>식사 메모 <small>선택</small></span><textarea id="${prefix}-notes" rows="2" maxlength="2000" data-fm-field="notes" placeholder="제품명, 조리 방법 등 남기고 싶은 내용">${esc(notes)}</textarea></label><p class="fm-unit-note">같은 단위에서 기준량에 비례해 계산합니다. ml와 g는 서로 변환하지 않습니다. 불포화지방은 총 지방의 일부이며 열량에 중복해서 더하지 않습니다.</p></section>`;
+    container.innerHTML = `<section class="fm-editor" aria-label="식사 기록"><div class="fm-intro"><div><h3>한 끼의 음식을 모아 기록하세요</h3><p>섭취량에 맞춰 열량과 영양성분을 함께 계산합니다.</p></div><span class="fm-badge">MEAL LOG</span></div><div data-fm-summary></div><div class="fm-section-title"><h4>이번 식사</h4><span data-fm-count></span></div><div class="fm-items" data-fm-items></div><div class="fm-meal-actions"><button type="button" class="fm-button fm-button-primary" data-fm-action="show-search">＋ 음식 검색·추가</button><button type="button" class="fm-button fm-button-quiet" data-fm-action="new-custom">제품 직접 입력</button></div><div data-fm-custom></div><div class="fm-search-panel" data-fm-search-panel><div class="fm-search-heading"><div><h4>식품 찾기</h4><p>일반 식품은 공식 데이터로, 브랜드 제품은 표시사항으로.</p></div></div><div data-meal-ui-only><label class="fm-search-label" for="${prefix}-search"><span>음식·브랜드 검색</span><input id="${prefix}-search" type="search" data-fm-field="search" placeholder="닭가슴살, 계란, chicken…" autocomplete="off"></label><div class="fm-tabs" role="tablist" aria-label="식품 목록"><button type="button" role="tab" data-fm-action="tab" data-tab="all" aria-selected="true">전체</button><button type="button" role="tab" data-fm-action="tab" data-tab="favorites" aria-selected="false">즐겨찾기</button><button type="button" role="tab" data-fm-action="tab" data-tab="custom" aria-selected="false">내 식품</button></div></div><div data-fm-results></div></div><p class="fm-error" data-fm-error role="alert" hidden></p><label class="fm-notes" for="${prefix}-notes"><span>코멘트 · 식사 메모 <small>선택</small></span><textarea id="${prefix}-notes" rows="5" maxlength="2000" data-fm-field="notes" placeholder="음식별 코멘트, 식사별 평가, 개인 메모를 직접 작성하세요.">${esc(notes)}</textarea></label><div class="fd-meal-note-actions"><button type="button" class="fm-button fm-button-quiet" data-fm-action="comment-template">코멘트 작성 양식</button><p class="fm-unit-note">ChatGPT에서 가져온 코멘트는 여기서 확인하거나 수정할 수 있어요. 직접 등록할 때도 메모를 작성할 수 있습니다.</p></div><p class="fm-unit-note">같은 단위에서 기준량에 비례해 계산합니다. ml와 g는 서로 변환하지 않습니다. 불포화지방은 총 지방의 일부이며 열량에 중복해서 더하지 않습니다.</p></section>`;
     const nodes = {
       summary: container.querySelector('[data-fm-summary]'), items: container.querySelector('[data-fm-items]'), count: container.querySelector('[data-fm-count]'),
       custom: container.querySelector('[data-fm-custom]'), results: container.querySelector('[data-fm-results]'), search: container.querySelector('[data-fm-field="search"]'),
@@ -303,6 +303,20 @@
         else if (action === 'tab') { tab = button.dataset.tab; page = 0; renderResults(); }
         else if (action === 'previous-page' || action === 'next-page') { page += action === 'next-page' ? 1 : -1; renderResults(); scrollTo(nodes.panel); }
         else if (action === 'retry-catalog') loadCatalog();
+        else if (action === 'comment-template') {
+          capture();
+          if (!items.length) throw new Error('먼저 이번 식사의 음식을 추가해 주세요.');
+          const sections=[];
+          if (!/(^|\n)음식별 코멘트:/.test(notes)) sections.push('음식별 코멘트:\n'+items.map(item=>'- '+item.food.name.replace(/[\r\n]+/g,' ')+': ').join('\n'));
+          if (!/(^|\n)식사별 코멘트:/.test(notes)) sections.push('식사별 코멘트: ');
+          if (!/(^|\n)사용자 메모:/.test(notes)) sections.push('사용자 메모: ');
+          if (sections.length) {
+            const next=notes+(notes?'\n\n':'')+sections.join('\n');
+            if(next.length>2000)throw new Error('메모가 2,000자를 넘습니다. 기존 내용은 유지됩니다.');
+            notes=next;nodes.notes.value=notes;notify();
+          }
+          error('');nodes.notes.focus?.({preventScroll:true});
+        }
         else if (action === 'new-custom') showForm(null);
         else if (action === 'edit-custom') { const food = library.find(item => item.id === id); if (food) showForm(food); }
         else if (action === 'cancel-custom') { if (canReplaceForm()) { customForm = null; renderCustom(); } }

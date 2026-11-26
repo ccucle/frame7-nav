@@ -31,3 +31,12 @@
 .fd-meal-period-event.done{opacity:.85}
 .fd-meal-inferred{display:block;font-size:9px;color:var(--fd-subtle)}
 .fd-event-form #f-meal-legacy-hint{grid-column:1 / -1;margin:0;font-size:12px}
+
+/* Comments remain plain text in the existing meal notes field. */
+.fd-meal-agenda-content{flex:1;min-width:0}
+.fd-meal-comments,.fd-meal-comment-box{margin-top:7px;border:1px solid var(--fd-border);background:var(--fd-surface);border-radius:9px;padding:9px 10px;min-width:0;color:var(--fd-text);font-size:12px}
+.fd-meal-comments summary{cursor:pointer;color:var(--fd-link);font-weight:600;min-height:24px;line-height:24px}
+.fd-meal-comment-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.65;margin-top:6px}
+.fd-meal-note-actions{display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-top:8px}
+.fd-meal-note-actions .fm-unit-note{margin:0;flex:1 1 180px}
+@media(max-width:600px){.fd-meal-comments summary{min-height:36px;line-height:36px}.fd-meal-note-actions .fm-button{min-height:44px}}
