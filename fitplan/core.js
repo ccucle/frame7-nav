@@ -139,7 +139,8 @@
       const reps = numberValue(detail.reps, '횟수', 1, 1000, true);
       exercises = [{ id: uid(), name, sets: Array.from({ length: count }, () => ({ id: uid(), weight, reps, rpe: null, done: !!legacyCompleted, warmup: false })), notes: '' }];
     }
-    return { exercises, notes: textValue(detail.notes, '운동 메모', 4000, true) };
+    if(own(detail,'freeWorkout')&&detail.freeWorkout!==true)fail('자유운동 구분을 확인해 주세요.');
+    return { exercises, notes: textValue(detail.notes, '운동 메모', 4000, true),...(detail.freeWorkout===true?{freeWorkout:true}:{}) };
   }
 
   function normalizeDetail(type, detail, completed) {

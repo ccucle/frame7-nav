@@ -18,7 +18,7 @@
     return JSON.stringify({id:event.id,date:event.date,type:event.type,title:event.title,
       start:event.start,end:event.end,completed:event.completed===true,
       detail:{exercises:event.detail.exercises.map(ex=>({id:ex.id,name:ex.name,notes:ex.notes||'',
-        sets:ex.sets.map(set=>({id:set.id,weight:set.weight,reps:set.reps,rpe:set.rpe??null,done:set.done===true,warmup:set.warmup===true}))})),notes:event.detail.notes||'',...(event.detail.freePlan===true?{freePlan:true}:{})}});
+        sets:ex.sets.map(set=>({id:set.id,weight:set.weight,reps:set.reps,rpe:set.rpe??null,done:set.done===true,warmup:set.warmup===true}))})),notes:event.detail.notes||'',...(event.detail.freePlan===true?{freePlan:true}:{}),...(event.detail.freeWorkout===true?{freeWorkout:true}:{})}});
   }
   function effective(C,state,eventId,date){
     must(C.validDate(date),'올바른 운동 날짜를 선택해 주세요.');
@@ -68,7 +68,7 @@
     if(actual.workoutSessionId===session.id)return {next:null,alreadyApplied:true};
     must(!actual.workoutSessionId,'이 일정에는 다른 운동 기록이 연결되어 있습니다. 기존 기록은 유지했습니다.');
     must(signature(actual)===session.calendarSource.baseline,'운동을 시작한 뒤 일정이 변경되었습니다. 완료한 운동은 보관되어 있으며, 변경된 일정은 덮어쓰지 않았습니다.');
-    const detail={exercises:copy(session.exercises),notes:session.notes};
+    const detail={exercises:copy(session.exercises),notes:session.notes,...(actual.detail.freeWorkout===true?{freeWorkout:true}:{})};
     const completed=session.status==='COMPLETED';
     const updated={...actual,detail,completed,workoutSessionId:session.id};
     const options=event.repeat==='none'?{scope:'single'}:{scope:'occurrence',occurrenceDate:actual.date};
