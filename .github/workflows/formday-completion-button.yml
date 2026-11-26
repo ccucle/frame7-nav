@@ -1,0 +1,27 @@
+name: FORMDAY completion button regression
+on:
+  pull_request:
+    branches: [fitplan-site-20261123]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'fitplan/**'
+      - 'fitplan-dev/**'
+      - '.github/workflows/formday-completion-button.yml'
+permissions:
+  contents: read
+jobs:
+  completion-button-regression:
+    if: github.event.pull_request.head.ref == 'fix/formday-completion-button-082' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Session state and full regression
+        env:
+          TZ: Asia/Seoul
+        run: node --test fitplan-dev/*.test.cjs

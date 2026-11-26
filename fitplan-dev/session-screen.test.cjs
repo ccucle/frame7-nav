@@ -553,3 +553,36 @@ test('an open calendar routine chooser blocks cloud apply and reload until the c
   swapOpen=false;assert.equal(view.api.canCloudApply(),true);assert.equal(view.api.cloudReload(),true);
   assert.equal(view.snapshot().routines[0].name,'다른 기기의 루틴');assert.equal(view.db.get(M.KEY),stored);assert.equal(view.writes.length,writes);
 });
+
+
+test('completion buttons reflect the persisted checked state through repeated taps and undo',()=>{
+  const view=ui();view.start(['벤치프레스']);
+  const initial=active(view),M=view.root.FormdayIronStore;
+  const assertButtons=expected=>{
+    const stored=JSON.parse(view.db.get(M.KEY)).sessions.find(s=>s.id===initial.id);
+    assert.deepEqual(stored.exercises[0].sets.map(s=>s.done),expected);
+    expected.forEach((done,i)=>{
+      const b=view.row(0,i).querySelector('.fs-check');
+      assert.equal(b.getAttribute('data-done'),String(done));
+      assert.equal(b.getAttribute('aria-pressed'),String(done));
+    });
+    assert.equal(view.host.querySelector('.fs-all-done').getAttribute('aria-pressed'),String(expected.every(Boolean)));
+  };
+  assert.equal(initial.exercises[0].sets.length,3);
+  assertButtons([false,false,false]);
+  view.complete(0,0);assertButtons([true,false,false]);
+  view.complete(0,1);assertButtons([true,true,false]);
+  view.complete(0,2);assertButtons([true,true,true]);
+  view.complete(0,2);assertButtons([true,true,false]);
+});
+
+test('completion hover is limited to mouse-like pointers and never overrides checked fills',()=>{
+  const css=fs.readFileSync(require.resolve('../fitplan/session-screen.css'),'utf8');
+  const gated=css.match(/@media \(hover: hover\) and \(pointer: fine\) \{[\s\S]*?\n\}/)?.[0];
+  assert.ok(gated,'touch devices must not inherit sticky hover styles');
+  assert.match(gated,/\.fs-check:not\(\[data-done="true"\]\):not\(\[aria-pressed="true"\]\):hover:not\(:disabled\)/);
+  assert.match(gated,/\.fs-all-done:not\(\[aria-pressed="true"\]\):hover:not\(:disabled\)/);
+  assert.doesNotMatch(css.replace(gated,''),/\.fs-(?:check|all-done)[^{,;\n]*:hover/);
+  assert.match(css,/\.fs-check\[data-done="true"\], \.fs-check\[aria-pressed="true"\], \.fs-all-done\[aria-pressed="true"\] \{[\s\S]*?background: var\(--fd-accent\);/);
+  assert.match(css,/\.fs-session button:focus-visible/);
+});
