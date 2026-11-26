@@ -59,7 +59,7 @@ function boot(initial={}){
   const subscription=subscriptions.filter(s=>!s.unsubscribed&&s.ref.path.endsWith('/'+kind)).at(-1);
   assert.ok(subscription);subscription.next(snapshot(value));
  }
- return {api:context.__syncTest,login:authListener,map,writes,reads,transactions,subscriptions,attempt,emit,timers,
+ return {bridge,api:context.__syncTest,login:authListener,map,writes,reads,transactions,subscriptions,attempt,emit,timers,
   status:()=>node('fd-sync-status').textContent};
 }
 
@@ -250,4 +250,34 @@ test('merge rejects a local edit made while awaiting the transaction read',async
  let failure;try{await attempt;}catch(e){failure=e;}
  assert.match(failure.message,/기기의 기록이 변경/);assert.equal(tx.writes.length,0);tx.reject(failure);await apply;
  assert.equal(h.map.get(I.KEY),JSON.stringify(changed));
+});
+
+test('normal receive preserves a local-only paused workout for comparison',async()=>{
+ const begin=I.start(iron('paired'),{});
+ const l=I.changeState(begin.next,begin.session.id,'pause').next;
+ const r=iron('new-cloud');
+ const meta={version:1,localRevision:l.revision,remoteRevision:'old-cloud'};
+ const h=boot({[I.KEY]:JSON.stringify(l),[prefix+'A:iron']:JSON.stringify(meta)});
+ h.login(user('A'));h.emit('iron',r);
+ assert.equal(h.reads.length,0);
+ const request=h.api.download('iron',false,true);
+ h.reads[0].resolve(snapshot(r));await request;
+ assert.match(h.status(),/양쪽 기록 비교/);
+ assert.equal(h.map.get(I.KEY),JSON.stringify(l));assert.equal(h.writes.length,0);
+});
+test('cloud running workout waits for a new snapshot without redundant server reads',()=>{
+ const r=I.start(iron('remote'),{}).next,h=boot();
+ h.login(user('A'));h.emit('iron',r);
+ assert.equal(h.reads.length,0);assert.equal(h.writes.length,0);
+});
+test('receive cannot replace records changed during the server read or report a failed reload as synced',async()=>{
+ for(const race of ['edit','reload']){
+  const h=boot();h.login(user('A'));const p=h.api.download('iron');
+  if(race==='edit')h.map.set(I.KEY,JSON.stringify(iron('edited')));
+  else h.bridge.cloudReload=()=>false;
+  h.reads[0].resolve(snapshot(iron('server')));await p;
+  assert.ok(h.api.view('iron').issues);
+  assert.equal(h.map.has(prefix+'A:iron'),false);
+  if(race==='edit')assert.equal(JSON.parse(h.map.get(I.KEY)).revision,'edited');
+ }
 });

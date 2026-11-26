@@ -650,13 +650,13 @@ test('new fixed program needs at least one weekday and can save directly without
   assert.equal(saved.mode,'fixed');assert.deepEqual(saved.routineIds,[a]);assert.deepEqual(saved.weekdays,{'4':a});
 });
 
-test('cloud merge permits safely stashed sessions without forcing completion',()=>{
+test('cloud receive and merge permit safely stashed sessions without forcing completion',()=>{
  const start=M.start(M.empty(),{},clock),ex=start.session.exercises[0];
  const done=M.setValue(start.next,start.session.id,ex.id,ex.sets[0].id,{done:true},advance(1)).next;
  const saved=M.changeState(done,start.session.id,'stash',advance(2)).next;
  const view=ui(saved);
  const next=M.createRoutine(saved,'추가 루틴',[M.newExercise('스쿼트')]).next;
- assert.equal(view.api.canCloudApply(),false);
+ assert.equal(view.api.canCloudApply(),true);
  assert.equal(view.api.canCloudMerge(next),true);
  const persisted=view.backing.store.save(next,saved.revision);
  assert.equal(view.api.cloudMergeReload(persisted.revision),true);
@@ -825,4 +825,16 @@ test('starting an empty free calendar plan uses the existing exercise picker bef
   const state=JSON.parse(view.backing.obj.getItem(M.KEY)),session=state.sessions[0];
   assert.equal(state.sessions.length,1);assert.equal(session.calendarSource.eventId,plan.eventId);
   assert.equal(session.exercises[0].name,'스쿼트');assert.ok(session.exercises[0].sets.every(s=>!s.done));
+});
+
+test('closed paused workout can receive; running workouts need a matching finished copy',()=>{
+ const start=M.start(M.empty(),{},clock),running=start.session;
+ const paused=M.changeState(start.next,running.id,'pause',advance(1)).next;
+ assert.equal(ui(paused).api.cloudBlockReason(),'');
+ const view=ui(start.next),end={...running,status:'PARTIAL'};
+ assert.match(view.api.cloudBlockReason(),/타이머/);
+ assert.match(view.api.cloudBlockReason({...end,startedAt:advance(1).toISOString()}),/타이머/);
+ assert.equal(view.api.cloudBlockReason(end),'');
+ view.api.open('session');
+ assert.match(view.api.cloudBlockReason(end),/창/);
 });
