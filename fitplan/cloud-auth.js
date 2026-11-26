@@ -85,6 +85,12 @@ function googleSignOut(){
   .catch(e=>say('로그아웃 실패: '+String(e?.code||'네트워크 확인'),true))
   .finally(()=>lock(false));
 }
+function finishInitialAuthCheck(){
+ const opening=el('fd-opening');
+ if(!opening || opening.dataset.authSettled==='true')return;
+ opening.dataset.authSettled='true';
+ opening.dispatchEvent(new Event('fd-auth-settled'));
+}
 if(button&&dialog&&googleBtn&&logoutBtn&&closeBtn&&status&&account){
  button.disabled=true;
  button.addEventListener('click',()=>{
@@ -96,11 +102,20 @@ if(button&&dialog&&googleBtn&&logoutBtn&&closeBtn&&status&&account){
  try{
   const app=initializeApp(firebaseConfig,'formday-auth');
   auth=getAuth(app);
-  onAuthStateChanged(auth,showUser,()=>say('Google 로그인 상태를 확인할 수 없습니다. 기존 운동 기록은 유지됩니다.',true));
+  onAuthStateChanged(auth,next=>{
+   showUser(next);
+   finishInitialAuthCheck();
+  },()=>{
+   say('Google 로그인 상태를 확인할 수 없습니다. 기존 운동 기록은 유지됩니다.',true);
+   finishInitialAuthCheck();
+  });
   button.disabled=false;
   showUser(auth.currentUser);
  }catch(e){
   button.disabled=true;
   say('Firebase 인증 모듈을 초기화하지 못했습니다. 기존 기록은 변경하지 않았습니다.',true);
+  finishInitialAuthCheck();
  }
+}else{
+ finishInitialAuthCheck();
 }

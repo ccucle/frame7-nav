@@ -21,8 +21,11 @@ function element(id){
   showModal(){this.open=true;},close(){this.open=false;}
  };
 }
-function setup({ios=true,standalone=true,popupError=null,initializationError=false}={}){
+function setup({ios=true,standalone=true,popupError=null,initializationError=false,delayedRestore=false}={}){
  const elements=Object.fromEntries(ids.map(id=>[id,element(id)]));
+ const opening=new EventTarget();
+ opening.dataset={};
+ elements['fd-opening']=opening;
  const accountButton=elements['fd-account-btn'];
  accountButton.innerHTML=accountIcon;accountButton.setAttribute('aria-label','Google 로그인');accountButton.title='계정 로그인 준비 중';
  const auth={currentUser:null},timers=new Map();
@@ -43,10 +46,10 @@ function setup({ios=true,standalone=true,popupError=null,initializationError=fal
    return Promise.resolve({user:a.currentUser});
   },
   signOut:a=>{signedout++;a.currentUser=null;onChange(null);return Promise.resolve();},
-  onAuthStateChanged:(_a,fn)=>{onChange=fn;fn(auth.currentUser);}
+  onAuthStateChanged:(_a,fn)=>{onChange=fn;if(!delayedRestore)fn(auth.currentUser);}
  };
  new Function(...Object.keys(imports),script)(...Object.values(imports));
- return {elements,auth,timers,stats:()=>({opened,signedout,parameters})};
+ return {elements,auth,timers,restore:()=>onChange(auth.currentUser),stats:()=>({opened,signedout,parameters})};
 }
 test('iOS home-screen flow keeps Google available and never opens a popup automatically',()=>{
  const {elements:e,stats}=setup();
@@ -115,4 +118,23 @@ test('initialization failure leaves login disabled without claiming success',()=
 test('authentication has no direct Firestore, record-storage, billing or password-creation operation',()=>{
  assert.doesNotMatch(script,/\b(?:getFirestore|setDoc|updateDoc|localStorage|initializeAnalytics|setPersistence|linkBillingAccount|signInWithEmailAndPassword|createUserWithEmailAndPassword|linkWithCredential)\b/);
  assert.match(script,/signInWithPopup/);
+});
+
+test('opening waits for the initial Firebase observer and settles once for either account state',()=>{
+ for(const initialUser of [null,{email:'google@example.test'}]){
+  const {elements,auth,restore}=setup({delayedRestore:true});
+  const opening=elements['fd-opening'];
+  let notifications=0;
+  opening.addEventListener('fd-auth-settled',()=>notifications++);
+  assert.equal(opening.dataset.authSettled,undefined);
+  auth.currentUser=initialUser;
+  restore();
+  assert.equal(opening.dataset.authSettled,'true');
+  restore();
+  assert.equal(notifications,1);
+ }
+});
+test('opening releases when the Firebase SDK cannot initialize',()=>{
+ const {elements}=setup({initializationError:true});
+ assert.equal(elements['fd-opening'].dataset.authSettled,'true');
 });
