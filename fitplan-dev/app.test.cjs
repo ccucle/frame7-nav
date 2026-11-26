@@ -1155,7 +1155,7 @@ test('explicit finish with skipped sets counts as one completed workout without 
 });
 
 
-const aiFixture=overrides=>JSON.stringify({format:'formday-ai-meal-v1',date:'2026-11-23',start:'12:00',end:'12:30',title:'합성 시험 식단',
+const aiFixture=overrides=>JSON.stringify({format:'formday-ai-meal-v1',date:'2026-11-23',mealPeriod:'lunch',title:'합성 시험 식단',
   notes:'실제 식사가 아닌 자동 시험',items:[{name:'시험 음식',amount:100,unit:'g',evidence:'estimate',nutrients:{kcal:120,carbs:15,protein:5,fat:4,unsat:null}}],...overrides});
 function previewAI(app,raw=aiFixture()){
   app.get('ai-meal-import').click();
@@ -1178,6 +1178,7 @@ test('AI meal import previews without writes and appends exactly one completed m
   assert.equal(meal.title,'합성 시험 식단');assert.equal(meal.completed,true);
   assert.equal(meal.detail.items[0].food.nutrients.unsat,null);
   assert.equal(meal.detail.items[0].food.nutrients.kcal,120);
+  assert.equal(meal.detail.mealPeriod,'lunch');assert.equal(meal.detail.mealTimeBasis,'category');
   assert.equal(app.writes.filter(([key])=>key===C.STORE).length,1);
   assert.equal(app.context.FormdayBridge.getState().events.length,2);
   previewAI(app);
@@ -1185,10 +1186,11 @@ test('AI meal import previews without writes and appends exactly one completed m
   assert.match(app.get('fd-ai-import-status').textContent,/중복 가능 식단/);
   assert.equal(app.writes.filter(([key])=>key===C.STORE).length,1);
 });
-test('AI import requests actual time when omitted, then invalidates preview on paste edit',()=>{
-  const app=boot(JSON.stringify(legacyState()));previewAI(app,aiFixture({start:null,end:null}));
+test('AI import requests meal category when omitted, then invalidates preview on paste edit',()=>{
+  const app=boot(JSON.stringify(legacyState()));previewAI(app,aiFixture({mealPeriod:null}));
   assert.equal(app.get('fd-ai-meal-save').disabled,true);
-  app.get('fd-ai-start').value='12:00';app.get('fd-ai-end').value='12:30';app.get('fd-ai-end').oninput();
+  assert.equal(app.get('fd-ai-start'),null);assert.equal(app.get('fd-ai-end'),null);
+  app.get('fd-ai-meal-period').value='lunch';app.get('fd-ai-meal-period').oninput();
   assert.equal(app.get('fd-ai-meal-save').disabled,false);
   const input=app.get('fd-ai-meal-text');input.value=aiFixture({title:'수정된 내용'});input.oninput();
   assert.equal(app.get('fd-ai-meal-save').disabled,true);
@@ -1217,4 +1219,55 @@ test('AI import cannot overwrite a newer tab revision and keeps the draft',()=>{
   assert.equal(app.map.get(C.STORE),JSON.stringify(external));
   assert.equal(app.get('fd-ai-meal-save').disabled,true);
   assert.equal(app.get('fd-ai-meal-text').value,aiFixture());
+});
+
+
+const categoryMealController=()=>({read(){return mealDetail(food());},draft(){return mealDetail(food());},destroy(){}});
+test('manual meal chooses breakfast lunch dinner or snack; clock inputs hidden and disabled',()=>{
+ const app=boot(JSON.stringify(stateWith()),{mealMount:categoryMealController});app.get('new-meal').click();
+ assert.equal(app.get('f-meal-period').disabled,false);
+ assert.deepEqual(app.get('f-meal-period').querySelectorAll('option').map(o=>o.value),['','breakfast','lunch','dinner','snack']);
+ assert.equal(app.get('f-start-field').classList.contains('hide'),true);assert.equal(app.get('f-end').disabled,true);
+ app.get('save-event').click();assert.equal(app.writes.length,0);
+ app.get('f-meal-period').value='dinner';app.get('f-completed').checked=true;app.get('save-event').click();
+ const saved=JSON.parse(app.map.get(C.STORE)).events[0];
+ assert.equal(saved.detail.mealPeriod,'dinner');assert.equal(saved.detail.mealTimeBasis,'category');
+ assert.equal(saved.completed,true);assert.match(app.get('agenda').innerHTML,/저녁/);
+});
+test('editing a time-based legacy meal uses an inferred category and preserves original clock data',()=>{
+ const m=mealEvent(mealDetail(food()),{start:'07:40',end:'08:20',title:'기존 식사'});
+ const raw=JSON.stringify(stateWith(m));const app=boot(raw,{mealMount:categoryMealController});
+ assert.match(app.get('agenda').innerHTML,/아침/);assert.match(app.get('agenda').innerHTML,/추정/);
+ assert.equal(app.map.get(C.STORE),raw);assert.equal(app.writes.length,0);
+ app.get('agenda').querySelector('[data-edit="meal1"]').click();
+ assert.equal(app.get('f-meal-period').value,'breakfast');assert.ok(app.get('f-meal-legacy-hint'));
+ app.get('f-meal-period').value='snack';app.get('save-event').click();
+ const saved=JSON.parse(app.map.get(C.STORE)).events[0];
+ assert.equal(saved.start,'07:40');assert.equal(saved.end,'08:20');
+ assert.equal(saved.detail.mealPeriod,'snack');assert.equal(saved.detail.mealTimeBasis,'recorded');
+});
+test('week/day meal rows are separate from timed exercises; month and agenda use category labels',()=>{
+ const meal=mealEvent({...mealDetail(food()),mealPeriod:'lunch',mealTimeBasis:'category'},{start:'12:00',end:'12:01',title:'분류식단'});
+ const exercise=legacyEvent({start:'18:00',end:'19:00',title:'운동시간보존'});
+ const raw=JSON.stringify(stateWith(meal,exercise)),app=boot(raw);
+ assert.match(app.get('calendar').innerHTML,/event-time" title="점심">점심/);
+ assert.match(app.get('agenda').innerHTML,/agenda-time" title="점심">점심/);
+ for(const view of ['week','day']){
+  app.document.querySelector('[data-view="'+view+'"]').click();
+  const html=app.get('calendar').innerHTML;
+  assert.match(html,/fd-meal-period-board/);assert.match(html,/fd-meal-period-event[^>]*data-edit="meal1"/);
+  assert.doesNotMatch(html,/time-event[^>]*data-edit="meal1"/);assert.doesNotMatch(html,/12:00–12:01/);
+  assert.match(html,/time-event[^>]*data-edit="legacy-workout"/);assert.match(html,/18:00–19:00/);
+ }
+ assert.equal(app.map.get(C.STORE),raw);assert.equal(app.writes.length,0);
+});
+test('category-only meal changed into another type must receive actual clock input',()=>{
+ const m=mealEvent({...mealDetail(food()),mealPeriod:'lunch',mealTimeBasis:'category'},{start:'12:00',end:'12:01'});
+ const raw=JSON.stringify(stateWith(m));const app=boot(raw,{mealMount:categoryMealController});
+ app.get('agenda').querySelector('[data-edit="meal1"]').click();
+ app.document.querySelector('[data-pick="cardio"]').click();
+ assert.equal(app.get('f-start').disabled,false);assert.equal(app.get('f-start').value,'');assert.equal(app.get('f-meal-period').disabled,true);
+ app.get('save-event').click();assert.equal(app.writes.length,0);
+ app.get('f-start').value='17:00';app.get('f-end').value='17:30';app.get('save-event').click();
+ const saved=JSON.parse(app.map.get(C.STORE)).events[0];assert.equal(saved.type,'cardio');assert.equal(saved.start,'17:00');
 });

@@ -20,6 +20,6 @@ test('pilot HTML is explicit test, no tracking, and loads the validated photo co
  assert.match(src,/id="load-meals"[^>]*disabled/);
  assert.match(src,/EXIF/);
  assert.match(src,/meal-photo\.js\?v=pilot1/);
- assert.match(src,/meal-photo-pilot\.js\?v=pilot1/);
+ assert.match(src,/meal-photo-pilot\.js\?v=pilot2/);
  assert.doesNotMatch(src,/analytics|tracking|iframe/);
 });
