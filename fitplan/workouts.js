@@ -263,7 +263,7 @@
     function rebuild(focusSelector) {
       const notes = state.notes;
       const list = container.querySelector('.fw-exercises');
-      const opened=new Map(Array.from(list.querySelectorAll('[data-fw-exercise]')).map(el=>[el.dataset.fwExercise,[el.querySelector('.fw-edit-fold')?.open,el.querySelector('.fw-edit-sets')?.open]]));
+      const opened=new Map(Array.from(opts.collapseExercises?(list.querySelectorAll?.('[data-fw-exercise]')||[]):[]).map(el=>[el.dataset.fwExercise,[el.querySelector('.fw-edit-fold')?.open,el.querySelector('.fw-edit-sets')?.open]]));
       list.innerHTML = state.exercises.map((ex, i) => exerciseMarkup(ex, i, state.exercises.length, listId, opts)).join('');
       if(opts.collapseExercises)for(const el of list.querySelectorAll('[data-fw-exercise]')){
         const old=opened.get(el.dataset.fwExercise);

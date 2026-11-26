@@ -75,3 +75,40 @@ body .fd-plan-swap { display: inline-grid; place-items: center; flex: 0 0 44px; 
 .fd-program-preview-row:not([data-status="new"]){color:var(--fd-muted)}
 .fd-program-register .modal-actions>.btn{flex:1}
 @media(max-width:480px){.fd-program-preview-head{flex-wrap:wrap}.fd-program-register input[type="date"]{width:100%;min-width:0;box-sizing:border-box}}
+
+/* v0.8.29 — existing day records first, compact workout disclosures */
+.fd-day-priority{display:grid;gap:16px;margin-bottom:20px}
+.fd-day-priority .fd-day-section{min-width:0}
+.fd-weight-card{flex:1;min-width:0;border:1px solid var(--fd-border);border-radius:12px;background:var(--fd-input);overflow:hidden}
+.fd-day-detail .fd-weight-card .agenda-card{border:0;border-radius:0;background:transparent;flex-wrap:wrap}
+.fd-weight-edit{display:grid;gap:3px;min-width:0;flex:1;text-align:left;background:transparent;color:inherit;padding:0;overflow-wrap:anywhere}
+.fd-weight-state{font-size:11px;color:var(--fd-muted);white-space:nowrap}
+.fd-weight-progress{padding:0 12px 8px}
+.fd-weight-progress progress{display:block;width:100%;height:6px;accent-color:var(--fd-accent)}
+.fd-weight-card>.fd-plan-disclosure{margin:0;padding:0 12px 8px}
+.fd-weight-card>.fd-agenda-workout-actions{display:flex;justify-content:flex-end;gap:8px;padding:8px 12px;border-top:1px solid var(--fd-border)}
+.fd-plan-disclosure,.fd-plan-exercise{font-size:12px;color:var(--fd-muted);min-width:0}
+.fd-plan-disclosure>summary,.fd-plan-exercise>summary,.fw-edit-fold>summary,.fw-edit-sets>summary{cursor:pointer;padding:10px 0;min-height:40px;line-height:1.5}
+.fd-plan-exercises{display:grid;gap:6px;padding:0 0 8px}
+.fd-plan-exercise{border-top:1px solid var(--fd-border)}
+.fd-plan-exercise>summary b,.fw-edit-fold>summary b{color:var(--fd-text);overflow-wrap:anywhere}
+.fd-plan-exercise>summary span,.fw-edit-fold>summary span{float:right;margin-left:8px;color:var(--fd-muted);font-size:11px}
+.fd-plan-set-list{display:grid;gap:5px;padding:0 0 8px}
+.fd-plan-set-list>div{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px;border-radius:7px;background:var(--fd-surface-raised)}
+.fd-plan-set-list b{color:var(--fd-text);overflow-wrap:anywhere}
+.fd-plan-set-state{font-size:10px;white-space:nowrap}
+.fd-weight-section{font-size:14px;margin:16px 0 9px}
+.fd-weight-date{font-size:13px;color:var(--fd-muted)}
+.fd-weight-existing{display:grid;gap:4px;padding:11px 13px;margin:6px 0;border:1px solid var(--fd-border);border-radius:10px;background:var(--fd-input);overflow-wrap:anywhere}
+.fd-weight-existing small,.fd-weight-route small{font-size:12px;color:var(--fd-muted);line-height:1.5}
+.fd-weight-route{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:14px;margin:8px 0;min-height:58px;text-align:left;background:var(--fd-input);color:var(--fd-text);border:1px solid var(--fd-border);border-radius:12px}
+.fd-weight-route>span:first-child{display:grid;gap:5px;min-width:0;overflow-wrap:anywhere}
+.fd-weight-route>b{font-size:23px;color:var(--fd-muted)}
+.fd-weight-route:disabled{opacity:.45;cursor:not-allowed}
+.fd-weight-choice{border:1px solid var(--fd-border);border-radius:12px;padding:4px 10px 8px;min-width:0}
+.fd-weight-choice>.fd-routine-choice{margin:3px 0;width:100%}
+.fd-program-question{font-weight:700;font-size:15px;line-height:1.6;margin:14px 0}
+.fw-edit-fold>summary{font-weight:650;color:var(--fd-text)}
+.fw-edit-fold[open]>summary{border-bottom:1px solid var(--fd-border);margin-bottom:10px}
+.fw-edit-sets{margin:6px 0 10px}
+@media(max-width:730px){.fd-weight-card .agenda-card{gap:7px}.fd-weight-card .fd-weight-state{font-size:10px}.fd-weight-card .fd-plan-set-list>div{gap:5px}.fd-weight-card .fd-plan-set-list b{font-size:11px}.fd-weight-registration .fields{grid-template-columns:repeat(2,minmax(0,1fr))}}
