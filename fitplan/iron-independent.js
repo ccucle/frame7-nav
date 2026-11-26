@@ -208,12 +208,17 @@
           const done=sets.filter(s=>s.done===true).length,total=sets.length;
           return {done,total,state:!done?'planned':final?session.status==='COMPLETED'?'complete':'partial':event.completed&&(event.workoutSessionId||done===total)?'complete':'partial'};
         })();
+        const live=session&&!final&&session.calendarSource?.baseline===root.FormdayCalendarWorkouts?.signature(event);
+        const shownExercises=(live||counts.pending)?session.exercises:event.detail.exercises;
+        const shownSets=shownExercises.flatMap(ex=>ex.sets);
+        const shownDone=live?shownSets.filter(s=>s.done).length:counts.done;
+        const shownTotal=live?shownSets.length:counts.total;
         const partial=counts.state==='partial',finished=counts.state==='complete';
         const label=final?(partial?'부분 완료 · 기록 보기':'완료 · 기록 보기'):future?'예정된 운동':session?'운동 이어하기':done?(partial?'부분 완료':'완료한 일정'):'이 일정으로 시작';
         const metadata='data-id="'+esc(event.id)+'" data-date="'+esc(event.date)+'"';
         return '<article class="fi-planned-card"><div class="fi-planned-heading"><div><small>'+esc(event.start)+'–'+esc(event.end)+(event.repeat!=='none'?' · 반복 일정':'')+(partial?' · 부분 완료':finished?' · 운동 완료':'')+'</small><h4>'+esc(event.title)+'</h4></div>'+button('swap-calendar',swap,'outline fd-plan-swap',metadata+' aria-label="'+esc(event.title)+' 루틴 교체" title="'+(canReplace?'이 날짜의 루틴 교체':'시작하거나 기록한 운동은 교체할 수 없습니다')+'" '+(canReplace?'':'disabled'))+'</div>'+
-          '<p class="fi-plan-summary">'+(event.detail.freePlan&&!session?'자유운동 · 시작할 때 종목 선택':(session?.exercises||event.detail.exercises).length+'종목 · '+(partial||finished?'실제 '+counts.done+'/'+counts.total+'세트 수행':counts.total+'세트'))+'</p>'+
-          (W.planDisclosure?.(counts.pending?session.exercises:event.detail.freePlan&&session?session.exercises:event.detail.exercises,event.id+'-'+event.date)||'')+
+          '<p class="fi-plan-summary">'+(event.detail.freePlan&&!shownExercises.length?'자유운동 · 시작할 때 종목 선택':shownExercises.length+'종목 · '+(partial||finished?'실제 ':'')+shownDone+'/'+shownTotal+'세트 수행')+'</p>'+
+          (W.planDisclosure?.(shownExercises,event.id+'-'+event.date)||'')+
           button('begin-calendar',label,'primary',metadata+(done||(future&&!final)?' disabled':''))+'</article>';
       }).join('')+'</div>':'<p class="fi-empty">이 날짜에 등록된 웨이트 일정이 없습니다.</p>')+
       '<p class="fi-note">캘린더의 종목과 세트로 시작합니다. ↔ 아이콘으로 이 날짜의 루틴을 바꿀 수 있습니다.</p></section>';

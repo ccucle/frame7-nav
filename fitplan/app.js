@@ -805,10 +805,11 @@ function renderMonth(){const training=trainingIndex(),y=cursor.getFullYear(),m=c
 function renderWorkoutAgenda(e,date,opened){
     const linked=trainingIndex().get(e.id+':'+date),session=linked&&!['COMPLETED','PARTIAL'].includes(linked.status)?linked:null;
     const actual=session&&session.calendarSource?.baseline===K.signature(e)?session:null;
-    const exercises=actual?.exercises||e.detail.exercises,sets=exercises.flatMap(x=>x.sets);
-    const count=actual?{done:sets.filter(s=>s.done).length,total:sets.length}:completionOf(e);
-    const free=e.detail.freePlan&&!actual,done=isDone(e),partial=isPartial(e);
-    const state=done?'운동 완료':partial?'부분 완료':actual?'진행 중':'예정';
+    const reflected=completionOf(e),pending=reflected.pending===true?linked:null;
+    const exercises=(actual||pending)?.exercises||e.detail.exercises,sets=exercises.flatMap(x=>x.sets);
+    const count=actual?{done:sets.filter(s=>s.done).length,total:sets.length}:reflected;
+    const free=e.detail.freePlan&&!actual&&!pending,done=isDone(e),partial=isPartial(e);
+    const state=done?'운동 완료':partial?'부분 완료':actual?(actual.status==='ACTIVE'?'진행 중':'임시 보관'):'예정';
     const desc=free?'자유운동 · 시작할 때 종목 선택':exercises.length+'종목 · '+count.done+'/'+count.total+'세트 완료';
     const progress=count.total?'<div class="fd-weight-progress"><progress max="'+count.total+'" value="'+count.done+'" aria-label="세트 진행률"></progress></div>':'';
     return '<div class="agenda-item fd-weight-agenda"><span class="agenda-time">'+esc(e.start)+'</span><article class="fd-weight-card"><div class="agenda-card '+(done?'done':partial?'partial':'')+'" style="'+styl(e.type)+'"><button class="checkbox-btn '+(done?'checked':partial?'partial':'')+'" data-toggle="'+esc(e.id)+'" data-occdate="'+date+'" aria-label="'+esc(e.title)+' 완료 전환" '+(e.trainingLinked||free?'disabled':'')+'>'+(done?'✓':partial?'−':'')+'</button><button class="fd-weight-edit" data-edit="'+esc(e.id)+'" data-occdate="'+date+'"><span class="agenda-name">'+esc(e.title)+(e.repeat!=='none'?' ↻':'')+(e.isSample?' <small class="fd-day-sample">샘플</small>':'')+'</span><span class="agenda-desc">'+esc(desc)+'</span>'+(isShortComplete(e)?'<span class="agenda-desc fd-ended-count">실제 '+count.done+'/'+count.total+'세트 수행 · 미수행 '+(count.total-count.done)+'세트</span>':'')+(e.trainingCompletion?.pending?'<span class="agenda-desc">캘린더 반영 대기</span>':'')+'</button><span class="fd-weight-state">'+state+'</span></div>'+progress+W.planDisclosure(exercises,'agenda-'+date+'-'+e.id,opened)+calendarWorkoutActions(e,date)+'</article></div>';
