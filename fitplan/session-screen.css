@@ -339,7 +339,16 @@ html[data-fd-input="pointer"] .fs-session .fs-sheet-handle:focus::before { outli
 }
 .fs-all-done { height: 44px; width: 44px; justify-self: center; font-size: 22px; }
 .fs-session .fs-all-done .fs-symbol { width: 26px; height: 26px; }
-.fs-check:hover:not(:disabled), .fs-all-done:hover:not(:disabled) { border-color: var(--fd-accent-text); background: #3b313a; }
+/* Touch Safari can retain :hover after tapping. Completed controls must
+   always show the persisted filled state, not a hover-only background.
+   Reserve hover feedback for genuinely hover-capable primary pointers. */
+@media (hover: hover) and (pointer: fine) {
+  .fs-check:not([data-done="true"]):not([aria-pressed="true"]):hover:not(:disabled),
+  .fs-all-done:not([aria-pressed="true"]):hover:not(:disabled) {
+    border-color: #718196;
+    background: #394653;
+  }
+}
 .fs-check[data-done="true"], .fs-check[aria-pressed="true"], .fs-all-done[aria-pressed="true"] {
   border-color: #ed6070;
   background: var(--fd-accent);
