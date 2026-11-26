@@ -17,6 +17,45 @@
   const fail = message => { const error = new Error(message); error.code = 'INVALID_DATA'; throw error; };
   const EPSILON = 1e-9;
 
+  // Meal category is explicit, not an invented clock reading. Start/end remain
+  // for schema-v3 compatibility; historical recorded times are never migrated.
+  const MEAL_PERIODS = Object.freeze({ breakfast: '아침', lunch: '점심', dinner: '저녁', snack: '간식' });
+  const MEAL_ANCHORS = Object.freeze({ breakfast: ['08:00','08:01'], lunch: ['12:00','12:01'], dinner: ['18:00','18:01'], snack: ['15:00','15:01'] });
+  const validMealPeriod = value => typeof value === 'string' && own(MEAL_PERIODS,value);
+  const validClock = value => typeof value === 'string' && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+  function inferMealPeriod(start) {
+    if(!validClock(start))return null;
+    if(start >= '05:00' && start < '11:00')return 'breakfast';
+    if(start >= '11:00' && start < '15:00')return 'lunch';
+    if(start >= '17:00' && start < '22:00')return 'dinner';
+    return 'snack';
+  }
+  function mealPeriodOf(event) {
+    if(!event||event.type!=='meal')return null;
+    return validMealPeriod(event.detail?.mealPeriod)?event.detail.mealPeriod:inferMealPeriod(event.start);
+  }
+  function mealPeriodLabel(event,markInferred=false) {
+    const period=mealPeriodOf(event);
+    return (MEAL_PERIODS[period]||'식사')+(markInferred&&period&&!validMealPeriod(event?.detail?.mealPeriod)?' (추정)':'');
+  }
+  function mealTimeFields(period,previous=null) {
+    if(!validMealPeriod(period))fail('아침·점심·저녁·간식 중 하나를 선택해 주세요.');
+    // Reclassifying an existing time-based meal must preserve its actual old times.
+    if(previous?.type==='meal'&&previous.detail?.mealTimeBasis!=='category'&&
+       validClock(previous.start)&&validClock(previous.end)&&previous.start<previous.end)
+      return {start:previous.start,end:previous.end,mealTimeBasis:'recorded'};
+    const [start,end]=MEAL_ANCHORS[period];
+    return {start,end,mealTimeBasis:'category'};
+  }
+  function mealMetadata(raw) {
+    if(!own(raw,'mealPeriod')&&!own(raw,'mealTimeBasis'))return {};
+    if(!validMealPeriod(raw.mealPeriod))fail('식사 구분이 올바르지 않습니다.');
+    const basis=own(raw,'mealTimeBasis')?raw.mealTimeBasis:'recorded';
+    if(basis!=='category'&&basis!=='recorded')fail('식사 시간 정보의 종류가 올바르지 않습니다.');
+    return {mealPeriod:raw.mealPeriod,mealTimeBasis:basis};
+  }
+
+
   function uid() {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
     return 'n' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
@@ -206,7 +245,7 @@
     }
     // Reject arithmetic overflow before a malformed meal reaches persisted state.
     sumItems(items);
-    return { items, notes };
+    return { items, notes, ...mealMetadata(raw) };
   }
 
   function calculateMeal(detail) {
@@ -279,5 +318,5 @@
     return { ...clone(state), ...collections };
   }
 
-  return { KEYS, normalizeMeal, validateFood, fromCatalog, calculateMeal, describeMeal, normalizeCollections, upsertCustomFood, removeCustomFood, toggleFavorite };
+  return { KEYS, MEAL_PERIODS, validMealPeriod, inferMealPeriod, mealPeriodOf, mealPeriodLabel, mealTimeFields, mealMetadata, normalizeMeal, validateFood, fromCatalog, calculateMeal, describeMeal, normalizeCollections, upsertCustomFood, removeCustomFood, toggleFavorite };
 });

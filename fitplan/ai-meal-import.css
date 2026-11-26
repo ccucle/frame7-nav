@@ -18,3 +18,16 @@
 .fd-ai-meal-modal #fd-ai-import-status{font-size:13px;color:var(--fd-warning);white-space:pre-wrap}
 .fd-ai-meal-modal .modal-actions .mini-buttons{flex-wrap:wrap}
 @media(max-width:600px){.fd-ai-meal-modal .fd-ai-paste{font-size:16px}.fd-ai-meal-modal .fd-ai-total{gap:6px}.fd-ai-meal-modal .fd-ai-food{font-size:13px}.fd-ai-meal-launch #ai-meal-import{width:100%}}
+
+/* Meal rows do not occupy clock slots; workout and weight timelines are unchanged. */
+.fd-meal-period-board{background:var(--fd-surface);border-bottom:1px solid var(--fd-border)}
+.fd-meal-period-row{display:grid;grid-template-columns:53px repeat(7,minmax(0,1fr));min-height:38px;border-top:1px solid var(--fd-border)}
+.daymode .fd-meal-period-row{grid-template-columns:53px minmax(0,1fr)}
+.fd-meal-period-label{padding:9px 4px;align-self:center;text-align:center;font-size:11px;font-weight:700;color:var(--fd-muted)}
+.fd-meal-period-cell{display:flex;flex-direction:column;gap:4px;padding:4px;min-width:0;border-left:1px solid var(--fd-border)}
+.fd-meal-period-event{display:block;text-align:left;width:100%;padding:5px 6px;border-left:2px solid var(--c);border-radius:5px;background:color-mix(in srgb,var(--c) 18%,var(--fd-surface));color:var(--fd-text);overflow:hidden}
+.fd-meal-period-event strong,.fd-meal-period-event small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}
+.fd-meal-period-event small{font-size:10px;color:var(--fd-muted)}
+.fd-meal-period-event.done{opacity:.85}
+.fd-meal-inferred{display:block;font-size:9px;color:var(--fd-subtle)}
+.fd-event-form #f-meal-legacy-hint{grid-column:1 / -1;margin:0;font-size:12px}

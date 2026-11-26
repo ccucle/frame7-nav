@@ -26,13 +26,18 @@
     if(fenced)s=fenced[1].trim();
     let value;
     try{value=JSON.parse(s);}catch{fail('JSON 형식이 올바르지 않습니다. 전체 식단 JSON 한 개만 붙여넣어 주세요.');}
-    object(value,['format','date','start','end','title','notes','items'],['format','title','items'],'식단');
+    object(value,['format','date','mealPeriod','start','end','title','notes','items'],['format','title','items'],'식단');
     if(value.format!==FORMAT)fail('FORMDAY AI 식단 가져오기 형식이 아닙니다. 일반 백업은 가져올 수 없습니다.');
     for(const key of ['date','start','end']){
       const v=value[key];
       if(v!==undefined&&v!==null&&!(key==='date'?C.validDate(v):C.validTime(v)))fail('날짜와 시간은 YYYY-MM-DD / HH:MM 또는 null로 입력해 주세요.');
     }
     if(value.start&&value.end&&value.start>=value.end)fail('종료 시간은 시작 시간보다 늦어야 합니다.');
+    const suppliedPeriod=value.mealPeriod;
+    const periodAlias=Object.entries(N.MEAL_PERIODS).find(([,label])=>label===suppliedPeriod)?.[0];
+    const explicitPeriod=suppliedPeriod===undefined||suppliedPeriod===null?null:(N.validMealPeriod(suppliedPeriod)?suppliedPeriod:periodAlias);
+    if(suppliedPeriod!==undefined&&suppliedPeriod!==null&&!explicitPeriod)fail('식사 구분은 아침·점심·저녁·간식 중 하나여야 합니다.');
+    const mealPeriod=explicitPeriod||N.inferMealPeriod(value.start);
     const title=text(value.title,160,'식단 제목');
     const notes=text(value.notes,1000,'메모',true);
     if(!Array.isArray(value.items)||value.items.length<1||value.items.length>50)fail('한 끼에 음식 1~50개를 입력해 주세요.');
@@ -50,7 +55,7 @@
       return {id:C.uid(),amount:item.amount,food};
     });
     const detail=N.normalizeMeal({items,notes:['AI 식단 가져오기 · 섭취량 및 AI 추정값은 사용자 확인 기준.',notes].filter(Boolean).join('\n')});
-    return {date:value.date??null,start:value.start??null,end:value.end??null,title,detail,id:C.uid()};
+    return {date:value.date??null,start:value.start??null,end:value.end??null,mealPeriod,periodInferred:!!mealPeriod&&!explicitPeriod,title,detail,id:C.uid()};
   }
   function kstDay(now=new Date()){
     if(!now||!Number.isFinite(now.getTime()))fail('현재 날짜를 확인할 수 없습니다.');
@@ -62,17 +67,21 @@
   }
   function prepare(state,parsed,schedule,now=new Date()){
     if(!state||!parsed||!schedule)fail('먼저 식단 미리보기를 확인해 주세요.');
-    const {date,start,end}=schedule;
+    const {date,mealPeriod}=schedule;
     if(!C.validDate(date))fail('실제 식사 날짜를 입력해 주세요.');
     if(date>kstDay(now))fail('미래 날짜에 완료된 식사를 등록할 수 없습니다.');
-    if(!C.validTime(start)||!C.validTime(end)||start>=end)fail('실제 시작·종료 시간을 입력해 주세요. 종료 시간은 시작보다 늦어야 합니다.');
-    const detail=N.normalizeMeal(parsed.detail);
+    if(!N.validMealPeriod(mealPeriod))fail('아침·점심·저녁·간식 중 하나를 선택해 주세요.');
+    // Legacy JSON containing both actual clock values remains importable, but the
+    // form never asks for clock times. Otherwise generate schema-only anchors.
+    const previous=parsed.start&&parsed.end?{type:'meal',start:parsed.start,end:parsed.end,detail:{}}:null;
+    const {start,end,mealTimeBasis}=N.mealTimeFields(mealPeriod,previous);
+    const detail=N.normalizeMeal({...parsed.detail,mealPeriod,mealTimeBasis});
     const sig=signature(detail.items);
-    // Conservative: identical portions or overlapping meal times on the same date
-    // can be a retry or a partial duplicate; do not modify any previous meal.
-    const match=C.dayEvents(state,date).find(e=>e.type==='meal'&&!e.isSample&&
-      (signature(e.detail.items)===sig||(e.start<end&&start<e.end)));
-    if(match)fail('중복 가능 식단: '+match.start+'–'+match.end+' '+match.title+'. 기존 기록을 확인해 주세요. 자동으로 추가하거나 덮어쓰지 않습니다.');
+    // One AI import per main meal category. Multiple distinct snacks are allowed.
+    // A deliberate different meal period is not a duplicate merely for sharing food.
+    const match=C.dayEvents(state,date).find(e=>e.type==='meal'&&!e.isSample&&N.mealPeriodOf(e)===mealPeriod&&
+      (mealPeriod!=='snack'||signature(e.detail.items)===sig));
+    if(match)fail('중복 가능 식단: '+N.mealPeriodLabel(match,true)+' '+match.title+'. 기존 기록을 확인해 주세요. 자동으로 추가하거나 덮어쓰지 않습니다.');
     if(state.events.some(e=>e.id===parsed.id))fail('이미 사용한 가져오기 식별자입니다. 기존 기록을 확인해 주세요.');
     const event={id:parsed.id,date,start,end,type:'meal',title:parsed.title,repeat:'none',repeatUntil:null,completed:true,detail,isSample:false};
     // The existing calendar normalization and revision-checked save own all persistence.

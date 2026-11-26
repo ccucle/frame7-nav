@@ -11,7 +11,7 @@ const config={
 };
 const app=getApps().find(a=>a.name==='formday-auth')||initializeApp(config,'formday-auth');
 const auth=getAuth(app),db=getFirestore(app);
-const C=window.FormdayCore,P=window.FormdayMealPhotoPolicy,S=window.FormdaySyncPolicy;
+const C=window.FormdayCore,P=window.FormdayMealPhotoPolicy,S=window.FormdaySyncPolicy,N=window.FormdayNutrition;
 const q=id=>document.getElementById(id),status=q('pilot-status'),load=q('load-meals'),select=q('meal-select'),open=q('open-meal'),section=q('meal-section'),host=q('photo-target');
 let uid=null,generation=0,meals=[],controller=null,loading=false,openedId='';
 const tell=message=>status.textContent=message;
@@ -36,7 +36,7 @@ load.onclick=async()=>{
   const remote=S.docValid(snap.data());
   meals=C.normalizeState(JSON.parse(remote.payload)).events.filter(P.eligible).sort((a,b)=>b.date.localeCompare(a.date)||b.start.localeCompare(a.start));
   select.replaceChildren(new Option('식단 선택',''));
-  for(const meal of meals)select.append(new Option(meal.date+' '+meal.start+' · '+meal.title,meal.id));
+  for(const meal of meals)select.append(new Option(meal.date+' '+N.mealPeriodLabel(meal,true)+' · '+meal.title,meal.id));
   section.hidden=meals.length===0;
   tell(meals.length?'완료 식단 '+meals.length+'개를 확인했습니다. 시험할 식단 하나를 선택하세요.':'사진을 연결할 완료 식단이 없습니다. 새 기록을 자동 생성하지 않았습니다.');
  }catch(e){if(current(id,epoch)){clear();tell('식단 조회 실패: '+(e.message||'연결 상태를 확인해 주세요.'));}}

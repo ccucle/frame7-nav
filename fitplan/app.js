@@ -161,7 +161,7 @@
     return map;
   }
   function getDay(day,filtered=true,training=trainingIndex()) {
-    return C.dayEvents(data,day).filter(e=>!filtered || (visibleTypes.has(e.type) && (!searchTerm || `${e.title} ${details(e)} ${(e.detail.exercises||[]).map(x=>x.name).join(' ')} ${(e.detail.items||[]).map(x=>[x.food.name,x.food.nameEn,x.food.brand].join(' ')).join(' ')}`.toLocaleLowerCase().includes(searchTerm)))).map(event=>{
+    return C.dayEvents(data,day).filter(e=>!filtered || (visibleTypes.has(e.type) && (!searchTerm || `${e.title} ${e.type==='meal'?N.mealPeriodLabel(e):''} ${details(e)} ${(e.detail.exercises||[]).map(x=>x.name).join(' ')} ${(e.detail.items||[]).map(x=>[x.food.name,x.food.nameEn,x.food.brand].join(' ')).join(' ')}`.toLocaleLowerCase().includes(searchTerm)))).map(event=>{
       const session=event.type==='strength'?training.get(event.id+':'+day):null;
       return {event:event.type==='strength'?{...event,trainingCompletion:K.calendarCompletion(event,session),trainingLinked:!!(session||event.workoutSessionId)}:event,date:day};
     });
@@ -235,6 +235,18 @@
     $('#stat-weight-note').textContent=weights.length?`${weights.at(-1).date} ${weights.at(-1).start} 측정`:'완료한 측정 기록이 없습니다';
     $('#workout-progress').innerHTML=`<div><span>완료 본세트</span><strong>${sum.completedSets}<small> / ${sum.setCount}</small></strong></div><div><span>완료 운동량</span><strong>${fmt(sum.volume,1)}<small> kg</small></strong></div><p>실제 완료 본세트의 중량 × 횟수 · 워밍업·샘플 제외${sum.partialWorkouts?' · 부분 완료 '+sum.partialWorkouts+'회':''}</p>`;
   }
+  const mealPeriodOptions=()=>[['','식사 구분 선택'],...Object.entries(N.MEAL_PERIODS)];
+  const eventClockLabel=event=>event.type==='meal'?N.mealPeriodLabel(event):event.start;
+  const periodTitle=event=>event.type==='meal'?N.mealPeriodLabel(event,true):event.start+'–'+event.end;
+  function renderMealPeriodRows(dates,byDay){
+    if(!visibleTypes.has('meal'))return '';
+    const rows=Object.entries(N.MEAL_PERIODS).map(([period,label])=>
+      '<div class="fd-meal-period-row"><div class="fd-meal-period-label">'+label+'</div>'+
+      dates.map(day=>'<div class="fd-meal-period-cell">'+byDay.get(day).filter(e=>e.type==='meal'&&N.mealPeriodOf(e)===period).map(e=>
+        '<button type="button" class="fd-meal-period-event '+(isDone(e)?'done':'')+'" style="'+styl(e.type)+'" data-edit="'+esc(e.id)+'" data-occdate="'+day+'" title="'+esc(periodTitle(e)+' · '+e.title)+'" aria-label="'+esc(periodTitle(e)+' '+e.title)+'"><strong>'+esc(e.title)+'</strong><small>'+esc(N.describeMeal(e.detail))+(isDone(e)?' ✓':'')+'</small></button>'
+      ).join('')+'</div>').join('')+'</div>').join('');
+    return '<section class="fd-meal-period-board" aria-label="시간 없는 식단 구분">'+rows+'</section>';
+  }
   function timeTop(value) {const [h,m]=value.split(':').map(Number);return (h+m/60)*55;}
   function layoutIntervals(events) {
     const items=events.map(e=>({event:e,top:timeTop(e.start),bottom:Math.max(timeTop(e.start)+28,timeTop(e.end))})).sort((a,b)=>a.top-b.top||a.bottom-b.bottom);
@@ -252,8 +264,10 @@
     const head='<div class="week-top"><span></span>'+dates.map(day=>{const d=dateOf(day);return `<button class="wt ${day===today?'today':''}" data-day="${day}">${DAYS[d.getDay()]}<strong>${d.getDate()}</strong></button>`;}).join('')+'</div>';
     let labels='<div class="time-labels">';for(let h=1;h<24;h++)labels+=`<div style="top:${h*55}px">${z(h)}:00</div>`;labels+='</div>';
     const training=trainingIndex();
-    const lanes=dates.map(day=>`<div class="day-lane ${day===today?'today':''}" data-lane="${day}" aria-label="${dayLabel(day)}">${layoutIntervals(getDay(day,true,training).map(x=>x.event)).map(({event:e,top,bottom,column,columns})=>`<button class="time-event ${isDone(e)?'done':isPartial(e)?'partial':''} ${isShortComplete(e)?'ended-short':''}" data-edit="${esc(e.id)}" data-occdate="${day}" style="${styl(e.type)};top:${top+2}px;height:${Math.max(26,bottom-top-4)}px;left:calc(${column/columns*100}% + 2px);width:calc(${100/columns}% - 4px);right:auto" aria-label="${esc(e.title)} ${e.start}–${e.end}"><strong>${esc(e.title)}</strong><small>${e.start}–${e.end}${isShortComplete(e)?' · 완료 '+completionOf(e).done+'/'+completionOf(e).total+'세트':isDone(e)?' ✓':isPartial(e)?' · 부분 완료':''}</small></button>`).join('')}</div>`).join('');
-    return `<div class="time-view-wrap ${view==='day'?'daymode':''}" id="time-view"><div class="time-scroll">${head}<div class="time-body">${labels}${lanes}</div></div></div>`;
+    const byDay=new Map(dates.map(day=>[day,getDay(day,true,training).map(x=>x.event)]));
+    const mealRows=renderMealPeriodRows(dates,byDay);
+    const lanes=dates.map(day=>`<div class="day-lane ${day===today?'today':''}" data-lane="${day}" aria-label="${dayLabel(day)}">${layoutIntervals(byDay.get(day).filter(e=>e.type!=='meal')).map(({event:e,top,bottom,column,columns})=>`<button class="time-event ${isDone(e)?'done':isPartial(e)?'partial':''} ${isShortComplete(e)?'ended-short':''}" data-edit="${esc(e.id)}" data-occdate="${day}" style="${styl(e.type)};top:${top+2}px;height:${Math.max(26,bottom-top-4)}px;left:calc(${column/columns*100}% + 2px);width:calc(${100/columns}% - 4px);right:auto" aria-label="${esc(e.title)} ${e.start}–${e.end}"><strong>${esc(e.title)}</strong><small>${e.start}–${e.end}${isShortComplete(e)?' · 완료 '+completionOf(e).done+'/'+completionOf(e).total+'세트':isDone(e)?' ✓':isPartial(e)?' · 부분 완료':''}</small></button>`).join('')}</div>`).join('');
+    return `<div class="time-view-wrap ${view==='day'?'daymode':''}" id="time-view"><div class="time-scroll">${head}${mealRows}<div class="time-body">${labels}${lanes}</div></div></div>`;
   }
   let lastCalendarKey='';
   function render() {
@@ -355,17 +369,16 @@
     if(blockedLoad||externalChange){toast('기존 기록을 복구하거나 최신 기록을 먼저 불러와 주세요.',true);return;}
     if($('#modal-root').children.length)return;
     const initialDay=detailDay();
-    const example=JSON.stringify({format:AI.FORMAT,date:null,start:null,end:null,title:'식사 제목',notes:'분량 추정 근거',
+    const example=JSON.stringify({format:AI.FORMAT,date:null,mealPeriod:null,title:'식사 제목',notes:'분량 추정 근거',
       items:[{name:'음식명',amount:100,unit:'g',evidence:'photo_estimate',nutrients:{kcal:null,carbs:null,protein:null,fat:null,unsat:null}}]},null,2);
     modal('AI 식단 가져오기',
       '<p class="fd-ai-help">ChatGPT에서 만든 식단 JSON을 붙여넣으세요. 기존 식단은 변경하지 않고, 확인한 한 끼만 추가합니다. 원본 사진은 저장하지 않습니다.</p>'+
       '<div class="field"><label for="fd-ai-meal-text">AI 식단 JSON</label><textarea id="fd-ai-meal-text" class="fd-ai-paste" maxlength="80000" spellcheck="false" placeholder="ChatGPT에서 복사한 JSON 붙여넣기"></textarea></div>'+
-      '<details><summary>ChatGPT 요청 양식 보기</summary><p class="fd-ai-help">“아래 형식으로 먹은 양 기준 영양성분을 JSON 한 개로 만들어 줘. 실제 날짜·시간을 모르면 null, 영양정보를 모르면 null로 기록해. 단위는 g/ml/serving, 출처는 photo_estimate/estimate/user_label/unknown.”</p><pre>'+esc(example)+'</pre></details>'+
+      '<details><summary>ChatGPT 요청 양식 보기</summary><p class="fd-ai-help">“아래 형식으로 먹은 양 기준 영양성분을 JSON 한 개로 만들어 줘. 실제 날짜 또는 식사 구분을 모르면 null, 영양정보를 모르면 null로 기록해. mealPeriod는 breakfast/lunch/dinner/snack(아침/점심/저녁/간식). 시각은 필요 없어. 단위는 g/ml/serving, 출처는 photo_estimate/estimate/user_label/unknown.”</p><pre>'+esc(example)+'</pre></details>'+
       '<button type="button" class="btn btn-outline" id="fd-ai-meal-preview">내용 불러오기</button>'+
       '<section id="fd-ai-preview" class="fd-ai-preview" aria-label="식단 미리보기" hidden><h3 id="fd-ai-title"></h3><div class="fields">'+
       field('식사 날짜','fd-ai-date','date','', 'required')+
-      field('시작 시간','fd-ai-start','time','', 'required')+
-      field('종료 시간','fd-ai-end','time','', 'required')+
+      selectField('식사 구분','fd-ai-meal-period',mealPeriodOptions(),'','required')+
       '</div><div id="fd-ai-foods"></div><div class="fd-ai-total" id="fd-ai-totals"></div><p class="fd-ai-help" id="fd-ai-notes"></p><p id="fd-ai-import-status" role="status" aria-live="polite"></p></section>',
       '<div></div><div class="mini-buttons"><button class="btn btn-outline" id="fd-ai-meal-cancel" type="button">취소</button><button class="btn btn-primary" id="fd-ai-meal-save" type="button" disabled>식사 완료로 저장</button></div>',
       '먼저 이 기기의 캘린더에 저장됩니다. 기존 Google 기기 동기화가 연결되어 있고 충돌이 없을 때만 클라우드에 반영됩니다.');
@@ -374,7 +387,7 @@
     modalController={destroy(){}};
     let parsed=null,source='';
     const paste=$('#fd-ai-meal-text'),save=$('#fd-ai-meal-save'),preview=$('#fd-ai-preview'),status=$('#fd-ai-import-status');
-    const schedule=()=>({date:$('#fd-ai-date').value,start:$('#fd-ai-start').value,end:$('#fd-ai-end').value});
+    const schedule=()=>({date:$('#fd-ai-date').value,mealPeriod:$('#fd-ai-meal-period').value});
     const resetError=()=>{const node=$('#form-error');node.textContent='';node.classList.add('hide');};
     const refresh=()=>{
       save.disabled=true;
@@ -382,12 +395,12 @@
       try{
         if(blockedLoad||externalChange)throw Error('다른 창의 최신 기록을 먼저 확인해 주세요.');
         AI.prepare(data,parsed,schedule(),new Date());
-        status.textContent='식사 내용과 날짜·시간을 확인한 후 저장하세요. AI 수치는 추정값일 수 있습니다.';
+        status.textContent=(parsed.periodInferred?'기존 시각 기준으로 제안한 식사 구분입니다. ':'')+'식사 내용과 날짜·구분을 확인한 후 저장하세요. AI 수치는 추정값일 수 있습니다.';
         save.disabled=false;
       }catch(error){status.textContent=error.message;}
     };
     paste.oninput=()=>{parsed=null;source='';preview.hidden=true;save.disabled=true;resetError();modalDirty=true;};
-    for(const id of ['fd-ai-date','fd-ai-start','fd-ai-end'])$('#'+id).oninput=refresh;
+    for(const id of ['fd-ai-date','fd-ai-meal-period']){ $('#'+id).oninput=refresh; $('#'+id).onchange=refresh; }
     $('#fd-ai-meal-cancel').onclick=()=>closeModal();
     $('#fd-ai-meal-preview').onclick=()=>{
       save.disabled=true;parsed=null;preview.hidden=true;resetError();modalDirty=true;
@@ -395,7 +408,7 @@
         parsed=AI.parse(paste.value);source=paste.value;
         $('#fd-ai-title').textContent=parsed.title;
         $('#fd-ai-date').value=parsed.date||initialDay;
-        $('#fd-ai-start').value=parsed.start||'';$('#fd-ai-end').value=parsed.end||'';
+        $('#fd-ai-meal-period').value=parsed.mealPeriod||'';
         $('#fd-ai-notes').textContent=parsed.detail.notes;
         $('#fd-ai-foods').innerHTML=parsed.detail.items.map(i=>{
           const unit=i.food.basisUnit==='serving'?'회분':i.food.basisUnit;
@@ -415,7 +428,7 @@
         const result=AI.prepare(data,parsed,schedule(),new Date());
         if(commit(result.next,'AI 식단을 이 기기에 등록했습니다. 클라우드 동기화 상태를 확인해 주세요.')){
           const verified=persistence.load();
-          if(verified.error||!verified.data?.events.some(e=>e.id===result.event.id&&e.date===result.event.date&&e.type==='meal'&&e.completed)){
+          if(verified.error||!verified.data?.events.some(e=>e.id===result.event.id&&e.date===result.event.date&&e.type==='meal'&&e.completed&&e.detail.mealPeriod===result.event.detail.mealPeriod)){
             formError(Error('저장 결과를 확인하지 못했습니다. 중복 등록하지 말고 캘린더에서 확인해 주세요.'));parsed=null;return;
           }
           closeModal(true);openDayDetail(result.event.date);
@@ -440,10 +453,28 @@
     const completionLabel=()=>currentType==='strength'?(linkedTraining?'운동 종료 상태 · 실제 수행 기록 기준':'모든 세트 완료'):currentType==='meal'?'식사 완료':currentType==='weight'?'측정 완료':'운동 완료';
     const routines=edit?[]:(window.FormdayIndependent?.getSnapshot?.()?.routines||[]);
     const routinePicker=routines.length?`<div id="f-routine-field" class="field full ${currentType==='strength'?'':'hide'}">${selectField('저장한 루틴 불러오기','f-routine',[['','직접 구성'],...routines.map(r=>[r.id,r.name])],'')}<p class="helper">선택한 날짜의 운동 계획으로 가져옵니다. 원래 루틴은 유지됩니다.</p></div>`:'';
-    const controls=`${recurring?`<div class="repeat-scope">${selectField('적용 범위','f-scope',[['occurrence','이 날짜만'],['series','반복 기본 계획']],scope)}<p>${esc(repeatNote)}</p></div>`:''}<div class="type-choices" id="type-choices">${Object.entries(TYPES).map(([key,t])=>`<button class="type-choice ${key===currentType?'active':''}" style="${styl(key)}" data-pick="${key}" ${recurring?'disabled':''}><b>${t.emoji}</b>${t.name}</button>`).join('')}</div>${routinePicker}<div class="fields fd-event-fields"><div id="f-title-field" class="field full ${currentType==='strength'?'':'hide'}"><label for="f-title">일정 제목</label><input id="f-title" value="${esc(item.type==='strength'?item.title:'')}" placeholder="예: 상체 운동" maxlength="160"></div>${field(recurring?(scope==='series'?'반복 시작일':'기록 날짜'):'날짜','f-date','date',recurring&&scope==='series'?event.date:date,recurring?'disabled':'required')}${selectField('반복 일정','f-repeat',[['none','반복 안 함'],['daily','매일'],['weekly','매주 같은 요일']],item.repeat,recurring?'disabled':'')}${field('시작 시간','f-start','time',item.start,'required')}${field('종료 시간','f-end','time',item.end,'required')}<div id="until-field" class="field full ${item.repeat==='none'?'hide':''}"><label for="f-until">반복 종료일 · 선택</label><input id="f-until" type="date" value="${esc(event?.repeatUntil||'')}" ${recurring&&scope==='occurrence'?'disabled':''}></div></div><div class="separator"></div><div id="dynamic-details"></div><div class="separator"></div><label class="checkline ${recurring&&scope==='series'?'hide':''}"><input type="checkbox" id="f-completed" ${item.completed?'checked':''}><span id="completion-label">${completionLabel()}</span></label>${recurring&&scope==='series'?'<p class="helper">반복 기본 계획은 아직 기록하지 않은 날짜에 적용됩니다. 실제 수행·섭취·측정은 “이 날짜만”에서 기록하세요.</p>':''}`;
+    const initialPeriod=effective?.type==='meal'?N.mealPeriodOf(effective)||'':'';
+    const legacyPeriod=effective?.type==='meal'&&!N.validMealPeriod(effective.detail?.mealPeriod);
+    const categoryOnly=effective?.type==='meal'&&effective.detail?.mealTimeBasis==='category';
+    const periodControl=selectField('식사 구분','f-meal-period',mealPeriodOptions(),initialPeriod,'required')
+      .replace('<div class="field">','<div id="f-meal-period-field" class="field full '+(currentType==='meal'?'':'hide')+'">');
+    const timeField=(label,id,value)=>field(label,id,'time',categoryOnly?'':value,'required')
+      .replace('<div class="field">','<div id="'+id+'-field" class="field '+(currentType==='meal'?'hide':'')+'">');
+    const controls=`${recurring?`<div class="repeat-scope">${selectField('적용 범위','f-scope',[['occurrence','이 날짜만'],['series','반복 기본 계획']],scope)}<p>${esc(repeatNote)}</p></div>`:''}<div class="type-choices" id="type-choices">${Object.entries(TYPES).map(([key,t])=>`<button class="type-choice ${key===currentType?'active':''}" style="${styl(key)}" data-pick="${key}" ${recurring?'disabled':''}><b>${t.emoji}</b>${t.name}</button>`).join('')}</div>${routinePicker}<div class="fields fd-event-fields"><div id="f-title-field" class="field full ${currentType==='strength'?'':'hide'}"><label for="f-title">일정 제목</label><input id="f-title" value="${esc(item.type==='strength'?item.title:'')}" placeholder="예: 상체 운동" maxlength="160"></div>${field(recurring?(scope==='series'?'반복 시작일':'기록 날짜'):'날짜','f-date','date',recurring&&scope==='series'?event.date:date,recurring?'disabled':'required')}${selectField('반복 일정','f-repeat',[['none','반복 안 함'],['daily','매일'],['weekly','매주 같은 요일']],item.repeat,recurring?'disabled':'')}${periodControl}${legacyPeriod?'<p id="f-meal-legacy-hint" class="helper full">기존 기록의 식사 구분은 저장된 시각 기준 추정입니다. 구분을 확인해 주세요. 기존 시각은 데이터에 보존됩니다.</p>':''}${timeField('시작 시간','f-start',item.start)}${timeField('종료 시간','f-end',item.end)}<div id="until-field" class="field full ${item.repeat==='none'?'hide':''}"><label for="f-until">반복 종료일 · 선택</label><input id="f-until" type="date" value="${esc(event?.repeatUntil||'')}" ${recurring&&scope==='occurrence'?'disabled':''}></div></div><div class="separator"></div><div id="dynamic-details"></div><div class="separator"></div><label class="checkline ${recurring&&scope==='series'?'hide':''}"><input type="checkbox" id="f-completed" ${item.completed?'checked':''}><span id="completion-label">${completionLabel()}</span></label>${recurring&&scope==='series'?'<p class="helper">반복 기본 계획은 아직 기록하지 않은 날짜에 적용됩니다. 실제 수행·섭취·측정은 “이 날짜만”에서 기록하세요.</p>':''}`;
     modal(titleLabel,controls,`<div>${edit?`<button class="danger" id="delete-event">${recurring?(scope==='series'?'반복 전체 삭제':'이 날짜 삭제'):'일정 삭제'}</button>`:''}</div><div class="mini-buttons"><button class="btn btn-outline" id="cancel-event">취소</button><button class="btn btn-primary" id="save-event">${edit?'변경 저장':'일정 등록'}</button></div>`,recurring?repeatNote:'',currentType==='strength');
     $('.modal').classList.add('fd-event-form');
     $('#modal-title').setAttribute('tabindex','-1');
+    function syncMealFields(){
+      const meal=currentType==='meal';
+      $('#f-meal-period-field').classList.toggle('hide',!meal);
+      $('#f-meal-period').disabled=!meal;
+      $('#f-meal-legacy-hint')?.classList.toggle('hide',!meal);
+      for(const id of ['f-start','f-end']){
+        $('#'+id+'-field').classList.toggle('hide',meal);
+        $('#'+id).disabled=meal;
+      }
+    }
+    syncMealFields();
     mountDetails(currentType,item.detail,date,recurring?scope:'single');
     modalDirty=false;
     $('#f-completed').disabled=linkedTraining&&currentType==='strength';
@@ -461,6 +492,7 @@
       if(button.dataset.pick===currentType)return;
       try{drafts[currentType]=modalController?.draft?modalController.draft():readDetail(currentType);}catch(error){formError(error);return;}
       currentType=button.dataset.pick;
+      syncMealFields();
       $('.modal').classList.toggle('modal-workout',currentType==='strength');
       $('#f-routine-field')?.classList.toggle('hide',currentType!=='strength');
       $('#f-title-field').classList.toggle('hide',currentType!=='strength');
@@ -494,10 +526,16 @@
     };
     $('#save-event').onclick=()=>{
       try {
-        const detail=readDetail(currentType),dateValue=recurring?item.date:$('#f-date').value;
-        const startValue=$('#f-start').value,endValue=$('#f-end').value;
+        let detail=readDetail(currentType);
+        const dateValue=recurring?item.date:$('#f-date').value;
+        let startValue=$('#f-start').value,endValue=$('#f-end').value;
         if(!C.validDate(dateValue))throw new Error('올바른 날짜를 입력해 주세요.');
-        if(!C.validTime(startValue)||!C.validTime(endValue)||endValue<=startValue)throw new Error('종료 시간은 같은 날짜의 시작 시간보다 늦어야 합니다.');
+        if(currentType==='meal'){
+          const mealPeriod=$('#f-meal-period').value;
+          const times=N.mealTimeFields(mealPeriod,effective);
+          startValue=times.start;endValue=times.end;
+          detail=N.normalizeMeal({...detail,mealPeriod,mealTimeBasis:times.mealTimeBasis});
+        }else if(!C.validTime(startValue)||!C.validTime(endValue)||endValue<=startValue)throw new Error('종료 시간은 같은 날짜의 시작 시간보다 늦어야 합니다.');
         const mealName=detail.items?.length?(detail.items[0].food.name+(detail.items.length>1?` 외 ${detail.items.length-1}가지`:'')):'식단 기록';
         const automaticTitle={strength:'웨이트 트레이닝',cardio:(detail.cardio||'유산소 운동').slice(0,160),meal:mealName.slice(0,160),weight:'체중 측정'}[currentType];
         // Preserve existing date-specific titles; hidden strength drafts never name another record type.
@@ -655,9 +693,9 @@ function renderFilters(){let html='<button class="filter-chip active" id="all-fi
 
 function renderMini(){const d=dateOf(iso(cursor)),y=d.getFullYear(),m=d.getMonth();$('#mini-title').textContent=`${y}년 ${m+1}월`;let x=`<div class="mini-grid">${DAYS.map(s=>`<span>${s}</span>`).join('')}`;for(let i=0;i<new Date(y,m,1).getDay();i++)x+='<span></span>';const days=new Date(y,m+1,0).getDate();for(let i=1;i<=days;i++){let ds=iso(new Date(y,m,i));x+=`<button class="${ds===today?'today':''} ${ds===selected?'selected':''} ${getDay(ds).length?'has-event':''}" data-mini="${ds}">${i}</button>`}$('#mini-cal').innerHTML=x+'</div>'}
 
-function renderMonth(){const training=trainingIndex(),y=cursor.getFullYear(),m=cursor.getMonth();const first=new Date(y,m,1),start=new Date(y,m,1-first.getDay());let html='<div class="week-labels">'+DAYS.map(s=>`<span class="week-label">${s}요일</span>`).join('')+'</div><div class="month-grid">';for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const ds=iso(d),events=getDay(ds,true,training);html+=`<div class="month-cell ${d.getMonth()!==m?'other':''} ${ds===selected?'selected':''}" data-date="${ds}" title="${dayLabel(ds)}"><div class="cell-top"><button class="day-num ${ds===today?'today':''}" data-day="${ds}" aria-label="${dayLabel(ds)} 상세보기">${d.getDate()}</button><button class="cell-add" data-add="${ds}" aria-label="일정 추가">＋</button></div>`;for(const {event:e} of events.slice(0,3)){html+=`<button draggable="${e.repeat==='none'&&!e.workoutSessionId}" class="month-event ${isDone(e)?'done':isPartial(e)?'partial':''} ${isShortComplete(e)?'ended-short':''}" style="${styl(e.type)}" data-edit="${e.id}" data-occdate="${ds}" title="${esc(e.title)} — 클릭하여 수정 · 드래그하여 이동"><span class="event-time">${e.start}</span><span class="event-text">${isPartial(e)?'◐ ':isShortComplete(e)?'✓ ':''}${esc(e.title)}${isShortComplete(e)?' · '+completionOf(e).done+'/'+completionOf(e).total:''}</span></button>`}if(events.length>3)html+=`<button class="more-events" data-day="${ds}">+ ${events.length-3}개 더 보기</button>`;html+='</div>'}return html+'</div>'}
+function renderMonth(){const training=trainingIndex(),y=cursor.getFullYear(),m=cursor.getMonth();const first=new Date(y,m,1),start=new Date(y,m,1-first.getDay());let html='<div class="week-labels">'+DAYS.map(s=>`<span class="week-label">${s}요일</span>`).join('')+'</div><div class="month-grid">';for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const ds=iso(d),events=getDay(ds,true,training);html+=`<div class="month-cell ${d.getMonth()!==m?'other':''} ${ds===selected?'selected':''}" data-date="${ds}" title="${dayLabel(ds)}"><div class="cell-top"><button class="day-num ${ds===today?'today':''}" data-day="${ds}" aria-label="${dayLabel(ds)} 상세보기">${d.getDate()}</button><button class="cell-add" data-add="${ds}" aria-label="일정 추가">＋</button></div>`;for(const {event:e} of events.slice(0,3)){html+=`<button draggable="${e.repeat==='none'&&!e.workoutSessionId}" class="month-event ${isDone(e)?'done':isPartial(e)?'partial':''} ${isShortComplete(e)?'ended-short':''}" style="${styl(e.type)}" data-edit="${e.id}" data-occdate="${ds}" title="${esc(e.title)} — 클릭하여 수정 · 드래그하여 이동"><span class="event-time" title="${esc(periodTitle(e))}">${esc(eventClockLabel(e))}</span><span class="event-text">${isPartial(e)?'◐ ':isShortComplete(e)?'✓ ':''}${esc(e.title)}${isShortComplete(e)?' · '+completionOf(e).done+'/'+completionOf(e).total:''}</span></button>`}if(events.length>3)html+=`<button class="more-events" data-day="${ds}">+ ${events.length-3}개 더 보기</button>`;html+='</div>'}return html+'</div>'}
 
-function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$('#right-badge').textContent=day===today?'TODAY / 오늘 상세':'DAY / 날짜 상세';$('#right-date').textContent=dayLabel(day);$('#right-sub').textContent=`${d.getFullYear()}년 · ${l.length}개 일정${day>today?' · 예정된 기록':''}`;const partialCount=l.filter(({event})=>isPartial(event)).length;$('#agenda-count').textContent=`${l.filter(({event})=>isDone(event)).length}/${l.length} 완료${partialCount?' · 부분 '+partialCount:''}`;$('#agenda').innerHTML=l.length?l.map(({event:e,date})=>`<div class="agenda-item"><span class="agenda-time">${e.start}</span><div class="agenda-card ${isDone(e)?'done':isPartial(e)?'partial':''} ${isShortComplete(e)?'ended-short':''}" style="${styl(e.type)}"><button class="checkbox-btn ${isDone(e)?'checked':isPartial(e)?'partial':''}" data-toggle="${e.id}" data-occdate="${date}" aria-label="${esc(e.title)} ${e.trainingLinked?stateText(e):'완료 전환'}" ${e.trainingLinked?'disabled':''}>${isDone(e)?'✓':isPartial(e)?'−':''}</button><button style="text-align:left;background:transparent;color:inherit;padding:0;flex:1;min-width:0" data-edit="${e.id}" data-occdate="${date}"><span class="agenda-name">${TYPES[e.type].emoji} ${esc(e.title)} ${e.repeat!=='none'?'↻':''}${e.isSample?'<small class="fd-day-sample">샘플</small>':''}${isPartial(e)?'<small class="fd-day-partial">부분 완료</small>':isShortComplete(e)?'<small class="fd-day-ended">운동 완료</small>':''}</span><span class="agenda-desc">${esc(details(e))}</span>${isShortComplete(e)?'<span class="agenda-desc fd-ended-count">실제 '+completionOf(e).done+'/'+completionOf(e).total+'세트 수행 · 미수행 '+(completionOf(e).total-completionOf(e).done)+'세트</span>':''}${e.trainingCompletion?.pending?'<span class="agenda-desc">'+completionOf(e).done+'/'+completionOf(e).total+'세트 수행 · 캘린더 반영 대기</span>':''}</button>${calendarWorkoutActions(e,date)}</div></div>`).join(''):'<div class="empty-note">등록된 일정이 없습니다.<br>위의 등록 버튼으로 이 날짜의 기록을 추가하세요.</div>';
+function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$('#right-badge').textContent=day===today?'TODAY / 오늘 상세':'DAY / 날짜 상세';$('#right-date').textContent=dayLabel(day);$('#right-sub').textContent=`${d.getFullYear()}년 · ${l.length}개 일정${day>today?' · 예정된 기록':''}`;const partialCount=l.filter(({event})=>isPartial(event)).length;$('#agenda-count').textContent=`${l.filter(({event})=>isDone(event)).length}/${l.length} 완료${partialCount?' · 부분 '+partialCount:''}`;$('#agenda').innerHTML=l.length?l.map(({event:e,date})=>`<div class="agenda-item"><span class="agenda-time" title="${esc(periodTitle(e))}">${esc(eventClockLabel(e))}${e.type==='meal'&&!N.validMealPeriod(e.detail.mealPeriod)?'<small class="fd-meal-inferred">추정</small>':''}</span><div class="agenda-card ${isDone(e)?'done':isPartial(e)?'partial':''} ${isShortComplete(e)?'ended-short':''}" style="${styl(e.type)}"><button class="checkbox-btn ${isDone(e)?'checked':isPartial(e)?'partial':''}" data-toggle="${e.id}" data-occdate="${date}" aria-label="${esc(e.title)} ${e.trainingLinked?stateText(e):'완료 전환'}" ${e.trainingLinked?'disabled':''}>${isDone(e)?'✓':isPartial(e)?'−':''}</button><button style="text-align:left;background:transparent;color:inherit;padding:0;flex:1;min-width:0" data-edit="${e.id}" data-occdate="${date}"><span class="agenda-name">${TYPES[e.type].emoji} ${esc(e.title)} ${e.repeat!=='none'?'↻':''}${e.isSample?'<small class="fd-day-sample">샘플</small>':''}${isPartial(e)?'<small class="fd-day-partial">부분 완료</small>':isShortComplete(e)?'<small class="fd-day-ended">운동 완료</small>':''}</span><span class="agenda-desc">${esc(details(e))}</span>${isShortComplete(e)?'<span class="agenda-desc fd-ended-count">실제 '+completionOf(e).done+'/'+completionOf(e).total+'세트 수행 · 미수행 '+(completionOf(e).total-completionOf(e).done)+'세트</span>':''}${e.trainingCompletion?.pending?'<span class="agenda-desc">'+completionOf(e).done+'/'+completionOf(e).total+'세트 수행 · 캘린더 반영 대기</span>':''}</button>${calendarWorkoutActions(e,date)}</div></div>`).join(''):'<div class="empty-note">등록된 일정이 없습니다.<br>위의 등록 버튼으로 이 날짜의 기록을 추가하세요.</div>';
   renderNutrition();
   const w=getWeightRecords(day).slice(-7);if(!w.length){$('#weight-trend').innerHTML='<div class="empty-note">아직 체중 기록이 없습니다.</div>';return}const latest=w[w.length-1],diff=w.length>1?latest.detail.weight-w[0].detail.weight:0;let values=w.map(x=>Number(x.detail.weight)),min=Math.min(...values)-.5,max=Math.max(...values)+.5,pts=values.map((v,i)=>`${15+(i/Math.max(1,values.length-1))*230},${46-((v-min)/(max-min))*38}`).join(' ');$('#weight-trend').innerHTML=`<div class="weight-sub">${latest.date} 기준</div><div class="weight-val">${fmt(latest.detail.weight,1)} <small style="font-weight:500;font-size:12px;color:#9aabaa">kg</small> <span style="font-size:10px;color:${diff<=0?'#21816a':'#bd7045'}">${w.length>1?(diff>0?'+':'')+fmt(diff,1)+'kg':''}</span></div><svg class="sparkline" viewBox="0 0 260 54" role="img" aria-label="최근 체중 변화 그래프"><polyline points="${pts}" fill="none" stroke="#2c9874" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>${values.map((v,i)=>`<circle cx="${15+(i/Math.max(1,values.length-1))*230}" cy="${46-((v-min)/(max-min))*38}" r="3" fill="#2c9874"/>`).join('')}</svg>`;
 }
