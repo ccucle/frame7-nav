@@ -1411,6 +1411,12 @@
   });
   root.addEventListener('storage',event=>{
     if(event.key!==M.KEY&&event.key!==null)return;
+    const latest=store?.load();
+    if(!latest?.error&&latest?.data&&state?.revision===latest.data.revision)return;
+    if(event.key===M.KEY&&latest?.raw&&!latest.error&&!cloudBlockReason()){
+      reflectCloudState(latest.data,'다른 탭에서 저장한 최신 운동 기록을 반영했습니다.');
+      return;
+    }
     revisionConflict=true;setMessage('다른 탭에서 독립 웨이트 기록을 변경했습니다. 충돌을 피하려면 최신 기록을 불러오세요.',true);
     if(screen==='session')paintMessage();else render();
   });
@@ -1475,31 +1481,39 @@
   host.addEventListener('pointerup',finishSheetDrag);
   host.addEventListener('pointercancel',finishSheetDrag);
   root.setInterval(()=>{clockTick=Date.now();paintTimer();},1000);
+  function cloudBlockReason(finishedSession=null){
+    if(blocked||!state)return blocked||'이 기기의 운동 기록을 읽지 못했습니다.';
+    if(revisionConflict)return '다른 탭에서 운동 기록이 바뀌었습니다. 작성 중인 내용을 확인한 뒤 운동 화면에서 최신 기록을 불러와 주세요.';
+    if(draft||programDraft)return '루틴 또는 프로그램 편집창이 열려 있습니다. 저장하거나 취소한 뒤 다시 확인해 주세요.';
+    if(pickerOpen||root.FormdayExercisePicker?.isOpen?.()||root.FormdayBridge?.isRoutineSwapOpen?.()||programDeleteDialog?.open||routineOfferDialog?.open)
+      return '운동 선택 또는 확인 창이 열려 있습니다. 해당 창을 닫고 다시 확인해 주세요.';
+    if(sessionDirty||backgroundStoppedAt!==null)return '저장되지 않은 운동 입력이 있습니다. 운동 창에서 입력을 저장해 주세요.';
+    if(sessionDialog?.open)return '운동 기록 창이 열려 있습니다. 진행 중이면 일시정지하고 운동 창을 닫아 주세요.';
+    const running=current();
+    if(running?.status==='ACTIVE' && !(finishedSession?.id===running.id && finishedSession.startedAt===running.startedAt &&
+      ['COMPLETED','PARTIAL'].includes(finishedSession.status)))
+      return '이 기기에서 운동 타이머가 진행 중입니다. 운동을 일시정지하고 운동 창을 닫아 주세요.';
+    return '';
+  }
   function canCloudMerge(next){
-    // Paused/saved sessions are records, not a reason to force completion.
-    // Preserve editable drafts and never apply during an active/open session.
-    return !blocked&&!revisionConflict&&!draft&&!programDraft&&!pickerOpen&&!programDeleteDialog?.open&&!routineOfferDialog?.open&&!sessionDirty&&!sessionDialog?.open&&backgroundStoppedAt===null&&
-      current()?.status!=='ACTIVE'&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.()&&
-      Array.isArray(next?.sessions)&&!next.sessions.some(s=>s.status==='ACTIVE');
+    return !cloudBlockReason()&&Array.isArray(next?.sessions)&&!next.sessions.some(s=>s.status==='ACTIVE');
   }
-  function cloudMergeReload(expectedRevision){
-    const latest=store.load();
-    if(latest.error||latest.data.revision!==expectedRevision||!canCloudMerge(latest.data))return false;
-    state=latest.data;restoreRest();backgroundStoppedAt=null;sessionDirty=false;focusedSession=null;
+  function reflectCloudState(next,notice){
+    state=next;restoreRest();focusedSession=null;previousCache.clear();
     if(screen==='session')screen='home';
-    setMessage('병합한 최신 웨이트 기록을 반영했습니다.');
-    renderCalendar();render();root.dispatchEvent(new CustomEvent('formday:iron-changed'));return true;
+    setMessage(notice);render();root.dispatchEvent(new CustomEvent('formday:iron-changed'));return true;
   }
-  root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,hubNav,canCloudMerge,cloudMergeReload,renderHistory:()=>{if(document.body.dataset.fdScreen==='progress')render();},getSnapshot:()=>state?M.copy(state):null,getCalendarSnapshot,
-    canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current()&&!pickerOpen&&!programDeleteDialog?.open&&!routineOfferDialog?.open&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.(),
-    cloudReload:()=>{
-      if(blocked||revisionConflict||draft||programDraft||current()||pickerOpen||programDeleteDialog?.open||routineOfferDialog?.open||root.FormdayExercisePicker?.isOpen?.()||root.FormdayBridge?.isRoutineSwapOpen?.())return false;
-      const latest=store.load();
-      if(latest.error){blocked=latest.error;setMessage(blocked,true);render();return false;}
-      state=latest.data;restoreRest();setMessage('다른 기기의 최신 웨이트 기록을 반영했습니다.');
-      focusedSession=null;renderCalendar();render();root.dispatchEvent(new CustomEvent('formday:iron-changed'));return true;
-    }
-  });
+  function cloudReload(expectedRevision,finishedSession=null){
+    if(cloudBlockReason(finishedSession))return false;
+    const latest=store.load();
+    if(latest.error){blocked=latest.error;setMessage(blocked,true);render();return false;}
+    if(expectedRevision!==undefined&&latest.data.revision!==expectedRevision)return false;
+    if(latest.data.sessions.some(s=>s.status==='ACTIVE'))return false;
+    return reflectCloudState(latest.data,'최신 웨이트 기록을 반영했습니다.');
+  }
+  root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,hubNav,canCloudMerge,cloudMergeReload:cloudReload,cloudReload,cloudBlockReason,
+    canCloudApply:()=>!cloudBlockReason(),renderHistory:()=>{if(document.body.dataset.fdScreen==='progress')render();},
+    getSnapshot:()=>state?M.copy(state):null,getCalendarSnapshot});
   // Main IRON dashboard is still the landing page; independence is user-initiated.
   restoreRest();renderCalendar();
   root.dispatchEvent(new CustomEvent('formday:iron-changed'));

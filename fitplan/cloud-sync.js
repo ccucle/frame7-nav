@@ -95,6 +95,14 @@ function setIssue(kind,e){
   slots[kind].status='오류 · 로컬 기록 보호';
   render();
 }
+// A newer remote revision can legitimately omit an old record. Require a review
+// before a normal receive could discard this device's unfinished workout.
+function ironDownloadState(localData,remoteData){
+ if(remoteData.sessions.some(s=>s.status==='ACTIVE'))return 'remote-active';
+ const pending=I.getUnfinished(localData);
+ if(pending&&!remoteData.sessions.some(s=>s.id===pending.id&&s.startedAt===pending.startedAt))return 'review';
+ return 'download';
+}
 function cloudState(kind){
   const s=entry(kind);
   if(!account)return '로그인 필요';
@@ -106,10 +114,12 @@ function cloudState(kind){
     const action=P.decide({meta,local:l.hasStored,localRevision:l.revision,
       remote:!!s.remote,remoteRevision:s.remote?.revision||''});
     if((action==='review'||action==='conflict')&&s.remote&&l.hasStored&&P.equivalent(kind,l.data,JSON.parse(s.remote.payload),C,I))return 'identical';
+    if(action==='download'&&kind==='iron')return ironDownloadState(l.data,JSON.parse(s.remote.payload));
     return action;
   }catch(e){s.issues=e.message;return '오류';}
 }
 const names={
+ 'remote-active':'다른 기기에서 운동 진행 중',
  'empty':'저장할 실제 기록 없음','first-upload':'최초 업로드 필요',
  'download':'기기에 클라우드 기록 적용 가능','review':'기기와 클라우드 기록이 모두 존재함',
  'push':'변경사항 서버 전송 대기','synced':'동기화 완료',
@@ -195,6 +205,7 @@ function slotView(kind){
   reviewView(kind)+
   '<details class="fd-sync-replace"><summary>기존 방식으로 한쪽 기록만 사용</summary><p class="fd-sync-note">병합을 권장합니다. 이 방법은 이 기기의 현재 기록을 서버 기록으로 교체합니다.</p>'+
   '<button type="button" class="fd-sync-secondary" data-sync-action="take" data-kind="'+kind+'">클라우드 기록으로 변경 (로컬 백업 후)</button></details>':'')+
+ (action==='remote-active'?'<p class="fd-sync-note">운동 중인 기기에서 일시정지·임시 보관 또는 완료하면 새 기록을 다시 확인합니다.</p>':'')+
  (action==='download'?'<button type="button" data-sync-action="receive" data-kind="'+kind+'">클라우드 기록 불러오기</button>':'')+
  (action==='push'?'<button type="button" data-sync-action="send" data-kind="'+kind+'">변경사항 지금 전송</button>':'')+
  (s.working?'<p class="fd-sync-note">기록 확인 또는 동기화 처리 중입니다.</p>':'')+
@@ -347,38 +358,65 @@ function exportMergeBackup(kind,index,side){
   show('원본 복구 사본 다운로드를 요청했습니다. 파일 앱에서 확인해 주세요.');
  }catch(e){show(syncError(e),true);}
 }
-async function download(kind,interactive=false){
+// Manual replacement is a distinct action from pressing the ordinary receive button.
+async function download(kind,interactive=false,requested=interactive){
  const s=entry(kind);
  if(!writable()||s.working)return;
  if(ownerConflict(kind)){show('기존 로컬 기록은 다른 Google 계정에 연결돼 있습니다. 원래 계정으로 로그인하거나 백업 후 계정을 분리해야 합니다.',true);return;}
- if(!readyToApply(kind)){show('현재 운동이나 입력창을 편집 중입니다. 먼저 기록을 저장·종료하고 다시 시도해 주세요.',true);return;}
+ const guard=finished=>kind==='iron'&&window.FormdayIndependent?.cloudBlockReason
+   ?window.FormdayIndependent.cloudBlockReason(finished)
+   :readyToApply(kind)?'':kind==='iron'?'운동 화면을 준비하지 못했습니다. 페이지를 새로고침해 주세요.':'캘린더 편집창을 닫고 다시 확인해 주세요.';
  const context=accountContext();
  s.working=true;
  try{
+  const initial=local(kind),known=s.remote;
+  const initialBlock=guard();
+  if(initialBlock && !(requested&&kind==='iron'&&I.getUnfinished(initial.data)?.status==='ACTIVE')){
+   if(requested)show(initialBlock,true);
+   return;
+  }
   const ref=doc(db,'users',context.uid,'formday_sync',kind);
   const result=await getDocFromServer(ref);
   requireCurrent(context);
   if(!result.exists())throw Error('서버에 불러올 기록이 없습니다.');
-  const remote=readRemote(result),obj=JSON.parse(remote.payload);
-  const validated=kind==='calendar'?C.normalizeState(obj):I.normalize(obj);
+  const remote=readRemote(result),validated=verifyRemote(kind,remote);
+  if(s.remote!==known&&s.remote?.revision!==remote.revision)throw Error('서버 기록이 다시 바뀌었습니다. 다시 확인해 주세요.');
   if(kind==='iron'&&validated.sessions.some(x=>x.status==='ACTIVE')){
+    s.remote=remote;
     show('다른 기기에서 운동이 진행 중입니다. 그 기기에서 일시정지·임시 보관 또는 완료한 후 이 기기에서 이어서 확인해 주세요. 실행 중 세션을 중복으로 열지 않았습니다.');
     return;
   }
   const l=local(kind),meta=readMeta(kind);
-  const action=P.decide({meta,local:l.hasStored,localRevision:l.revision,remote:true,remoteRevision:remote.revision});
+  let action=P.decide({meta,local:l.hasStored,localRevision:l.revision,remote:true,remoteRevision:remote.revision});
+  if(kind==='iron'&&action==='download'){
+   action=ironDownloadState(l.data,validated);
+   if(action==='review'&&!interactive){
+    s.remote=remote;
+    show('이 기기의 미완료 운동이 클라우드 기록에 없습니다. 양쪽 기록 비교 및 복구에서 확인해 주세요.');return;
+   }
+  }
+  if(ownerConflict(kind)||l.raw!==initial.raw)throw Error('불러오는 동안 기기 기록이 바뀌었습니다. 다시 확인해 주세요.');
   if(action!=='download'&&!(interactive&&(action==='review'||action==='conflict')))
     throw Error('기기나 서버의 기록이 바뀌었습니다. 다시 확인해 주세요.');
   if(!interactive&&l.hasStored&&!meta)throw Error('이 기기에 저장된 기록이 있어 자동으로 교체하지 않았습니다.');
+  // A manually requested receive may encounter an old running copy. Only offer to
+  // take the same finished workout if the local revision is still the paired revision.
+  const running=kind==='iron'&&I.getUnfinished(l.data);
+  const finished=requested&&running?.status==='ACTIVE'&&action==='download'&&meta?.localRevision===l.revision
+    ?validated.sessions.find(x=>x.id===running.id&&x.startedAt===running.startedAt&&['COMPLETED','PARTIAL'].includes(x.status)):null;
+  const reason=guard(finished);
+  if(reason){if(requested)show(reason,true);return;}
+  if(finished&&!window.confirm('클라우드에는 같은 운동이 완료 또는 부분 완료로 저장되어 있습니다. 이 기기의 진행 중 사본을 백업하고 클라우드 기록을 적용할까요?'))return;
   if(interactive&&l.hasStored){
     if(!window.confirm('이 기기의 현재 기록이 클라우드 기록으로 교체됩니다. 기존 기록은 기기에 별도 복구 사본을 만든 후 진행합니다. JSON 파일도 백업했는지 확인해 주세요. 계속할까요?'))return;
   }
   requireCurrent(context);
-  if(!readyToApply(kind))throw Error('클라우드 자료를 확인하는 동안 운동이나 입력 편집이 시작됐습니다. 기록을 보존하기 위해 적용을 중단했습니다.');
+  const finalBlock=guard(finished);
+  if(finalBlock){if(requested)show(finalBlock,true);return;}
   const before=local(kind);
-  if(before.revision!==l.revision)throw Error('기기 기록이 전송 중 변경되어 불러오기를 중단했습니다.');
+  if(before.raw!==l.raw||before.revision!==l.revision)throw Error('기기 기록이 전송 중 변경되어 불러오기를 중단했습니다.');
   // Preserve old bytes independently from store_previous backup; abort if quota is full.
-  if(before.raw!==null&&(interactive||!meta)){
+  if(before.raw!==null&&(interactive||finished||!meta)){
     // Preserve first pre-import copy once. No unbounded backup keys on every sync.
     const backupKey=keys[kind]+'_cloud_preexisting_'+context.uid;
     if(localStorage.getItem(backupKey)===null){
@@ -387,11 +425,10 @@ async function download(kind,interactive=false){
     }
   }
   const saved=before.store.save(validated,before.revision);
+  const reflected=kind==='calendar'?window.FormdayBridge?.cloudReload?.():window.FormdayIndependent?.cloudReload?.(saved.revision,finished);
+  if(reflected!==true||local(kind).revision!==saved.revision)throw Error('불러온 기록을 화면에서 확인하지 못했습니다. 새로고침한 뒤 동기화 상태를 다시 확인해 주세요.');
   saveMeta(kind,remote.revision,saved.revision,context,saved);
-  s.remote=remote;
-  s.issues='';
-  if(kind==='calendar')window.FormdayBridge?.cloudReload?.();
-  else window.FormdayIndependent?.cloudReload?.();
+  s.remote=remote;s.issues='';
   show(labels[kind]+' 데이터를 이 기기로 불러왔습니다. 현재 화면도 최신 기록으로 갱신했습니다.');
  }catch(e){if(isCurrent(context)){setIssue(kind,e);show(syncError(e),true);}}
  finally{if(isCurrent(context)){s.working=false;render();}}
@@ -522,7 +559,7 @@ if(btn&&dialog&&panel&&P&&C&&I){
   if(action==='merge-cancel'){reviews[kind]=null;render();return;}
   if(action==='merge-backup'){exportMergeBackup(kind,b.dataset.index,b.dataset.side);return;}
   if(action==='take'){download(kind,true);return;}
-  if(action==='receive'){download(kind,false);return;}
+  if(action==='receive'){download(kind,false,true);return;}
   if(action==='send'){upload(kind,false);return;}
   if(action==='refresh'){reviews[kind]=null;subscribe(kind);render();return;}
  });
