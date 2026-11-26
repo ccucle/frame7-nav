@@ -199,7 +199,7 @@
   function scheduledWorkouts(){
     const items=root.FormdayBridge?.getScheduledWorkouts?.(scheduledDay)||[];
     const swap='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4"/></svg>';
-    return '<section class="fi-panel fi-scheduled" aria-labelledby="fi-scheduled-title"><div class="fi-section-head"><div><span class="fi-kicker">CALENDAR PLAN</span><h3 id="fi-scheduled-title">예정된 운동</h3></div><div class="fi-plan-date"><label class="sr-only" for="fi-calendar-date">예정된 운동 날짜</label><input id="fi-calendar-date" type="date" value="'+esc(scheduledDay)+'">'+button('calendar-today','오늘','subtle')+'</div></div>'+
+    return '<section class="fi-panel fi-scheduled" aria-labelledby="fi-scheduled-title"><div class="fi-section-head"><div><span class="fi-kicker">CALENDAR PLAN</span><h3 id="fi-scheduled-title">등록된 운동</h3></div><div class="fi-plan-date"><label class="sr-only" for="fi-calendar-date">예정된 운동 날짜</label><input id="fi-calendar-date" type="date" value="'+esc(scheduledDay)+'">'+button('calendar-today','오늘','subtle')+'</div></div>'+
       (items.length?'<div class="fi-scheduled-list">'+items.map(({event,session,canReplace})=>{
         const final=session&&['COMPLETED','PARTIAL'].includes(session.status),done=!session&&(event.completed||event.workoutSessionId);
         const future=event.date>iso(new Date());
@@ -212,8 +212,8 @@
         const label=final?(partial?'부분 완료 · 기록 보기':'완료 · 기록 보기'):future?'예정된 운동':session?'운동 이어하기':done?(partial?'부분 완료':'완료한 일정'):'이 일정으로 시작';
         const metadata='data-id="'+esc(event.id)+'" data-date="'+esc(event.date)+'"';
         return '<article class="fi-planned-card"><div class="fi-planned-heading"><div><small>'+esc(event.start)+'–'+esc(event.end)+(event.repeat!=='none'?' · 반복 일정':'')+(partial?' · 부분 완료':finished?' · 운동 완료':'')+'</small><h4>'+esc(event.title)+'</h4></div>'+button('swap-calendar',swap,'outline fd-plan-swap',metadata+' aria-label="'+esc(event.title)+' 루틴 교체" title="'+(canReplace?'이 날짜의 루틴 교체':'시작하거나 기록한 운동은 교체할 수 없습니다')+'" '+(canReplace?'':'disabled'))+'</div>'+
-          '<p class="fi-plan-summary">'+event.detail.exercises.length+'종목 · '+(partial||finished?'실제 '+counts.done+'/'+counts.total+'세트 수행':counts.total+'세트')+' · '+esc(event.detail.exercises.map(e=>e.name).join(' · '))+'</p>'+
-          '<details class="fi-plan-sets"><summary>세트 미리보기</summary>'+event.detail.exercises.map(ex=>'<div><b>'+esc(ex.name)+'</b><span>'+ex.sets.map(set=>(set.warmup?'W · ':'')+fmt(set.weight)+'kg × '+set.reps+'회').join(' / ')+'</span></div>').join('')+'</details>'+
+          '<p class="fi-plan-summary">'+(event.detail.freePlan&&!session?'자유운동 · 시작할 때 종목 선택':(session?.exercises||event.detail.exercises).length+'종목 · '+(partial||finished?'실제 '+counts.done+'/'+counts.total+'세트 수행':counts.total+'세트'))+'</p>'+
+          (W.planDisclosure?.(counts.pending?session.exercises:event.detail.freePlan&&session?session.exercises:event.detail.exercises,event.id+'-'+event.date)||'')+
           button('begin-calendar',label,'primary',metadata+(done||(future&&!final)?' disabled':''))+'</article>';
       }).join('')+'</div>':'<p class="fi-empty">이 날짜에 등록된 웨이트 일정이 없습니다.</p>')+
       '<p class="fi-note">캘린더의 종목과 세트로 시작합니다. ↔ 아이콘으로 이 날짜의 루틴을 바꿀 수 있습니다.</p></section>';
@@ -232,7 +232,7 @@
   function recordCard(s,calendarMode=false){
     const result=summary(s),partial=s.status==='PARTIAL',kind=partial?'부분 완료':'완료',total=s.exercises.reduce((n,e)=>n+e.sets.length,0);
     return '<button type="button" class="fi-history-card" data-fi-action="record-detail" data-id="'+esc(s.id)+'">'+
-      '<div class="fi-record-leading"><b>'+esc(s.label)+'</b><small>'+esc(s.date)+' · '+esc(recordSource(s))+' · '+'실제 '+result.completedSets+'/'+total+'세트 · '+fmt(result.volume)+'kg · '+esc(s.exercises.map(e=>e.name).slice(0,2).join(' / '))+'</small>'+(testNamed(s)?'<small class="fi-review-flag">테스트 이름 · 수행 여부 확인 필요</small>':'')+'</div>'+
+      '<div class="fi-record-leading"><b>'+esc(s.label)+'</b><small>'+esc(s.date)+' · '+esc(recordSource(s))+' · '+'실제 '+result.completedSets+'/'+total+'세트 · '+fmt(result.volume)+'kg · '+(calendarMode?s.exercises.length+'종목':esc(s.exercises.map(e=>e.name).slice(0,2).join(' / ')))+'</small>'+(testNamed(s)?'<small class="fi-review-flag">테스트 이름 · 수행 여부 확인 필요</small>':'')+'</div>'+
       '<span class="fi-status '+(partial?'fi-partial':'fi-complete')+'">'+kind+'</span><span aria-hidden="true">↗</span></button>';
   }
   function routineOptions(){
@@ -663,13 +663,27 @@
       return go('session');
     }
     if(current()){setMessage('진행 중인 운동을 완료하거나 보관된 운동을 취소한 뒤 다른 일정을 시작해 주세요.',true);go('session');return false;}
-    const started=changed(()=>{
+    const getPlan=()=>{
       const plan=root.FormdayBridge?.prepareScheduledWorkout?.(eventId,date);
       if(!plan)throw Error('선택한 캘린더 일정을 불러오지 못했습니다.');
-      return M.startCalendar(state,plan);
-    },'캘린더의 종목과 세트를 불러왔습니다.');
-    if(started){resetRest();backgroundStoppedAt=null;sessionDirty=false;sessionExerciseIndex=0;go('session');}
-    return started;
+      return plan;
+    };
+    let plan;
+    try{plan=getPlan();}catch(e){setMessage(e.message,true);render();return false;}
+    const begin=actual=>{
+      const started=changed(()=>M.startCalendar(state,actual),'캘린더의 종목과 세트를 불러왔습니다.');
+      if(started){resetRest();backgroundStoppedAt=null;sessionDirty=false;sessionExerciseIndex=0;go('session');}
+      return started;
+    };
+    if(plan.freePlan===true&&!plan.exercises.length){
+      return selectExercises({title:'자유운동 · 시작할 종목 선택',onConfirm:names=>{
+        if(current())throw Error('진행 중인 운동이 있습니다.');
+        const fresh=getPlan();
+        if(date>iso(new Date())||!fresh.freePlan||fresh.baseline!==plan.baseline)throw Error('일정이 변경되었습니다. 다시 선택해 주세요.');
+        return begin({...fresh,exercises:names.map(name=>M.newExercise(name))});
+      }});
+    }
+    return begin(plan);
   }
   function reflectCalendar(session){
     if(!session?.calendarSource)return true;

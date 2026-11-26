@@ -115,6 +115,7 @@
   }
   function describe(detail) {
     const d = detail && Array.isArray(detail.exercises) ? detail : normalize(detail, false);
+    if(d.freePlan===true&&!d.exercises.length)return '자유운동 · 시작할 때 종목 선택';
     const s = summary(d), first = d.exercises[0];
     return (first && first.name ? first.name : '웨이트') + (s.exerciseCount > 1 ? ' 외 ' + (s.exerciseCount - 1) + '종목' : '') + ' · ' + s.completedSets + '/' + s.setCount + '세트 완료' + (s.volume > 0 ? ' · ' + fmt(s.volume) + 'kg' : '');
   }
@@ -168,16 +169,28 @@
       '<div class="fw-set-controls"><label class="fw-kind"><span class="fw-sr">' + prefix + '종류</span><select data-fw-field="warmup" aria-label="' + prefix + '종류"><option value="work"' + (!set.warmup ? ' selected' : '') + '>본 세트</option><option value="warmup"' + (set.warmup ? ' selected' : '') + '>워밍업</option></select></label>' +
       '<span class="fw-row-actions"><button type="button" class="fw-icon-button" data-fw-action="duplicate-set" aria-label="' + prefix + '복제" title="세트 복제"' + (total >= MAX_SETS ? ' disabled' : '') + '>복제</button><button type="button" class="fw-icon-button fw-remove" data-fw-action="remove-set" aria-label="' + prefix + '삭제" title="세트 삭제"' + (total <= 1 ? ' disabled' : '') + '>삭제</button></span></div></div>';
   }
+  // Read-only preview: exercise and set lists are folded by default.
+  function planDisclosure(exercises, key='', opened=new Set()) {
+    if(!Array.isArray(exercises)||!exercises.length)return '';
+    const fold=(id)=>' data-fold-key="'+esc(id)+'"'+(opened.has(id)?' open':'');
+    return '<details class="fd-plan-disclosure"'+fold(key+'-all')+'><summary>운동 종목 · 세트 보기</summary><div class="fd-plan-exercises">'+exercises.map((ex,i)=>{
+      const sets=Array.isArray(ex.sets)?ex.sets:[],done=sets.filter(set=>set.done===true).length;
+      return '<details class="fd-plan-exercise"'+fold(key+'-'+i)+'><summary><b>'+esc(ex.name)+'</b><span>'+done+'/'+sets.length+'세트</span></summary><div class="fd-plan-set-list">'+sets.map((set,j)=>'<div><span>SET '+(j+1)+(set.warmup?' · 준비':'')+'</span><b>'+esc(fmt(set.weight))+'kg × '+esc(set.reps)+'회'+(set.rpe!=null?' · RPE '+esc(set.rpe):'')+'</b><span class="fd-plan-set-state">'+(set.done===true?'완료':'예정')+'</span></div>').join('')+'</div></details>';
+    }).join('')+'</div></details>';
+  }
   function exerciseMarkup(ex, index, count, listId, options) {
-    const history = historyFor(ex.name, options);
+    const history = historyFor(ex.name, options),fold=options?.collapseExercises===true;
     return '<section class="fw-exercise" data-fw-exercise="' + esc(ex.id) + '">' +
+      (fold ? '<details class="fw-edit-fold"'+(!ex.name.trim()?' open':'')+'><summary><b data-fw-fold-name>'+esc(ex.name||'새 운동 종목')+'</b><span>'+ex.sets.length+'세트</span></summary>' : '') +
       '<div class="fw-exercise-head"><span class="fw-exercise-index">' + String(index + 1).padStart(2, '0') + '</span>' +
       '<label class="fw-exercise-name"><span>운동 이름 · 검색 또는 직접 입력</span><input type="text" data-fw-field="name" list="' + esc(listId) + '" value="' + esc(ex.name) + '" maxlength="80" autocomplete="off" placeholder="예: 벤치프레스" aria-label="' + (index + 1) + '번째 운동 이름" required></label>' +
       '<button type="button" class="fw-exercise-remove" data-fw-action="remove-exercise" aria-label="' + (index + 1) + '번째 운동 삭제" title="운동 삭제"' + (count <= 1 ? ' disabled' : '') + '>×</button></div>' +
       '<div class="fw-last-record' + (history ? '' : ' is-empty') + '" data-fw-history><span>지난 기록</span><p>' + esc(history || '완료한 같은 종목의 기록이 쌓이면 여기에 표시됩니다.') + '</p></div>' +
+      (fold ? '<details class="fw-edit-sets"><summary>'+ex.sets.length+'개 세트 편집</summary>' : '') +
       '<div class="fw-sets">' + ex.sets.map((s, i) => setMarkup(s, i, index, ex.sets.length, options)).join('') + '</div>' +
+      (fold ? '</details>' : '') +
       '<div class="fw-exercise-foot"><button type="button" class="fw-add-set" data-fw-action="add-set"' + (ex.sets.length >= MAX_SETS ? ' disabled' : '') + '>＋ 세트 추가</button>' +
-      '<details class="fw-exercise-note"' + (ex.notes ? ' open' : '') + '><summary>운동 메모</summary><textarea data-fw-field="exercise-notes" maxlength="2000" rows="2" placeholder="자세, 컨디션, 기구 설정 등을 기록하세요." aria-label="' + (index + 1) + '번째 운동 메모">' + esc(ex.notes || '') + '</textarea></details></div></section>';
+      '<details class="fw-exercise-note"' + (ex.notes ? ' open' : '') + '><summary>운동 메모</summary><textarea data-fw-field="exercise-notes" maxlength="2000" rows="2" placeholder="자세, 컨디션, 기구 설정 등을 기록하세요." aria-label="' + (index + 1) + '번째 운동 메모">' + esc(ex.notes || '') + '</textarea></details></div>'+(fold?'</details>':'')+'</section>';
   }
   function editorMarkup(detail, options, listId) {
     return '<div class="fw-editor' + (options.planOnly ? ' is-plan' : '') + '"><div class="fw-section-intro"><div><h3>' + (options.planOnly ? '기본 운동 계획' : '세트별 운동 기록') + '</h3><p>' + (options.planOnly ? '반복 일정에 사용할 종목과 세트를 구성하세요.' : '중량과 횟수를 기록하고, 마친 세트를 체크하세요.') + '</p></div><span class="fw-stage-badge">' + (options.planOnly ? 'WORKOUT PLAN' : 'WEIGHT LOG') + '</span></div>' +
@@ -237,6 +250,7 @@
       box.hidden = !message; box.textContent = message || '';
       if (input) {
         input.setAttribute('aria-invalid', 'true');
+        for(let p=input.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;
         input.focus();
         input.scrollIntoView({ block: 'nearest' });
       }
@@ -249,13 +263,18 @@
     function rebuild(focusSelector) {
       const notes = state.notes;
       const list = container.querySelector('.fw-exercises');
+      const opened=new Map(Array.from(list.querySelectorAll('[data-fw-exercise]')).map(el=>[el.dataset.fwExercise,[el.querySelector('.fw-edit-fold')?.open,el.querySelector('.fw-edit-sets')?.open]]));
       list.innerHTML = state.exercises.map((ex, i) => exerciseMarkup(ex, i, state.exercises.length, listId, opts)).join('');
+      if(opts.collapseExercises)for(const el of list.querySelectorAll('[data-fw-exercise]')){
+        const old=opened.get(el.dataset.fwExercise);
+        if(old){el.querySelector('.fw-edit-fold').open=!!old[0];el.querySelector('.fw-edit-sets').open=!!old[1];}
+      }
       container.querySelector('[data-fw-action="add-exercise"]').disabled = state.exercises.length >= MAX_EXERCISES;
       container.querySelector('[data-fw-field="notes"]').value = notes;
       clearError(); notify();
       if (focusSelector) {
         const target = container.querySelector(focusSelector);
-        if (target) { target.focus(); target.scrollIntoView({ block: 'nearest' }); }
+        if (target) { for(let p=target.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS')p.open=true;target.focus(); target.scrollIntoView({ block: 'nearest' }); }
       }
     }
     function clockText(seconds) {
@@ -292,6 +311,7 @@
       }
       if (event.type === 'change' && event.target.dataset.fwField === 'name') {
         const ex = event.target.closest('[data-fw-exercise]');
+        const foldName=ex.querySelector('[data-fw-fold-name]');if(foldName)foldName.textContent=event.target.value.trim()||'새 운동 종목';
         const history = historyFor(event.target.value, opts);
         const target = ex.querySelector('[data-fw-history]');
         target.querySelector('p').textContent = history || '완료한 같은 종목의 기록이 쌓이면 여기에 표시됩니다.';
@@ -392,7 +412,7 @@
       }
     };
   }
-  const api = { normalize, validate, render, mount, summary, describe, catalog: CATALOG.map((entry) => ({ group: entry[0], name: entry[1] })) };
+  const api = { normalize, validate, render, mount, summary, describe, planDisclosure, catalog: CATALOG.map((entry) => ({ group: entry[0], name: entry[1] })) };
   root.FormdayWorkouts = api;
   if (typeof module === 'object' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : {});
