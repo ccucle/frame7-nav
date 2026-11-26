@@ -317,7 +317,7 @@ test('plus and minus ten seconds adjust remaining time and retain an explicitly 
   view.action('timer-subtract');assert.equal(view.timer(),'00:57');view.action('timer-toggle');assert.equal(view.host.querySelector('.fs-rest').dataset.state,'paused');
   view.action('timer-add');assert.equal(view.timer(),'01:07');view.action('timer-subtract');assert.equal(view.timer(),'00:57');view.advance(20000);assert.equal(view.timer(),'00:57');
   view.action('pause');view.action('resume');view.advance(10000);assert.equal(view.timer(),'00:57');assert.equal(view.host.querySelector('.fs-rest').dataset.state,'paused');
-  view.hide();view.show();view.action('resume');view.advance(10000);assert.equal(view.timer(),'00:57');
+  view.hide();view.show();assert.equal(active(view).status,'ACTIVE');view.advance(10000);assert.equal(view.timer(),'00:57');
 });
 test('rest adjustments clamp at ten minutes and zero without negative countdowns',()=>{
   const view=ui();view.start();view.edit(0,0,'rest',600);view.complete(0);view.action('timer-add');assert.equal(view.timer(),'10:00');view.action('timer-toggle');
