@@ -324,3 +324,19 @@ test('empty free plan is not a fake workout and reflects actual selected sets on
   assert.equal(saved.workoutSessionId,ended.session.id);assert.equal(C.volume(saved.detail).completedSets,1);
   assert.deepEqual(cal.events[0].detail.exercises,[]);
 });
+
+
+test('explicit free calendar origin survives normalization and does not survive routine replacement',()=>{
+  const source=event(),legacy=calendar(source);
+  assert.equal(Object.hasOwn(legacy.events[0].detail,'freeWorkout'),false);
+  source.detail.freeWorkout=true;
+  const configured=calendar(source);
+  const plan=K.prepareStart(C,configured,source.id,date);
+  assert.equal(JSON.parse(plan.baseline).detail.freeWorkout,true);
+  assert.equal(M.isFreeWorkout(M.startCalendar(M.empty(),plan,clock).session),true);
+  assert.equal(M.isFreeWorkout(M.startCalendar(M.empty(),K.prepareStart(C,legacy,source.id,date),clock).session),false);
+  const iron=routines(),rid=iron.routines[0].id;
+  const swapped=K.replaceRoutine(C,configured,iron,source.id,date,rid,K.signature(C.occurrence(configured.events[0],date)));
+  assert.equal(Object.hasOwn(swapped.events[0].detail,'freeWorkout'),false);
+  assert.equal(M.isFreeWorkout(M.startCalendar(iron,K.prepareStart(C,swapped,source.id,date),clock).session),false);
+});

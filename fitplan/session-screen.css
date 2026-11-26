@@ -612,3 +612,21 @@ body.fs-keyboard .fs-dock { display: none; }
   dialog.fs-sheet[data-entering="true"]::backdrop, dialog.fs-sheet[data-closing="true"]::backdrop,
   .fs-rest[data-entering="true"], .fs-rest[data-closing="true"] { animation: none !important; }
 }
+
+/* Optional post-workout routine creation: the non-writing path is primary. */
+dialog.fi-routine-offer{box-sizing:border-box;width:min(440px,calc(100% - 32px));max-height:calc(100dvh - 32px);overflow:auto;margin:auto;padding:0;border:1px solid var(--fd-border);border-radius:22px;background:var(--fd-surface);color:var(--fd-text);box-shadow:0 24px 90px #0008}
+.fi-routine-offer::backdrop{background:#0009}
+.fi-routine-offer-content{display:flex;flex-direction:column;gap:12px;padding:24px}
+.fi-routine-offer-check{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;background:var(--fd-success-bg);color:var(--fd-success);font-size:24px;font-weight:800}
+.fi-routine-offer-kicker{margin:0;color:var(--fd-success);font-size:12px;font-weight:750;letter-spacing:.02em}
+.fi-routine-offer h2{margin:0;font-size:21px;line-height:1.4;letter-spacing:-.4px}
+.fi-routine-offer p:not(.fi-routine-offer-kicker){margin:0;color:var(--fd-muted);font-size:14px;line-height:1.65;overflow-wrap:anywhere}
+.fi-routine-offer label{font-size:13px;font-weight:650;margin-top:6px}
+.fi-routine-offer input{width:100%;box-sizing:border-box;min-height:48px;border:1px solid var(--fd-border);border-radius:10px;background:var(--fd-input);color:var(--fd-text);font-size:16px;padding:12px}
+.fi-routine-offer #fi-routine-offer-error{color:var(--fd-danger)}
+.fi-routine-offer-actions{display:grid;gap:8px;margin-top:8px}
+.fi-routine-offer-actions button{width:100%;box-sizing:border-box;min-height:48px;border-radius:11px;font-size:15px;font-weight:700;padding:10px 14px}
+.fi-routine-offer-actions .fi-routine-offer-safe{min-height:54px;background:#e3e9f1;color:#151d27;border:1px solid #e3e9f1}
+.fi-routine-offer-actions .fi-routine-offer-secondary{background:transparent;color:var(--fd-muted);border:1px solid var(--fd-border)}
+.fi-routine-offer-actions button:focus-visible{outline:2px solid var(--fd-accent-text);outline-offset:3px}
+@media(max-width:600px){.fi-routine-offer-content{padding:22px}.fi-routine-offer h2{font-size:20px}}

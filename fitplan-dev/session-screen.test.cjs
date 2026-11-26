@@ -120,7 +120,7 @@ function ui(options={}){
   const snapshot=()=>JSON.parse(JSON.stringify(api.getSnapshot()));
   function action(name,extra={}){
     const selector='[data-fi-action="'+name+'"]'+Object.entries(extra).map(([key,value])=>'[data-'+key+'="'+value+'"]').join('');
-    const target=host.querySelector(selector);assert.ok(target,'action exists: '+selector);assert.equal(target.disabled,false,'action is enabled: '+name);
+    const target=host.querySelector(selector)||document.querySelector(selector);assert.ok(target,'action exists: '+selector);assert.equal(target.disabled,false,'action is enabled: '+name);
     return document.emit('click',{target});
   }
   const choose=names=>{assert.ok(pickerActive);const ok=picker.onConfirm(names);if(ok===true){pickerActive=false;picker.onClose?.({reason:'confirmed'});}return ok;};
@@ -210,7 +210,7 @@ test('switching between all exercises and one at a time preserves edits across n
   view.action('toggle-session-view');assert.equal(view.field(1,0,'reps').value,'7');assert.equal(active(view).exercises[1].sets[0].done,false);
 });
 test('completing the workout keeps finalized values and leaves immersive session mode',()=>{
-  const view=ui({dashboard:true});view.start();view.edit(0,0,'kg',80);view.edit(0,0,'reps',5);view.complete(0);view.edit(0,0,'kg',82.5);view.answers.push(true,false);view.action('finish');
+  const view=ui({dashboard:true});view.start();view.edit(0,0,'kg',80);view.edit(0,0,'reps',5);view.complete(0);view.edit(0,0,'kg',82.5);view.answers.push(true);view.action('finish');view.action('skip-routine-offer');
   assert.equal(active(view),undefined);assert.notEqual(view.document.body.dataset.fiSession,'true');const saved=view.snapshot().sessions[0];assert.equal(saved.status,'COMPLETED');assert.equal(saved.exercises[0].sets[0].weight,82.5);assert.equal(saved.exercises[0].sets[0].reps,5);
   assert.equal(view.document.body.dataset.fdScreen,'progress');assert.ok(view.host.querySelector('#fi-history-detail'));
   assert.equal(view.host.querySelector('.fi-hub-nav'),null);assert.equal(view.document.activeElement.id,'fi-history-detail');
@@ -248,7 +248,7 @@ test('complete-all and undo preserve entered values and guard against discarding
 });
 test('previous-record loading imports only completed sets as new unfinished entries and preserves finalized history',()=>{
   const view=ui();view.start(['벤치프레스']);view.edit(0,0,'kg',55);view.edit(0,0,'reps',5);view.complete(0,0);view.edit(0,1,'kg',60);view.edit(0,1,'reps',6);view.complete(0,1);
-  view.answers.push(true,false);view.action('finish');const history=view.snapshot().sessions[0],before=JSON.stringify(history);view.advance(1000);view.start(['벤치프레스']);const ex=active(view).exercises[0];
+  view.answers.push(true);view.action('finish');view.action('skip-routine-offer');const history=view.snapshot().sessions[0],before=JSON.stringify(history);view.advance(1000);view.start(['벤치프레스']);const ex=active(view).exercises[0];
   view.answers.push(true);view.action('load-previous',{id:ex.id});const loaded=active(view).exercises[0];
   assert.deepEqual(loaded.sets.map(set=>[set.weight,set.reps,set.done]),[[55,5,false],[60,6,false]]);assert.ok(loaded.sets.every(set=>!history.exercises[0].sets.some(old=>old.id===set.id)));
   assert.equal(JSON.stringify(view.snapshot().sessions.find(session=>session.id===history.id)),before);
@@ -370,7 +370,7 @@ test('failed pagehide persistence freezes exercise and rest time until a safe re
 // Calendar persistence is represented by an isolated in-memory fixture. The
 // shipped calendar model prepares and reflects records; the UI and IRON store
 // run unchanged, including their real local-storage writes and lifecycle hooks.
-function scheduledFixture({date='2026-11-24',reflectionError=null}={}){
+function scheduledFixture({date='2026-11-24',reflectionError=null,freeKind=null}={}){
   let calendar=C.normalizeState({schemaVersion:C.VERSION,events:[{
     id:'scheduled-upper',date,start:'18:10',end:'19:20',type:'strength',title:'예약한 상체 운동',repeat:'none',completed:false,
     detail:{notes:'기존 일정 메모',exercises:[
@@ -386,6 +386,8 @@ function scheduledFixture({date='2026-11-24',reflectionError=null}={}){
       ]}
     ]}
   }],settings:{...C.defaults},demo:false});
+  if(freeKind==='configured')calendar.events[0].detail.freeWorkout=true;
+  if(freeKind==='empty')calendar.events[0].detail={exercises:[],notes:'',freePlan:true};
   const calls={queries:[],prepares:[],reflections:[],swaps:[],closes:0};
   const copy=value=>JSON.parse(JSON.stringify(value));
   return {date,eventId:'scheduled-upper',calls,get calendar(){return copy(calendar);},set reflectionError(value){reflectionError=value;},
@@ -585,4 +587,90 @@ test('completion hover is limited to mouse-like pointers and never overrides che
   assert.doesNotMatch(css.replace(gated,''),/\.fs-(?:check|all-done)[^{,;\n]*:hover/);
   assert.match(css,/\.fs-check\[data-done="true"\], \.fs-check\[aria-pressed="true"\], \.fs-all-done\[aria-pressed="true"\] \{[\s\S]*?background: var\(--fd-accent\);/);
   assert.match(css,/\.fs-session button:focus-visible/);
+});
+
+
+const offer=view=>view.document.querySelector('#fi-routine-offer-dialog');
+function finishForOffer(view){
+  view.answers.push(true);view.action('finish');
+  assert.equal(active(view),undefined);assert.equal(view.snapshot().sessions[0].status,'COMPLETED');
+}
+test('free workout completion opens safe default dialog after durable storage; skip does not write a routine',()=>{
+  const view=ui();view.start(['벤치프레스']);view.complete(0);
+  const prompts=view.prompts.length;finishForOffer(view);
+  assert.equal(view.prompts.length,prompts+1,'only original workout finish confirmation remains');
+  const dialog=offer(view),safe=dialog.querySelector('[data-fi-action="skip-routine-offer"]');
+  assert.ok(dialog.open);assert.equal(view.document.activeElement,safe);
+  assert.equal(safe.classList.contains('fi-routine-offer-safe'),true);
+  assert.equal(view.api.canCloudApply(),false);
+  const before=JSON.stringify(view.snapshot()),writes=view.writes.length;
+  view.action('skip-routine-offer');
+  assert.equal(offer(view),null);assert.equal(JSON.stringify(view.snapshot()),before);assert.equal(view.writes.length,writes);
+  assert.equal(view.snapshot().routines.length,0);assert.equal(view.api.canCloudApply(),true);
+});
+test('free workout routine creation needs separate name entry and explicit final save; original session is immutable',()=>{
+  const view=ui();view.start(['스쿼트']);view.complete(0);finishForOffer(view);
+  const before=JSON.stringify(view.snapshot().sessions[0]),writes=view.writes.length;
+  view.action('name-routine-offer');
+  const dialog=offer(view),name=dialog.querySelector('#fi-routine-offer-name'),save=dialog.querySelector('[data-fi-action="confirm-routine-offer"]');
+  assert.equal(name.value,'');assert.equal(save.disabled,true);
+  assert.equal(view.document.activeElement,dialog.querySelector('[data-fi-action="skip-routine-offer"]'));
+  assert.equal(view.writes.length,writes);
+  name.value='자유운동 시험 루틴';name.emit('input');
+  assert.equal(save.disabled,false);
+  view.action('confirm-routine-offer');assert.equal(offer(view),null);
+  assert.equal(view.snapshot().routines.length,1);assert.equal(view.snapshot().routines[0].name,'자유운동 시험 루틴');
+  assert.equal(JSON.stringify(view.snapshot().sessions[0]),before);
+  view.document.emit('click',{target:save});assert.equal(view.snapshot().routines.length,1);
+});
+test('routine offer escape or canceled name entry leaves the completed workout alone',()=>{
+  for(const step of ['choice','name']){
+    const view=ui();view.start(['벤치프레스']);view.complete(0);finishForOffer(view);
+    if(step==='name')view.action('name-routine-offer');
+    const before=JSON.stringify(view.snapshot());
+    offer(view).emit('cancel');
+    assert.equal(offer(view),null);assert.equal(JSON.stringify(view.snapshot()),before);
+  }
+});
+test('direct routine and program workouts do not offer another routine',()=>{
+  for(const kind of ['routine','program']){
+    const view=ui({initialState:M=>{
+      const r=M.createRoutine(M.empty(),'저장 루틴',[M.newExercise('스쿼트')]);
+      return kind==='program'?M.createProgram(r.next,'순환 프로그램','cycle',[r.routine.id]).next:r.next;
+    }});
+    const initial=view.snapshot();
+    if(kind==='routine'){view.api.open('routines');view.action('begin-routine',{id:initial.routines[0].id});}
+    else{view.api.open('home');view.action('begin-program-routine',{id:initial.programs[0].id});}
+    view.complete(0);const prompts=view.prompts.length;finishForOffer(view);
+    assert.equal(view.prompts.length,prompts+1);assert.equal(offer(view),null);assert.deepEqual(view.snapshot().routines,initial.routines);
+  }
+});
+test('calendar workouts show the routine offer only when explicit free provenance was saved at start',()=>{
+  for(const freeKind of [null,'configured','empty']){
+    const fixture=scheduledFixture({freeKind}),view=ui({bridge:fixture.bridge});
+    view.api.open('calendar',{eventId:fixture.eventId,date:fixture.date});
+    if(freeKind==='empty'){assert.equal(view.pickerActive,true);assert.equal(view.choose(['스쿼트']),true);}
+    view.complete(0,freeKind==='empty'?0:1);
+    const prompts=view.prompts.length;finishForOffer(view);
+    assert.equal(view.prompts.length,prompts+1);assert.equal(!!offer(view),!!freeKind);
+    assert.equal(fixture.calls.reflections.length,1);
+    assert.equal(fixture.calendar.events[0].workoutSessionId,view.snapshot().sessions[0].id);
+    if(freeKind)view.action('skip-routine-offer');
+    assert.equal(view.snapshot().routines.length,0);
+  }
+});
+test('routine save failure preserves the optional name form and saved workout; retry creates only one routine',()=>{
+  const view=ui();view.start(['벤치프레스']);view.complete(0);finishForOffer(view);
+  const before=JSON.stringify(view.snapshot().sessions[0]);
+  view.action('name-routine-offer');const name=offer(view).querySelector('#fi-routine-offer-name');name.value='새 루틴';name.emit('input');
+  view.failStorage();view.action('confirm-routine-offer');
+  assert.equal(offer(view).open,true);assert.equal(name.value,'새 루틴');assert.equal(offer(view).querySelector('#fi-routine-offer-error').hidden,false);
+  assert.equal(view.snapshot().routines.length,0);assert.equal(JSON.stringify(view.snapshot().sessions[0]),before);
+  view.failStorage(false);view.action('confirm-routine-offer');assert.equal(offer(view),null);
+  assert.equal(view.snapshot().routines.length,1);assert.equal(JSON.stringify(view.snapshot().sessions[0]),before);
+});
+test('partial workout retains existing no-offer behavior',()=>{
+  const view=ui();view.start(['벤치프레스']);view.complete(0);
+  view.answers.push(true);view.action('partial');assert.equal(offer(view),null);
+  assert.equal(view.snapshot().sessions[0].status,'PARTIAL');assert.equal(view.snapshot().routines.length,0);
 });

@@ -409,6 +409,18 @@
       (!today||session.date<=today)&&Array.isArray(session.exercises)&&session.exercises.some(ex=>
         Array.isArray(ex.sets)&&ex.sets.some(s=>s.done===true&&Number.isFinite(s.weight)&&s.weight>=0&&Number.isInteger(s.reps)&&s.reps>=1));
   }
+  function isFreeWorkout(session){
+    if(!session||session.isSample===true||session.routineId||session.programId)return false;
+    if(!session.calendarSource)return true;
+    // Calendar starts intentionally do not fill routineId/programId. The
+    // immutable starting plan is the only reliable provenance for those sessions.
+    try{
+      const src=session.calendarSource,baseline=JSON.parse(src.baseline);
+      if(baseline.id!==src.eventId||baseline.date!==src.date||baseline.type!=='strength'||baseline.completed!==false)return false;
+      const d=baseline.detail;
+      return !!d&&(d.freeWorkout===true||(d.freePlan===true&&Array.isArray(d.exercises)&&d.exercises.length===0));
+    }catch(e){return false;}
+  }
   function recordSummary(s){
     let completedSets=0,volume=0,exercises=0;
     for(const ex of s.exercises){
@@ -421,5 +433,5 @@
     }
     return {completedSets,volume:Math.round(volume*100)/100,exercises,minutes:Math.round(s.activeMs/60000)};
   }
-  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,updateProgram,deleteProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,allSetsDone,isActualSession,recordSummary});
+  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,updateProgram,deleteProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,allSetsDone,isActualSession,isFreeWorkout,recordSummary});
 });

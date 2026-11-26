@@ -752,6 +752,7 @@ test('a workout title survives a category round trip but does not become a cardi
   const workout = JSON.parse(app.map.get(C.STORE)).events[0];
   assert.equal(workout.type, 'strength');
   assert.equal(workout.title, '목요일 상체 훈련');
+  assert.equal(workout.detail.freeWorkout,true);
   app.get('agenda').querySelector('[data-edit="' + workout.id + '"]').click();
   app.document.querySelector('[data-pick="cardio"]').click();
   app.get('f-cardio').value = '걷기';

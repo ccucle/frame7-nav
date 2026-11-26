@@ -26,6 +26,7 @@
       timerClosing=false,timerPresetOpen=false,timerSoundEnabled=true,timerAlerted=false,restAudioContext=null,
       backgroundStoppedAt=null,previousCacheSession=null,
       programDeleteDialog=null,pendingProgramDelete=null,
+      routineOfferDialog=null,pendingRoutineOffer=null,
       sessionDialog=null,sheetClosing=false,sheetGeneration=0,sheetDrag=null,suppressHandleClickUntil=0;
   const previousCache=new Map();
   const expandedSetSettings=new Set();
@@ -106,6 +107,7 @@
       (programDraft&&JSON.stringify(programDraft)!==programBaseline));
   }
   function beforeNavigate(){
+    if(routineOfferDialog?.open)return false;
     closeProgramDelete();
     if(pickerOpen||root.FormdayExercisePicker?.isOpen?.()){setMessage('종목 선택을 완료하거나 선택창을 닫은 뒤 이동해 주세요.',true);paintMessage();return false;}
     if(screen==='session'&&!saveSessionInputs())return false;
@@ -117,6 +119,7 @@
     return true;
   }
   function go(page){
+    if(routineOfferDialog?.open)return false;
     closeProgramDelete();
     if(page==='choose')page='routines';
     if(!['home','routines','builder','programs','programBuilder','session','history'].includes(page))page='home';
@@ -932,11 +935,11 @@
     const message='실제 '+done+'/'+total+'세트를 수행했습니다. '+(effective==='PARTIAL'?'여기까지 부분 완료할까요?':'현재 중량과 횟수로 운동을 완료할까요?')+(done<total?' 수행하지 않은 '+(total-done)+'세트는 미완료로 유지합니다.':'');
     if(!root.confirm(message+' 확정 후 같은 세션은 이어할 수 없습니다.'))return;
     if(changed(()=>M.finish(state,s.id,effective),effective==='PARTIAL'?'실제로 수행한 세트만 부분 완료로 저장했습니다.':'실제 수행 기록으로 운동을 완료했습니다.')){
-      reflectCalendar(state.sessions.find(x=>x.id===s.id));
-      resetRest();backgroundStoppedAt=null;sessionDirty=false;focusedSession=s.id;go('history');
-      if(effective==='COMPLETED'&&root.confirm('이번 운동 구성을 새 루틴으로 저장할까요? (선택하지 않아도 운동 기록은 유지됩니다.)')){
-        saveFromHistory(s.id);
-      }
+      const saved=state.sessions.find(x=>x.id===s.id);
+      reflectCalendar(saved);
+      resetRest();backgroundStoppedAt=null;sessionDirty=false;focusedSession=s.id;
+      const opened=go('history');
+      if(opened!==false&&effective==='COMPLETED'&&M.isFreeWorkout(saved))offerRoutineSave(saved.id);
     }
   }
   function cancelSession(){
@@ -955,6 +958,76 @@
     return {src,exercises:src.exercises.map(ex=>({...ex,id:M.uid(),sets:ex.sets.map(s=>{
       const {done,...values}=s;return {...values,id:M.uid()};
     })}))};
+  }
+  // Optional routine creation is separate from the already durable workout.
+  // The native dialog stays independent of rerendered history/dashboard DOM.
+  function closeRoutineOffer(){
+    const dialog=routineOfferDialog,request=pendingRoutineOffer;
+    routineOfferDialog=null;pendingRoutineOffer=null;
+    if(dialog?.open)dialog.close();
+    dialog?.remove();
+    const focus=request?.trigger?.isConnected?request.trigger:host.querySelector('#fi-history-detail');
+    focus?.focus?.({preventScroll:true});
+  }
+  function renderRoutineOffer(step){
+    const dialog=routineOfferDialog,request=pendingRoutineOffer;
+    if(!dialog||!request)return;
+    request.step=step;
+    const button=(action,label,kind,attrs='')=>'<button type="button" class="fi-routine-offer-'+kind+'" data-fi-action="'+action+'" '+attrs+'>'+label+'</button>';
+    const skip=button('skip-routine-offer','그냥 기록만 저장','safe','autofocus');
+    dialog.innerHTML='<section class="fi-routine-offer-content"><span class="fi-routine-offer-check" aria-hidden="true">✓</span>'+
+      '<p class="fi-routine-offer-kicker">운동 기록 저장 완료</p>'+
+      (step==='name'?'<h2 id="fi-routine-offer-title">새 루틴 이름을 입력하세요</h2><p id="fi-routine-offer-description">오늘 운동 기록은 이미 저장됐습니다. 루틴은 별도로 추가합니다.</p><label for="fi-routine-offer-name">루틴 이름</label><input id="fi-routine-offer-name" type="text" maxlength="100" autocomplete="off" value="" placeholder="'+esc(request.label)+'"><p id="fi-routine-offer-error" role="alert" hidden></p>':
+        '<h2 id="fi-routine-offer-title">이번 자유운동을 루틴으로 저장할까요?</h2><p id="fi-routine-offer-description">저장하지 않아도 오늘 운동 기록은 그대로 유지됩니다. 나중에 운동 기록에서 루틴으로 저장할 수 있습니다.</p>')+
+      '<div class="fi-routine-offer-actions">'+skip+button(step==='name'?'confirm-routine-offer':'name-routine-offer',step==='name'?'새 루틴 저장':'루틴으로 저장','secondary',step==='name'?'disabled':'')+'</div></section>';
+    if(step==='name'){
+      const name=dialog.querySelector('#fi-routine-offer-name'),save=dialog.querySelector('[data-fi-action="confirm-routine-offer"]');
+      name.addEventListener('input',()=>{const value=name.value.trim();save.disabled=!value||value.length>100;});
+    }
+    dialog.querySelector('[data-fi-action="skip-routine-offer"]')?.focus?.({preventScroll:true});
+  }
+  function offerRoutineSave(id){
+    if(routineOfferDialog||!state||blocked||revisionConflict)return;
+    const src=state.sessions.find(x=>x.id===id&&x.status==='COMPLETED');
+    if(!M.isFreeWorkout(src))return;
+    const dialog=document.createElement('dialog');
+    if(typeof dialog.showModal!=='function'||!document.body.appendChild)return;
+    dialog.id='fi-routine-offer-dialog';dialog.className='fi-routine-offer';
+    dialog.setAttribute('aria-labelledby','fi-routine-offer-title');
+    dialog.setAttribute('aria-describedby','fi-routine-offer-description');
+    pendingRoutineOffer={id,baseline:JSON.stringify(src),label:src.label,trigger:document.activeElement,step:'choice'};
+    routineOfferDialog=dialog;
+    dialog.addEventListener('cancel',event=>{event.preventDefault();closeRoutineOffer();});
+    dialog.addEventListener('click',event=>{if(event.target===dialog)closeRoutineOffer();});
+    dialog.addEventListener('close',()=>{if(routineOfferDialog===dialog)closeRoutineOffer();});
+    try{
+      renderRoutineOffer('choice');document.body.appendChild(dialog);dialog.showModal();
+      dialog.querySelector('[data-fi-action="skip-routine-offer"]')?.focus?.({preventScroll:true});
+    }catch(e){closeRoutineOffer();}
+  }
+  function handleRoutineOffer(button){
+    const dialog=routineOfferDialog,request=pendingRoutineOffer;
+    if(!dialog?.open||!request||!dialog.contains(button))return;
+    const action=button.dataset.fiAction;
+    if(action==='skip-routine-offer'){closeRoutineOffer();return;}
+    if(action==='name-routine-offer'&&request.step==='choice'){renderRoutineOffer('name');return;}
+    if(action!=='confirm-routine-offer'||request.step!=='name')return;
+    const errorNode=dialog.querySelector('#fi-routine-offer-error');
+    try{
+      editable();
+      const src=state.sessions.find(x=>x.id===request.id&&x.status==='COMPLETED');
+      if(!M.isFreeWorkout(src)||JSON.stringify(src)!==request.baseline)throw Error('운동 기록이 변경되었습니다. 기록 화면에서 다시 저장해 주세요.');
+      const name=dialog.querySelector('#fi-routine-offer-name')?.value.trim()||'';
+      if(!name||name.length>100)throw Error('루틴 이름을 1~100자로 입력해 주세요.');
+      if(state.routines.some(r=>r.name.trim().normalize('NFKC').toLocaleLowerCase()===name.normalize('NFKC').toLocaleLowerCase()))throw Error('같은 이름의 루틴이 있습니다. 다른 이름을 입력해 주세요.');
+      const {exercises}=routineFromSession(request.id);
+      button.disabled=true;
+      if(!changed(()=>M.createRoutine(state,name,exercises),'새 루틴을 저장했습니다. 기존 운동 기록은 유지됩니다.',false))throw Error(message||'루틴을 저장하지 못했습니다.');
+      closeRoutineOffer();render();
+    }catch(e){
+      button.disabled=false;
+      if(errorNode){errorNode.hidden=false;errorNode.textContent=e.message;}
+    }
   }
   function saveFromHistory(id){
     try{
@@ -1055,6 +1128,8 @@
   function onAction(button){
     if(sheetClosing)return;
     const action=button.dataset.fiAction,id=button.dataset.id;
+    if(routineOfferDialog?.open){handleRoutineOffer(button);return;}
+    if(['skip-routine-offer','name-routine-offer','confirm-routine-offer'].includes(action))return;
     if(action==='cancel-delete-program'){closeProgramDelete();return;}
     if(action==='confirm-delete-program'){confirmProgramDelete(id);return;}
     if(programDeleteDialog?.open)return;
@@ -1347,7 +1422,7 @@
   function canCloudMerge(next){
     // Paused/saved sessions are records, not a reason to force completion.
     // Preserve editable drafts and never apply during an active/open session.
-    return !blocked&&!revisionConflict&&!draft&&!programDraft&&!pickerOpen&&!programDeleteDialog?.open&&!sessionDirty&&!sessionDialog?.open&&backgroundStoppedAt===null&&
+    return !blocked&&!revisionConflict&&!draft&&!programDraft&&!pickerOpen&&!programDeleteDialog?.open&&!routineOfferDialog?.open&&!sessionDirty&&!sessionDialog?.open&&backgroundStoppedAt===null&&
       current()?.status!=='ACTIVE'&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.()&&
       Array.isArray(next?.sessions)&&!next.sessions.some(s=>s.status==='ACTIVE');
   }
@@ -1360,9 +1435,9 @@
     renderCalendar();render();root.dispatchEvent(new CustomEvent('formday:iron-changed'));return true;
   }
   root.FormdayIndependent=Object.freeze({open,renderCalendar,beforeNavigate,hubNav,canCloudMerge,cloudMergeReload,renderHistory:()=>{if(document.body.dataset.fdScreen==='progress')render();},getSnapshot:()=>state?M.copy(state):null,getCalendarSnapshot,
-    canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current()&&!pickerOpen&&!programDeleteDialog?.open&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.(),
+    canCloudApply:()=>!blocked&&!revisionConflict&&!draft&&!programDraft&&!current()&&!pickerOpen&&!programDeleteDialog?.open&&!routineOfferDialog?.open&&!root.FormdayExercisePicker?.isOpen?.()&&!root.FormdayBridge?.isRoutineSwapOpen?.(),
     cloudReload:()=>{
-      if(blocked||revisionConflict||draft||programDraft||current()||pickerOpen||programDeleteDialog?.open||root.FormdayExercisePicker?.isOpen?.()||root.FormdayBridge?.isRoutineSwapOpen?.())return false;
+      if(blocked||revisionConflict||draft||programDraft||current()||pickerOpen||programDeleteDialog?.open||routineOfferDialog?.open||root.FormdayExercisePicker?.isOpen?.()||root.FormdayBridge?.isRoutineSwapOpen?.())return false;
       const latest=store.load();
       if(latest.error){blocked=latest.error;setMessage(blocked,true);render();return false;}
       state=latest.data;setMessage('다른 기기의 최신 웨이트 기록을 반영했습니다.');
