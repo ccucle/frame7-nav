@@ -800,7 +800,7 @@ test('explicit finish completes a workout and advances its program without marki
 
 test('starting an empty free calendar plan uses the existing exercise picker before creating a linked session',()=>{
   const date='2026-11-23',detail={exercises:[],notes:'',freePlan:true};
-  const baseline=JSON.stringify({id:'free-day',date,title:'자유운동',detail});
+  const baseline=JSON.stringify({id:'free-day',date,title:'자유운동',type:'strength',completed:false,detail});
   const plan={eventId:'free-day',date,label:'자유운동',exercises:[],notes:'',baseline,freePlan:true};
   const view=ui(M.empty(),{fixedToday:date+'T12:00:00',bridge:{prepareScheduledWorkout:()=>plan}});
   view.api.open('calendar',{eventId:plan.eventId,date});

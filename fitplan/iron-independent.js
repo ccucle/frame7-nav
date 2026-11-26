@@ -680,7 +680,7 @@
         if(current())throw Error('진행 중인 운동이 있습니다.');
         const fresh=getPlan();
         if(date>iso(new Date())||!fresh.freePlan||fresh.baseline!==plan.baseline)throw Error('일정이 변경되었습니다. 다시 선택해 주세요.');
-        return begin({...fresh,exercises:names.map(name=>M.newExercise(name))});
+        return begin({...fresh,exercises:names.map(name=>{const ex=M.newExercise(name);return {...ex,sets:ex.sets.map(set=>({...set,done:false}))};})});
       }});
     }
     return begin(plan);

@@ -316,7 +316,7 @@ test('empty free plan is not a fake workout and reflects actual selected sets on
   assert.equal(C.normalizeState(clone(cal)).events[0].detail.freePlan,true);
   assert.throws(()=>C.toggleComplete(cal,e.id,date),/운동/);
   assert.throws(()=>K.registerFreePlan(C,cal,date,date,'09:00','10:00','자유운동'),/이미/);
-  const started=M.startCalendar(M.empty(),{...p,exercises:[M.newExercise('스쿼트')]},clock);
+  const started=M.startCalendar(M.empty(),{...p,exercises:[(()=>{const ex=M.newExercise('스쿼트');return {...ex,sets:ex.sets.map(s=>({...s,done:false}))};})()]},clock);
   const x=started.session.exercises[0],next=M.setValue(started.next,started.session.id,x.id,x.sets[0].id,{done:true},clock).next;
   const ended=M.finish(next,started.session.id,'PARTIAL',new Date(clock.getTime()+600000));
   const saved=K.applySession(C,cal,ended.session).next.events[0];

@@ -366,6 +366,7 @@
     documentRef.addEventListener('visibilitychange', visibility);
     paintTimer();
     return {
+      draft() { if (disposed) throw new Error('운동 기록 창이 닫혔습니다.'); return readDraft(); },
       read() {
         if (disposed) throw new Error('운동 기록 창이 닫혔습니다. 다시 열어 주세요.');
         clearError();
