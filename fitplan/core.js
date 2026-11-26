@@ -100,6 +100,11 @@
 
   function normalizeStrength(detail, legacyCompleted) {
     if (!plain(detail)) fail('웨이트 상세 기록이 올바르지 않습니다.');
+    // Only an explicitly unstarted free schedule may have no exercises.
+    if (own(detail, 'freePlan')) {
+      if (detail.freePlan !== true || legacyCompleted || !Array.isArray(detail.exercises) || detail.exercises.length !== 0) fail('자유운동 일정은 운동 시작 전에만 종목 없이 등록할 수 있습니다.');
+      return { exercises: [], notes: textValue(detail.notes, '운동 메모', 4000, true), freePlan: true };
+    }
     let exercises;
     if (own(detail, 'exercises')) {
       if (!Array.isArray(detail.exercises) || detail.exercises.length < 1 || detail.exercises.length > 30) fail('운동 종목은 1~30개로 입력해 주세요.');
@@ -180,6 +185,7 @@
     if (!baseRule(event, day, false)) fail('반복 일정 범위를 벗어난 날짜별 기록입니다.');
     if (raw.type !== event.type) fail('날짜별 기록의 종류가 반복 일정과 다릅니다.');
     const completed = booleanValue(raw.completed, '완료', false);
+    if (event.type === 'strength' && raw.detail?.freePlan) fail('반복 운동 기록에는 종목 없는 자유운동 일정을 저장할 수 없습니다.');
     return { date: day, ...times(raw), type: event.type, title: textValue(raw.title, '일정 제목', 300, false), detail: normalizeDetail(event.type, raw.detail, completed), completed, ...workoutLink(raw, event.type) };
   }
 
@@ -191,6 +197,7 @@
     const completed = booleanValue(raw.completed, '완료', false);
     const link = workoutLink(raw, raw.type);
     const event = { id, date: raw.date, ...times(raw), type: raw.type, title: textValue(raw.title, '일정 제목', 300, false), repeat: raw.repeat, repeatUntil: null, completed, detail: normalizeDetail(raw.type, raw.detail, completed), occurrences: {}, excludedDates: [], isSample: booleanValue(raw.isSample, '샘플', false), ...(raw.repeat === 'none' ? link : {}) };
+    if (event.type === 'strength' && event.detail.freePlan && (event.repeat !== 'none' || event.workoutSessionId || event.isSample)) fail('자유운동 일정은 미완료 단일 일정으로 등록해 주세요.');
     if (raw.repeatUntil !== undefined && raw.repeatUntil !== null && raw.repeatUntil !== '') {
       if (!validDate(raw.repeatUntil) || raw.repeatUntil < event.date) fail('반복 종료일은 시작일 이후여야 합니다.');
       event.repeatUntil = raw.repeatUntil;
@@ -374,6 +381,7 @@
     const effective = occurrence(event, day);
     if (!effective) fail('해당 날짜의 일정을 찾을 수 없습니다.');
     const target = !effective.completed;
+    if (target && effective.type === 'strength' && effective.detail.freePlan) fail('운동을 시작하여 실제 수행한 종목과 세트를 기록해 주세요.');
     if (target && effective.type === 'weight' && !(typeof effective.detail.weight === 'number' && effective.detail.weight > 0)) fail('체중 측정값을 입력해 주세요.');
     effective.completed = target;
     effective.isSample = false;

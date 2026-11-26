@@ -233,7 +233,7 @@ function ui(initial=M.empty(),options={}){
     getElementById:id=>id==='fd-ind-root'?host:id==='fd-iron-calendar'?calendar:id==='main-content'?{scrollIntoView(){}}:null,
     querySelector:()=>null,querySelectorAll:selector=>selector==='[data-ind-nav]'?[globalWorkout]:[],
     addEventListener:(type,fn,capture=false)=>(listeners[type]??=[]).push({fn,capture})};
-  const root={FormdayIronStore:options.missingStore?null:M,FormdayWorkouts:W,
+  const root={FormdayIronStore:options.missingStore?null:M,FormdayWorkouts:W,FormdayBridge:options.bridge,
     localStorage:backing.obj,addEventListener(){},dispatchEvent(){},setInterval(){},requestAnimationFrame:fn=>fn(),
     confirm:text=>{prompts.push(text);return answers.shift()??false;}};
   if(!options.missingPicker)root.FormdayExercisePicker={isOpen:()=>pickerActive,open(config){if(pickerActive)return false;pickerConfig=config;pickerActive=true;return true;}};
@@ -796,4 +796,17 @@ test('explicit finish completes a workout and advances its program without marki
  view.action('record-detail',{id:f.session.id});assert.match(view.host.innerHTML,/운동 완료/);
  assert.match(view.host.innerHTML,new RegExp('1/'+total+'세트 완료'));
  assert.equal(view.writes.length,0);
+});
+
+test('starting an empty free calendar plan uses the existing exercise picker before creating a linked session',()=>{
+  const date='2026-11-23',detail={exercises:[],notes:'',freePlan:true};
+  const baseline=JSON.stringify({id:'free-day',date,title:'자유운동',type:'strength',completed:false,detail});
+  const plan={eventId:'free-day',date,label:'자유운동',exercises:[],notes:'',baseline,freePlan:true};
+  const view=ui(M.empty(),{fixedToday:date+'T12:00:00',bridge:{prepareScheduledWorkout:()=>plan}});
+  view.api.open('calendar',{eventId:plan.eventId,date});
+  assert.equal(view.pickerIsOpen,true);assert.equal(view.writes.length,0);
+  assert.equal(view.choose(['스쿼트']),true);
+  const state=JSON.parse(view.backing.obj.getItem(M.KEY)),session=state.sessions[0];
+  assert.equal(state.sessions.length,1);assert.equal(session.calendarSource.eventId,plan.eventId);
+  assert.equal(session.exercises[0].name,'스쿼트');assert.ok(session.exercises[0].sets.every(s=>!s.done));
 });

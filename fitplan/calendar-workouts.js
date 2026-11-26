@@ -18,7 +18,7 @@
     return JSON.stringify({id:event.id,date:event.date,type:event.type,title:event.title,
       start:event.start,end:event.end,completed:event.completed===true,
       detail:{exercises:event.detail.exercises.map(ex=>({id:ex.id,name:ex.name,notes:ex.notes||'',
-        sets:ex.sets.map(set=>({id:set.id,weight:set.weight,reps:set.reps,rpe:set.rpe??null,done:set.done===true,warmup:set.warmup===true}))})),notes:event.detail.notes||''}});
+        sets:ex.sets.map(set=>({id:set.id,weight:set.weight,reps:set.reps,rpe:set.rpe??null,done:set.done===true,warmup:set.warmup===true}))})),notes:event.detail.notes||'',...(event.detail.freePlan===true?{freePlan:true}:{})}});
   }
   function effective(C,state,eventId,date){
     must(C.validDate(date),'올바른 운동 날짜를 선택해 주세요.');
@@ -34,7 +34,7 @@
     must(!actual.completed&&!actual.workoutSessionId,'이미 완료했거나 연결된 운동이 있는 일정입니다. 운동 기록을 확인해 주세요.');
     const exercises=copy(actual.detail.exercises).map(ex=>({...ex,sets:ex.sets.map(set=>({...set,restSec:set.restSec??90}))}));
     return {eventId:actual.id,date:actual.date,label:actual.title.trim().slice(0,100),exercises,
-      notes:actual.detail.notes||'',baseline:signature(actual)};
+      notes:actual.detail.notes||'',baseline:signature(actual),...(actual.detail.freePlan===true?{freePlan:true}:{})};
   }
   // Explicit workout finish does not mean every planned set was performed.
   function completion(record){
@@ -86,17 +86,49 @@
     const options=event.repeat==='none'?{scope:'single'}:{scope:'occurrence',occurrenceDate:date};
     return C.upsert(state,updated,options);
   }
-  // One finite registration per selected cycle or calendar week.
+  function validateRegistration(C,date,today,start,end){
+    must(C.validDate(date)&&C.validDate(today),'올바른 날짜를 선택해 주세요.');
+    must(date>=today,'과거 날짜에는 운동 일정을 등록할 수 없습니다.');
+    must(C.validTime(start)&&C.validTime(end)&&end>start,'종료 시간은 시작 시간보다 늦어야 합니다.');
+  }
+  function newSchedule(C,state,date,today,start,end,title,detail,ignoreId=null){
+    validateRegistration(C,date,today,start,end);
+    must(typeof title==='string'&&title.trim()&&title.trim().length<=160,'일정 이름을 1~160자로 입력해 주세요.');
+    const normalized=C.normalizeState(state),name=title.trim();
+    must(!C.dayEvents(normalized,date).some(e=>e.id!==ignoreId&&!e.isSample&&e.type==='strength'&&e.title===name),'이 날짜에 같은 이름의 운동 일정이 이미 등록되어 있습니다.');
+    let id=ignoreId||C.uid();
+    if(!ignoreId)while(normalized.events.some(e=>e.id===id))id=C.uid();
+    return C.upsert(normalized,{id,date,start,end,type:'strength',title:name,repeat:'none',repeatUntil:null,completed:false,isSample:false,detail});
+  }
+  function registerRoutine(C,state,ironState,routineId,date,today,start,end){
+    const training=iron().normalize(ironState),routine=training.routines.find(r=>r.id===routineId);
+    must(routine,'선택한 루틴이 없습니다. 루틴 목록을 다시 확인해 주세요.');
+    const detail={notes:'',exercises:routine.exercises.map(ex=>({...copy(ex),id:C.uid(),sets:ex.sets.map(set=>({...copy(set),id:C.uid(),done:false}))}))};
+    return newSchedule(C,state,date,today,start,end,routine.name,detail);
+  }
+  function registerFreePlan(C,state,date,today,start,end,title,notes='',eventId=null,expectedBaseline=null){
+    if(eventId){
+      const old=C.normalizeState(state).events.find(e=>e.id===eventId);
+      must(old&&old.repeat==='none','수정할 자유운동 일정이 없습니다.');
+      const {actual}=effective(C,state,eventId,old.date);
+      must(actual.detail.freePlan===true&&!actual.completed&&!actual.workoutSessionId,'이미 시작하거나 종목을 구성한 운동은 이 방식으로 수정할 수 없습니다.');
+      must(signature(actual)===expectedBaseline,'일정이 변경되었습니다. 다시 열어 주세요.');
+    }
+    return newSchedule(C,state,date,today,start,end,title,{exercises:[],notes,freePlan:true},eventId);
+  }
+  // One finite registration per selected cycle or one to twelve calendar weeks.
   // Pure projection: no storage writes, no changes to program progress.
-  function previewProgram(C,state,ironState,programId,anchor,today,start='07:00',end='08:00'){
+  function previewProgram(C,state,ironState,programId,anchor,today,start='07:00',end='08:00',weeks=1){
     must(C.validDate(today)&&C.validDate(anchor),'올바른 날짜를 선택해 주세요.');
     must(anchor>=today,'과거 날짜에는 프로그램을 등록할 수 없습니다.');
     must(C.validTime(start)&&C.validTime(end)&&end>start,'종료 시간은 시작 시간보다 늦어야 합니다.');
     const training=iron().normalize(ironState),program=training.programs.find(p=>p.id===programId);
     must(program,'등록할 프로그램을 찾을 수 없습니다.');
+    must(Number.isInteger(weeks)&&weeks>=1&&weeks<=12,'등록 주 수는 1~12주로 선택해 주세요.');
+    must(program.mode==='fixed'||weeks===1,'순환형 프로그램은 한 번의 순환만 등록합니다.');
     const current=C.normalizeState(state);
     const first=program.mode==='fixed'?C.shiftDate(anchor,-C.dateOf(anchor).getDay()):anchor;
-    const rows=Array.from({length:program.mode==='fixed'?7:program.routineIds.length},(_,i)=>{
+    const rows=Array.from({length:program.mode==='fixed'?7*weeks:program.routineIds.length},(_,i)=>{
       const date=C.shiftDate(first,i);
       const rid=program.mode==='fixed'?program.weekdays[String(C.dateOf(date).getDay())]:program.routineIds[i];
       const routine=training.routines.find(r=>r.id===rid);
@@ -107,11 +139,11 @@
       if(same)return {...row,status:'duplicate',existingId:same.id};
       return row;
     });
-    return {programId,programName:program.name,mode:program.mode,anchor,today,start,end,first,last:rows.at(-1).date,rows,
+    return {programId,programName:program.name,mode:program.mode,anchor,today,start,end,weeks,first,last:rows.at(-1).date,rows,
       count:rows.filter(r=>r.status==='new').length};
   }
-  function registerProgram(C,state,ironState,programId,anchor,today,start,end,expectedPreview){
-    const preview=previewProgram(C,state,ironState,programId,anchor,today,start,end);
+  function registerProgram(C,state,ironState,programId,anchor,today,start,end,expectedPreview,weeks=1){
+    const preview=previewProgram(C,state,ironState,programId,anchor,today,start,end,weeks);
     must(!expectedPreview||JSON.stringify(preview)===JSON.stringify(expectedPreview),'등록할 날짜 또는 일정이 변경되었습니다. 미리보기를 다시 확인해 주세요.');
     const training=iron().normalize(ironState),next=C.normalizeState(state);
     const ids=new Set(next.events.map(e=>e.id));
@@ -126,5 +158,5 @@
     next.demo=false;
     return {next:C.normalizeState(next),preview,count:preview.count};
   }
-  return Object.freeze({signature,prepareStart,applySession,completion,calendarCompletion,replaceRoutine,previewProgram,registerProgram});
+  return Object.freeze({signature,prepareStart,applySession,completion,calendarCompletion,replaceRoutine,registerRoutine,registerFreePlan,previewProgram,registerProgram});
 });
