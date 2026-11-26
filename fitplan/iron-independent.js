@@ -18,13 +18,14 @@
   const iso=d=>new Date(d).toLocaleDateString('sv-SE');
   const weekdays=['일','월','화','수','목','금','토'];
   const TIME_LIMIT_MS=24*60*60*1000;
+  const REST_CLOCK_KEY='formday_iron_rest_clock_v1';
   let store,blocked='',state=null,screen='home',editingRoutine=null,draft=null,editingProgram=null,programDraft=null,
       draftBaseline='',programBaseline='',pickerOpen=false,
       focusedSession=null,scheduledDay=iso(new Date()),message='',error=false,revisionConflict=false,clockTick=Date.now(),timerSecs=90,timerEnd=0,
       timerVisible=false,timerAutoPaused=false,sessionDirty=false,sessionViewMode='all',sessionExerciseIndex=0,
       timerTargetSecs=90,timerTotalSecs=90,timerSource=null,timerGeneration=0,timerEnterPending=false,
       timerClosing=false,timerPresetOpen=false,timerSoundEnabled=true,timerAlerted=false,restAudioContext=null,
-      backgroundStoppedAt=null,previousCacheSession=null,
+      backgroundStoppedAt=null,previousCacheSession=null,pageAway=false,restCacheRaw=null,
       programDeleteDialog=null,pendingProgramDelete=null,
       routineOfferDialog=null,pendingRoutineOffer=null,
       sessionDialog=null,sheetClosing=false,sheetGeneration=0,sheetDrag=null,suppressHandleClickUntil=0;
@@ -38,11 +39,7 @@
       state=result.data;
       const unfinished=M.getUnfinished(state);
       if(unfinished?.status==='ACTIVE'){
-        try{
-          const safe=M.resumeAfterReload(state);
-          state=store.save(safe,state.revision);
-          message='이전 운동을 안전하게 임시 보관했습니다. 이어서 진행할 수 있습니다.';
-        }catch(e){blocked='이전 운동 상태를 복구하지 못했습니다. '+e.message;}
+        message='진행 중인 운동의 시간이 계속 흐르고 있습니다. 운동 이어하기에서 확인하세요.';
       }
     }
   }catch(e){blocked='브라우저 저장소에 접근할 수 없습니다. '+e.message;}
@@ -407,10 +404,7 @@
       '<div class="fi-panel"><h3>루틴 보관함</h3>'+state.routines.map(r=>'<div class="fi-list-row"><div><b>'+esc(r.name)+'</b><small>'+r.exercises.length+'종목</small></div>'+
       button('edit-routine','편집','outline','data-id="'+esc(r.id)+'"')+'</div>').join('')+'</div></section>';
   }
-  const duration=s=>{
-    const active=s.status==='ACTIVE'&&s.activeSince?Math.max(0,(backgroundStoppedAt??Date.now())-Date.parse(s.activeSince)):0;
-    return Math.floor((s.activeMs+active)/1000);
-  };
+  const duration=s=>Math.floor(M.elapsedMs(s,new Date(backgroundStoppedAt??Date.now()))/1000);
   const timeLabel=n=>String(Math.floor(n/3600)).padStart(2,'0')+':'+String(Math.floor((n%3600)/60)).padStart(2,'0')+':'+String(n%60).padStart(2,'0');
   const sessionButton=(action,label,classes='',attrs='')=>'<button type="button" class="'+classes+'" data-fi-action="'+action+'" '+attrs+'>'+label+'</button>';
   const restLabel=n=>Math.floor(n/60)+':'+String(n%60).padStart(2,'0');
@@ -832,7 +826,61 @@
       paintMessage();return false;
     }
   }
-  const restRemaining=()=>timerEnd?Math.max(0,Math.ceil((timerEnd-Date.now())/1000)):timerSecs;
+  const restRemaining=()=>timerEnd?Math.max(0,Math.min(600,Math.ceil((timerEnd-Date.now())/1000))):timerSecs;
+  // Local, device-specific timer metadata. Never write workout records or
+  // cloud revisions just to tick or adjust a countdown.
+  function persistRest(){
+    try{
+      if(blocked||revisionConflict||!state)return false;
+      const latest=store.load();
+      if(latest.error||latest.data.revision!==state.revision)return false;
+      const raw=root.localStorage.getItem(REST_CLOCK_KEY);
+      const session=current();
+      // A different tab may own a newer rest timer. Do not overwrite it.
+      if(raw!==restCacheRaw)return false;
+      if(!session||!timerVisible||timerClosing){
+        if(raw!==null)root.localStorage.removeItem(REST_CLOCK_KEY);
+        restCacheRaw=null;return true;
+      }
+      const saved=JSON.stringify({version:1,sessionId:session.id,startedAt:session.startedAt,
+        savedAt:Date.now(),endAt:timerEnd,seconds:timerSecs,target:timerTargetSecs,total:timerTotalSecs,
+        autoPaused:timerAutoPaused,alerted:timerAlerted,sound:timerSoundEnabled,source:timerSource});
+      if(saved!==raw)root.localStorage.setItem(REST_CLOCK_KEY,saved);
+      restCacheRaw=saved;return true;
+    }catch(e){
+      // Timer cache failures cannot undo a committed set or session.
+      return false;
+    }
+  }
+  function restoreRest(){
+    resetRest(false);
+    try{
+      restCacheRaw=root.localStorage.getItem(REST_CLOCK_KEY);
+      const session=current();if(!session||!restCacheRaw)return;
+      const r=JSON.parse(restCacheRaw);
+      const int=(v,min,max)=>Number.isSafeInteger(v)&&v>=min&&v<=max;
+      if(!r||r.version!==1||r.sessionId!==session.id||r.startedAt!==session.startedAt||
+        !int(r.savedAt,0,8640000000000000)||!int(r.endAt,0,Math.min(8640000000000000,r.savedAt+600000))||
+        !int(r.seconds,0,600)||!int(r.target,1,600)||!int(r.total,1,2592000)||
+        typeof r.autoPaused!=='boolean'||typeof r.alerted!=='boolean'||typeof r.sound!=='boolean')return;
+      if(r.source!==null){
+        const ex=session.exercises.find(e=>e.id===r.source?.exid);
+        if(r.source?.sessionId!==session.id||!ex||
+          (r.source.setid!==null&&!ex.sets.some(set=>set.id===r.source.setid&&set.done===true)))return;
+      }
+      timerVisible=true;timerEnd=r.endAt;timerSecs=r.seconds;timerTargetSecs=r.target;timerTotalSecs=r.total;
+      timerAutoPaused=r.autoPaused;timerAlerted=r.alerted;timerSoundEnabled=r.sound;timerSource=r.source;
+      // Recover safely even if closing the app interrupted the two local saves
+      // involved in an explicit workout pause/resume.
+      if(session.status!=='ACTIVE'&&timerEnd){
+        timerSecs=Math.max(0,Math.min(600,Math.ceil((timerEnd-Date.parse(session.lastSavedAt))/1000)));
+        timerEnd=0;timerAutoPaused=timerSecs>0;
+      }else if(session.status==='ACTIVE'&&timerAutoPaused&&timerSecs>0){
+        timerEnd=Math.max(Date.parse(session.activeSince),r.savedAt)+timerSecs*1000;timerAutoPaused=false;
+      }
+      settleRest(true,false);
+    }catch(e){resetRest(false);}
+  }
   function prepareRestAudio(){
     if(!timerSoundEnabled||document.hidden)return;
     try{
@@ -844,7 +892,7 @@
     }catch(e){}
   }
   function playRestAlert(){
-    if(!timerSoundEnabled||document.hidden||screen!=='session'||!sessionDialog?.open||current()?.status!=='ACTIVE'||restAudioContext?.state!=='running')return;
+    if(!timerSoundEnabled||document.hidden||pageAway||screen!=='session'||!sessionDialog?.open||current()?.status!=='ACTIVE'||restAudioContext?.state!=='running')return;
     try{
       for(const delay of [0,.22]){
         const oscillator=restAudioContext.createOscillator(),gain=restAudioContext.createGain(),at=restAudioContext.currentTime+delay;
@@ -856,11 +904,13 @@
       }
     }catch(e){}
   }
-  function settleRest(){
+  function settleRest(silent=false,save=true){
     if(timerEnd&&Date.now()>=timerEnd){
       timerSecs=0;timerEnd=0;timerAutoPaused=false;
-      // Consume expiry even while muted, hidden or on another screen: no delayed alert on return.
-      if(!timerAlerted){timerAlerted=true;playRestAlert();}
+      // An expired background deadline is shown as finished on return.
+      // Never promise or replay audio that the OS may have suspended.
+      if(!timerAlerted){timerAlerted=true;if(!silent)playRestAlert();}
+      if(save)persistRest();
     }
   }
   function startRest(seconds,source=null){
@@ -870,24 +920,25 @@
     timerGeneration++;timerClosing=false;timerPresetOpen=false;timerAlerted=false;
     timerSecs=seconds;timerTargetSecs=seconds;timerTotalSecs=seconds;timerSource=source;
     timerVisible=true;timerEnd=Date.now()+seconds*1000;timerAutoPaused=false;
-    prepareRestAudio();
+    persistRest();prepareRestAudio();
   }
   function pauseRest(){
-    if(timerEnd){timerSecs=Math.max(0,Math.ceil((timerEnd-Date.now())/1000));timerEnd=0;timerAutoPaused=timerSecs>0;}
+    if(timerEnd){timerSecs=restRemaining();timerEnd=0;timerAutoPaused=timerSecs>0;persistRest();}
   }
   function resumeRest(){
-    if(timerVisible&&timerAutoPaused&&timerSecs>0)timerEnd=Date.now()+timerSecs*1000;
-    timerAutoPaused=false;
+    if(timerVisible&&timerAutoPaused&&timerSecs>0){timerEnd=Date.now()+timerSecs*1000;timerAutoPaused=false;persistRest();}
+    else timerAutoPaused=false;
   }
-  function resetRest(){
+  function resetRest(save=true){
     timerGeneration++;timerEnd=0;timerSecs=90;timerTargetSecs=90;timerTotalSecs=90;
     timerVisible=false;timerAutoPaused=false;timerSource=null;timerClosing=false;timerPresetOpen=false;timerEnterPending=false;timerAlerted=true;
+    if(save)persistRest();
   }
   function closeRest(){
     if(!timerVisible||timerClosing)return;
     const source=timerSource,generation=++timerGeneration;
     timerSecs=restRemaining();timerEnd=0;timerAutoPaused=false;timerAlerted=true;timerClosing=true;timerPresetOpen=false;timerEnterPending=false;
-    paintTimer();
+    persistRest();paintTimer();
     const finish=()=>{
       if(generation!==timerGeneration||!timerClosing)return;
       const hadFocus=host.querySelector('.fs-rest')?.contains?.(document.activeElement);
@@ -1110,7 +1161,7 @@
       const value=JSON.parse(await file.text());
       const incoming=M.parseBackup(value);
       if(!root.confirm('독립 웨이트 백업을 복원할까요? 기존 루틴 '+state.routines.length+'개·운동 '+state.sessions.length+'개와 미저장 제작 내용을 교체하며, 직전 저장 기록은 한 번 더 보관합니다.'))return;
-      if(changed(()=>({next:incoming}),'독립 운동 기록 백업을 복원했습니다.')){clearDrafts();go('home');}
+      if(changed(()=>({next:incoming}),'독립 운동 기록 백업을 복원했습니다.')){clearDrafts();restoreRest();go('home');}
     }catch(e){setMessage('백업을 복원하지 않았습니다. '+e.message,true);render();}
   }
   function reload(){
@@ -1120,8 +1171,8 @@
       const loaded=store.load();
       if(loaded.error){blocked=loaded.error;render();return;}
       // The user explicitly discarded this screen. Never flush old DOM values into the new revision.
-      screen='home';sessionDirty=false;backgroundStoppedAt=null;previousCache.clear();resetRest();
-      state=loaded.data;blocked='';revisionConflict=false;error=false;clearDrafts();setMessage('최신 운동 기록을 불러왔습니다.');
+      screen='home';sessionDirty=false;backgroundStoppedAt=null;previousCache.clear();
+      state=loaded.data;blocked='';revisionConflict=false;error=false;restoreRest();clearDrafts();setMessage('최신 운동 기록을 불러왔습니다.');
       root.dispatchEvent(new CustomEvent('formday:iron-changed'));go('home');
     }catch(e){blocked='운동 기록을 다시 불러오지 못했습니다. '+e.message;render();}
   }
@@ -1286,7 +1337,7 @@
     if(action==='apply-from-history'){applyFromHistory(id);return;}
     if(action==='timer-skip'){closeRest();return;}
     if(action==='timer-sound'){
-      timerSoundEnabled=!timerSoundEnabled;prepareRestAudio();paintTimer();return;
+      timerSoundEnabled=!timerSoundEnabled;persistRest();prepareRestAudio();paintTimer();return;
     }
     if(action==='timer-presets'){
       if(current()?.status!=='ACTIVE'||timerClosing)return;
@@ -1305,14 +1356,14 @@
       timerTotalSecs=Math.max(1,timerTotalSecs+timerSecs-remaining);
       if(timerSecs>0)timerAlerted=false;
       if(running)timerEnd=Date.now()+timerSecs*1000;
-      paintTimer();return;
+      persistRest();paintTimer();return;
     }
     if(action==='timer-toggle'){
       if(current()?.status!=='ACTIVE'||timerClosing||!timerVisible)return;
       settleRest();
       if(timerEnd){timerSecs=restRemaining();timerEnd=0;}
       else {if(timerSecs<=0){timerSecs=timerTargetSecs||90;timerTotalSecs=timerSecs;timerAlerted=false;}timerEnd=Date.now()+timerSecs*1000;prepareRestAudio();}
-      timerVisible=true;timerAutoPaused=false;paintTimer();return;
+      timerVisible=true;timerAutoPaused=false;persistRest();paintTimer();return;
     }
     if(action==='export'){downloadBackup();return;}
     if(action==='reload'){reload();return;}
@@ -1363,27 +1414,32 @@
     revisionConflict=true;setMessage('다른 탭에서 독립 웨이트 기록을 변경했습니다. 충돌을 피하려면 최신 기록을 불러오세요.',true);
     if(screen==='session')paintMessage();else render();
   });
-  document.addEventListener('visibilitychange',()=>{
-    // A phone call or app switch must not count hidden time as exercise time.
+  function backgroundEntered(){
+    pageAway=true;
     const s=current();
-    if(document.hidden&&s?.status==='ACTIVE'&&(blocked||revisionConflict)){backgroundStoppedAt=backgroundStoppedAt??Date.now();pauseRest();return;}
-    if(document.hidden&&s?.status==='ACTIVE'&&!blocked&&!revisionConflict){
-      const stoppedAt=Date.now();
-      if(!saveSessionInputs()){backgroundStoppedAt=backgroundStoppedAt??stoppedAt;pauseRest();return;}
-      try{state=store.save(M.changeState(state,s.id,'pause',new Date(stoppedAt)).next,state.revision);backgroundStoppedAt=null;pauseRest();root.dispatchEvent(new CustomEvent('formday:iron-changed'));}
-      catch(e){backgroundStoppedAt=backgroundStoppedAt??stoppedAt;pauseRest();setMessage('화면 전환 중 저장에 실패했습니다. '+e.message,true);paintMessage();}
-    } else if(!document.hidden&&document.body.dataset.fdScreen==='independent'){
-      if(sessionDirty)paintMessage();else render();
+    if(s?.status!=='ACTIVE'||backgroundStoppedAt!==null)return;
+    // Normal app switches, screen locks and pagehide are not pauses.
+    // Flush pending edits if possible. Only invalid/failed record saves keep
+    // the pre-existing conservative freeze until the user corrects the input.
+    if(blocked||revisionConflict||!saveSessionInputs()){
+      backgroundStoppedAt=Date.now();pauseRest();return;
     }
-  });
-  root.addEventListener('pagehide',()=>{
-    const s=current();
-    if(s?.status==='ACTIVE'&&!blocked&&!revisionConflict){
-      if(!saveSessionInputs()){backgroundStoppedAt=backgroundStoppedAt??Date.now();pauseRest();return;}
-      try{state=store.save(M.changeState(state,s.id,'stash').next,state.revision);pauseRest();root.dispatchEvent(new CustomEvent('formday:iron-changed'));}
-      catch(e){backgroundStoppedAt=backgroundStoppedAt??Date.now();pauseRest();setMessage('화면 전환 중 저장에 실패했습니다. '+e.message,true);paintMessage();}
+    // The activeSince timestamp and rest deadline are already durable. No
+    // extra workout/cloud write is needed when there is nothing to flush.
+  }
+  function backgroundReturned(){
+    if(document.hidden)return;
+    const wasAway=pageAway;pageAway=false;
+    if(wasAway)settleRest(true);
+    if(document.body.dataset.fdScreen==='independent'&&wasAway){
+      if(sessionDirty||backgroundStoppedAt!==null||pickerOpen||routineOfferDialog?.open||programDeleteDialog?.open||draft||programDraft)paintMessage();
+      else render();
     }
-  });
+    paintTimer();
+  }
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)backgroundEntered();else backgroundReturned();});
+  root.addEventListener('pagehide',backgroundEntered);
+  root.addEventListener('pageshow',backgroundReturned);
   root.addEventListener('beforeunload',event=>{
     if(hasUnsavedDraft()||sessionDirty){event.preventDefault();event.returnValue='';}
   });
@@ -1429,7 +1485,7 @@
   function cloudMergeReload(expectedRevision){
     const latest=store.load();
     if(latest.error||latest.data.revision!==expectedRevision||!canCloudMerge(latest.data))return false;
-    state=latest.data;resetRest();backgroundStoppedAt=null;sessionDirty=false;focusedSession=null;
+    state=latest.data;restoreRest();backgroundStoppedAt=null;sessionDirty=false;focusedSession=null;
     if(screen==='session')screen='home';
     setMessage('병합한 최신 웨이트 기록을 반영했습니다.');
     renderCalendar();render();root.dispatchEvent(new CustomEvent('formday:iron-changed'));return true;
@@ -1440,11 +1496,11 @@
       if(blocked||revisionConflict||draft||programDraft||current()||pickerOpen||programDeleteDialog?.open||routineOfferDialog?.open||root.FormdayExercisePicker?.isOpen?.()||root.FormdayBridge?.isRoutineSwapOpen?.())return false;
       const latest=store.load();
       if(latest.error){blocked=latest.error;setMessage(blocked,true);render();return false;}
-      state=latest.data;setMessage('다른 기기의 최신 웨이트 기록을 반영했습니다.');
+      state=latest.data;restoreRest();setMessage('다른 기기의 최신 웨이트 기록을 반영했습니다.');
       focusedSession=null;renderCalendar();render();root.dispatchEvent(new CustomEvent('formday:iron-changed'));return true;
     }
   });
   // Main IRON dashboard is still the landing page; independence is user-initiated.
-  renderCalendar();
+  restoreRest();renderCalendar();
   root.dispatchEvent(new CustomEvent('formday:iron-changed'));
 })(typeof window!=='undefined'?window:globalThis);

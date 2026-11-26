@@ -9,6 +9,7 @@
   'use strict';
   const KEY='formday_iron_independent_v1';
   const VERSION=1;
+  const MAX_ACTIVE_MS=2592000000;
   const SESSION_STATES=['ACTIVE','PAUSED','SAVED','COMPLETED','PARTIAL'];
   const UNFINISHED=['ACTIVE','PAUSED','SAVED'];
   const own=(o,k)=>Object.prototype.hasOwnProperty.call(o,k);
@@ -77,7 +78,7 @@
     must(Array.isArray(raw.exercises)&&raw.exercises.length>=1&&raw.exercises.length<=30,'운동 종목을 먼저 추가해 주세요.');
     const exercises=raw.exercises.map(x=>normalizeExercise(x,true));
     const exIds=new Set();for(const ex of exercises){must(!exIds.has(ex.id),'세션 내 운동 종목 ID가 중복되었습니다.');exIds.add(ex.id);}
-    const activeMs=integer(raw.activeMs??0,0,2592000000);
+    const activeMs=integer(raw.activeMs??0,0,MAX_ACTIVE_MS);
     if(raw.status==='ACTIVE')must(timeOk(raw.activeSince),'진행 중 운동의 마지막 시작 시각이 없습니다.');
     const activeSince=raw.status==='ACTIVE'&&timeOk(raw.activeSince)?raw.activeSince:null;
     const finished=raw.status==='COMPLETED'||raw.status==='PARTIAL';
@@ -236,13 +237,19 @@
     next.sessions.push(session);
     return {next,session};
   }
+  // The clock is derived from the last durable running timestamp, not ticks.
+  function elapsedMs(session,date=new Date()){
+    const since=session.status==='ACTIVE'&&session.activeSince?Date.parse(session.activeSince):null;
+    const delta=since===null?0:Math.max(0,date.getTime()-since);
+    return Math.min(MAX_ACTIVE_MS,session.activeMs+Math.round(delta));
+  }
   function modify(data,sessionId,apply,date=new Date()){
     const next=normalize(data),session=next.sessions.find(x=>x.id===sessionId);
     must(!!session&&UNFINISHED.includes(session.status),'수정할 진행 중 세션이 없습니다.');
     if(session.status==='ACTIVE'&&session.activeSince){
-      const delta=Math.max(0,Math.min(3600000,date.getTime()-new Date(session.activeSince).getTime()));
-      session.activeMs+=Math.round(delta);
-      session.activeSince=nowIso(date);
+      session.activeMs=elapsedMs(session,date);
+      // A backwards device-clock adjustment must not add the same time twice.
+      if(date.getTime()>=Date.parse(session.activeSince))session.activeSince=nowIso(date);
     }
     apply(session);
     session.lastSavedAt=nowIso(date);
@@ -400,9 +407,9 @@
     return {next,session};
   }
   function resumeAfterReload(data,date=new Date()){
-    const next=normalize(data),s=getUnfinished(next);
-    if(s&&s.status==='ACTIVE'){s.status='SAVED';s.activeSince=null;s.lastSavedAt=nowIso(date);}
-    return next;
+    // Reopening is not an explicit pause. Preserve the saved timestamp and
+    // revision; the display computes the elapsed time on demand.
+    return normalize(data);
   }
   function isActualSession(session,today){
     return !!session&&['COMPLETED','PARTIAL'].includes(session.status)&&session.isSample!==true&&dateOk(session.date)&&
@@ -433,5 +440,5 @@
     }
     return {completedSets,volume:Math.round(volume*100)/100,exercises,minutes:Math.round(s.activeMs/60000)};
   }
-  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,updateProgram,deleteProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,allSetsDone,isActualSession,isFreeWorkout,recordSummary});
+  return Object.freeze({KEY,VERSION,SESSION_STATES,UNFINISHED,uid,empty,copy,normalize,parseBackup,toggleFavorite,createStore,newSet,newExercise,createRoutine,updateRoutine,cloneRoutine,createProgram,updateProgram,deleteProgram,getUnfinished,start,startCalendar,modify,setValue,addExercise,addExercises,addSet,updateSession,removeSet,replaceExercise,getPreviousExercise,loadPreviousSets,changeState,finish,cancel,resumeAfterReload,allSetsDone,isActualSession,isFreeWorkout,elapsedMs,recordSummary});
 });
