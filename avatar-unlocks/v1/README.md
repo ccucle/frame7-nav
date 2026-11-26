@@ -1,6 +1,10 @@
 # Windows Rainmeter 아바타에 해금 도감 연결하기
 
-## 커비의 바탕화면 산책 · 도감 1.9.1
+## 문문 · 도감 1.9.7
+
+뿔둥이 Lv.4에서 펫 탭 두 번째 카드인 문문이 열린다. 대기 자세에서 문문의 고깔 끝부터 발끝까지는 커비와 같은 53px이다. 커비와 문문은 뿔둥이와 같은 창 높이에서 뿔둥이를 따라간다. 뿔둥이가 한 픽셀 걸으면 선택한 펫도 한 픽셀 움직인다. 기본 보행 속도는 초당 20픽셀이다. 문문을 클릭하면 먹물 쏘기와 점프를 번갈아 보여 준다. 문문 카드를 다시 누르면 돌려보낼 수 있다.
+
+## 커비의 바탕화면 산책 · 도감 1.9.1 기록
 
 뿔둥이 Lv.3부터 도감의 펫 탭에서 커비 카드를 누르면 바탕화면에 커비가 나타난다. 이미 꺼내 둔 커비는 업데이트 후 자동으로 새 창에 나타난다. 커비는 자기 경로를 골라 여덟 방향으로 걷는다. 뿔둥이를 옮기거나 도감을 열어도 산책을 계속한다.
 
@@ -123,3 +127,7 @@ PC에서 한 Windows 사용자로 연결된 아바타는 공통 엔진을 공유
 | Lv.18 | 암나이트 · 투구 · 프테라 |
 | Lv.19 | 프리져 · 썬더 · 파이어 |
 | Lv.20 | 뮤츠 · 뮤 |
+
+## Buddy host and roaming Pokemon
+Requires Buddy 0.6.22 or newer. Update Buddy before the catalog. The host copies the child-window template and Lua from signed Buddy files into six native, desktop-only Rainmeter skins. The catalog uses a single walk atlas and a separate roster for each avatar and profile.
+Set pokemon-sizes.json / roam.spawnSide to left or right to change initial spawn side for all Pokemon. Existing frame art, tier sizes and ownership are independent.
