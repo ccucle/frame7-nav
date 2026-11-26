@@ -1315,3 +1315,20 @@ test('registered strength cards precede other entries and set details start fold
   assert.match(markup,/<details class="fd-plan-exercise" data-fold-key="[^"]+">/);
   assert.doesNotMatch(markup,/<details class="fd-plan-(?:disclosure|exercise)"[^>]* open>/);
 });
+
+test('meal comments preview and persist as plain notes, calendar shows them and reload preserves them',()=>{
+ const app=boot(JSON.stringify(legacyState()));
+ const notes='추정 근거: 합성 시험\n음식별 코멘트:\n- 시험 음식: <img src=x onerror=alert(1)>\n식사별 코멘트: 시험\n일일 코멘트(등록 시점): 미평가\n사용자 메모: 개인 메모';
+ previewAI(app,aiFixture({notes}));
+ assert.match(app.get('fd-ai-notes').textContent,/음식별 코멘트/);
+ assert.match(app.get('fd-ai-notes').textContent,/사용자 메모: 개인 메모/);
+ app.get('fd-ai-meal-save').click();
+ const raw=app.map.get(C.STORE),saved=JSON.parse(raw).events.find(e=>e.type==='meal');
+ assert.ok(saved.detail.notes.includes(notes));
+ assert.equal(saved.detail.items[0].food.nutrients.kcal,120);
+ const again=boot(raw),html=again.get('agenda').innerHTML;
+ assert.match(html,/코멘트 · 식사 메모/);
+ assert.match(html,/사용자 메모: 개인 메모/);
+ assert.match(html,/&lt;img/);
+ assert.doesNotMatch(html,/<img src=x/);
+});
