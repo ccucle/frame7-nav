@@ -84,13 +84,29 @@ test('routine edits never change a past completed workout snapshot',()=>{
   assert.equal(JSON.stringify(data.sessions[0]),before);
   assert.equal(data.routines[0].exercises[0].name,'딥스');
 });
-test('automatic reload recovery preserves active time and does not complete',()=>{
+test('reopening retains running timestamp, revision and sets without auto-pausing or completing',()=>{
+  const b=M.start(M.empty(),{},clock),safe=M.resumeAfterReload(b.next,advance(500));
+  assert.deepEqual(safe,b.next);assert.equal(safe.sessions[0].status,'ACTIVE');
+  assert.equal(M.elapsedMs(safe.sessions[0],advance(500)),30000000);
+  const paused=M.changeState(safe,b.session.id,'pause',advance(500)).next;
+  assert.equal(paused.sessions[0].activeMs,30000000);
+  assert.equal(M.elapsedMs(paused.sessions[0],advance(900)),30000000);
+  const resumed=M.changeState(paused,b.session.id,'resume',advance(900)).next;
+  assert.equal(M.elapsedMs(resumed.sessions[0],advance(905)),30300000);
+});
+test('elapsed duration is not clipped to one hour at the next save or finalization',()=>{
+  const b=M.start(M.empty(),{},clock),ex=b.session.exercises[0],set=ex.sets[0];
+  const saved=M.setValue(b.next,b.session.id,ex.id,set.id,{done:true},advance(150)).next;
+  assert.equal(saved.sessions[0].activeMs,9000000);
+  const ended=M.finish(saved,b.session.id,'COMPLETED',advance(240)).next.sessions[0];
+  assert.equal(ended.activeMs,14400000);assert.equal(ended.status,'COMPLETED');
+  assert.equal(M.elapsedMs(ended,advance(500)),14400000);
+});
+test('elapsed clock respects existing storage range and never counts negative wall time',()=>{
   const b=M.start(M.empty(),{},clock);
-  const safe=M.resumeAfterReload(b.next,advance(500));
-  assert.equal(safe.sessions[0].status,'SAVED');
-  assert.equal(safe.sessions[0].activeMs,0);
-  assert.equal(safe.sessions[0].endedAt,null);
-  assert.equal(safe.sessions.length,1);
+  assert.equal(M.elapsedMs(b.session,advance(-10)),0);
+  assert.equal(M.elapsedMs(b.session,advance(60*24*60)),2592000000);
+  assert.equal(M.changeState(b.next,b.session.id,'pause',advance(60*24*60)).next.sessions[0].activeMs,2592000000);
 });
 test('a workout with zero done sets cannot be finalized',()=>{
   const b=M.start(M.empty(),{},clock);

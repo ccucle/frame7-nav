@@ -1,0 +1,27 @@
+name: FORMDAY continuous workout timer regression
+on:
+  pull_request:
+    branches: [fitplan-site-20261123]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'fitplan/**'
+      - 'fitplan-dev/**'
+      - '.github/workflows/formday-continuous-timers.yml'
+permissions:
+  contents: read
+jobs:
+  continuous-timer-regression:
+    if: github.event.pull_request.head.ref == 'fix/formday-continuous-timers-0835' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Full regression with suspended-clock and restore cases
+        env:
+          TZ: Asia/Seoul
+        run: node --test fitplan-dev/*.test.cjs
