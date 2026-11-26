@@ -349,7 +349,7 @@
     $('.modal').classList.toggle('modal-workout',type==='strength');
     $('.modal').classList.toggle('modal-meal',type==='meal');
     if(type==='strength'){
-      modalController=W.mount($('#workout-editor'),W.normalize(detail),{history:C.history(data,'strength',eventDate),planOnly:scope==='series',onChange(draft,sum){
+      modalController=W.mount($('#workout-editor'),W.normalize(detail),{history:C.history(data,'strength',eventDate),planOnly:scope==='series',collapseExercises:true,onChange(draft,sum){
         modalDirty=true;
         if(scope!=='series'&&!$('#f-completed').disabled)$('#f-completed').checked=sum.setCount>0&&sum.completedSets===sum.setCount;
       }});
@@ -438,20 +438,22 @@
     paste.focus();
   }
 
-  function openEvent({event=null,date=selected,start='07:00',type=null,scope='occurrence',initialDetail=null,fromDayDetail=false}={}) {
+  function openEvent({event=null,date=selected,start='07:00',type=null,scope='occurrence',initialDetail=null,fromDayDetail=false,directStrength=false,initialTitle=''}={}) {
+    if(!event&&type==='strength'&&!directStrength)return openWorkoutRegistration(date);
+    if(event?.detail?.freePlan===true&&!directStrength)return openFreeSchedule(date,event);
     if(blockedLoad){toast('먼저 기록 백업을 복원해 주세요.',true);return;}
     const edit=!!event,recurring=edit&&event.repeat!=='none',returnToDay=fromDayDetail||daySheetDate!==null;
     const effective=recurring&&scope==='occurrence'?C.occurrence(event,date):event;
     if(recurring&&!effective){toast('이 날짜의 일정이 없습니다.',true);return;}
     const [hour,minute]=start.split(':').map(Number),endMinute=Math.min(1439,hour*60+minute+60);
-    const item=effective?C.clone(effective):{id:uid(),date,start,end:`${z(Math.floor(endMinute/60))}:${z(endMinute%60)}`,type:type||'cardio',title:'',repeat:'none',repeatUntil:null,completed:false,detail:initialDetail||{},isSample:false};
+    const item=effective?C.clone(effective):{id:uid(),date,start,end:`${z(Math.floor(endMinute/60))}:${z(endMinute%60)}`,type:type||'cardio',title:initialTitle,repeat:'none',repeatUntil:null,completed:false,detail:initialDetail||{},isSample:false};
     let currentType=item.type;
     if(currentType==='strength')item.detail=W.normalize(item.detail,item.completed);
     const titleLabel=recurring?(scope==='series'?'반복 기본 계획 수정':'이 날짜 기록 수정'):(edit?'일정 수정':'새 일정 등록');
     const repeatNote=recurring?'이 날짜 기록은 다른 날짜와 별도로 저장됩니다. 반복 기본 계획을 수정해도 이미 저장된 날짜별 기록은 유지됩니다.':'';
     const linkedTraining=!!(item.workoutSessionId||item.type==='strength'&&trainingIndex().has(item.id+':'+date));
     const completionLabel=()=>currentType==='strength'?(linkedTraining?'운동 종료 상태 · 실제 수행 기록 기준':'모든 세트 완료'):currentType==='meal'?'식사 완료':currentType==='weight'?'측정 완료':'운동 완료';
-    const routines=edit?[]:(window.FormdayIndependent?.getSnapshot?.()?.routines||[]);
+    const routines=edit||directStrength?[]:(window.FormdayIndependent?.getSnapshot?.()?.routines||[]);
     const routinePicker=routines.length?`<div id="f-routine-field" class="field full ${currentType==='strength'?'':'hide'}">${selectField('저장한 루틴 불러오기','f-routine',[['','직접 구성'],...routines.map(r=>[r.id,r.name])],'')}<p class="helper">선택한 날짜의 운동 계획으로 가져옵니다. 원래 루틴은 유지됩니다.</p></div>`:'';
     const initialPeriod=effective?.type==='meal'?N.mealPeriodOf(effective)||'':'';
     const legacyPeriod=effective?.type==='meal'&&!N.validMealPeriod(effective.detail?.mealPeriod);
@@ -490,6 +492,7 @@
     };
     $$('[data-pick]').forEach(button=>button.onclick=()=>{
       if(button.dataset.pick===currentType)return;
+      if(!edit&&!directStrength&&button.dataset.pick==='strength'){const day=$('#f-date').value;if(closeModal())openWorkoutRegistration(day);return;}
       try{drafts[currentType]=modalController?.draft?modalController.draft():readDetail(currentType);}catch(error){formError(error);return;}
       currentType=button.dataset.pick;
       syncMealFields();
@@ -541,6 +544,9 @@
         // Preserve existing date-specific titles; hidden strength drafts never name another record type.
         const title=currentType==='strength'?($('#f-title').value.trim()||automaticTitle):(edit&&currentType===item.type?item.title:automaticTitle);
         const completed=currentType==='strength'?strengthCompleted(detail,item,date):$('#f-completed').checked;
+        if(currentType==='strength'&&!edit&&dateValue<iso(new Date()))throw new Error('과거 날짜에는 새 운동 일정을 등록할 수 없습니다.');
+        if(currentType==='strength'&&!edit&&C.dayEvents(data,dateValue).some(e=>e.type==='strength'&&!e.isSample&&e.title===title))throw new Error('이 날짜에 같은 이름의 운동 일정이 이미 등록되어 있습니다.');
+        if(event?.detail?.freePlan&&trainingIndex().has(event.id+':'+date))throw new Error('이미 시작한 자유운동은 일정에서 수정할 수 없습니다.');
         if(item.workoutSessionId && (currentType!=='strength'||dateValue!==item.date))throw new Error('완료한 운동과 연결된 일정은 날짜와 종류를 바꿀 수 없습니다. 다른 날짜에는 새 일정을 등록해 주세요.');
         if(currentType==='strength'&&(recurring?date:dateValue)>iso(new Date())&&detail.exercises.some(ex=>ex.sets.some(s=>s.done===true)))throw new Error('미래 날짜의 운동에는 완료 세트를 저장할 수 없습니다.');
         const update={...item,id:edit?event.id:item.id,type:currentType,date:dateValue,start:startValue,end:endValue,title,repeat:recurring?event.repeat:$('#f-repeat').value,repeatUntil:$('#f-until').value||null,completed,detail,isSample:false};
@@ -553,6 +559,107 @@
       }catch(error){formError(error);}
     };
     (currentType==='strength'?$('#f-title'):$('#modal-title')).focus({preventScroll:true});
+  }
+
+  function workoutModal(title,body,actions,note=''){
+    modal(title,body,actions,note);$('.modal').classList.add('fd-routine-swap','fd-weight-registration');
+    $('#modal-title').setAttribute('tabindex','-1');$('#modal-title').focus({preventScroll:true});modalDirty=false;
+  }
+  function registrationReady(day){
+    if(blockedLoad||externalChange||$('#modal-root').children.length)throw new Error('최신 캘린더 기록을 확인한 뒤 등록해 주세요.');
+    if(!C.validDate(day))throw new Error('올바른 날짜를 선택해 주세요.');
+  }
+  function scheduleFields(prefix,day,title,start='07:00',end='08:00'){
+    return (title===null?'':field('일정 이름',prefix+'-title','text',title,'maxlength="160" required'))+
+      '<div class="fields">'+field('등록 날짜',prefix+'-date','date',day,'min="'+iso(new Date())+'" required')+
+      field('시작 시간',prefix+'-start','time',start,'required')+field('종료 시간',prefix+'-end','time',end,'required')+'</div>';
+  }
+  function openWorkoutRegistration(day=detailDay()){
+    try{
+      registrationReady(day);
+      const items=getScheduledWorkouts(day);
+      const prior=items.length?items.map(({event:e,session})=>{
+        const exercises=session?.exercises||e.detail.exercises,sets=exercises.flatMap(x=>x.sets);
+        return '<div class="fd-weight-existing"><strong>'+esc(e.title)+'</strong><small>'+esc(e.start)+'–'+esc(e.end)+' · '+(e.detail.freePlan&&!session?'시작할 때 종목 선택':exercises.length+'종목 · '+sets.filter(s=>s.done).length+'/'+sets.length+'세트')+'</small>'+W.planDisclosure(exercises,'registered-'+e.id)+'</div>';
+      }).join(''):'<p class="empty-note">등록된 웨이트 일정이 없습니다.</p>';
+      const past=day<iso(new Date());
+      const route=(id,title,desc,disabled=false)=>'<button type="button" class="fd-weight-route" data-weight-route="'+id+'" '+(disabled?'disabled':'')+'><span><strong>'+title+'</strong><small>'+desc+'</small></span><b aria-hidden="true">›</b></button>';
+      workoutModal('웨이트 일정 등록','<p class="fd-weight-date">'+esc(dayLabel(day))+'</p><h3 class="fd-weight-section">등록된 운동</h3>'+prior+'<h3 class="fd-weight-section">새 일정 등록</h3>'+route('routine','루틴 등록','저장한 루틴으로 하루 운동 등록',past)+route('program','프로그램 등록','순환형 · 요일 지정형 일괄 등록')+route('free','자유운동 등록','일정만 등록 또는 운동 직접 구성',past)+(past?'<p class="helper">과거 날짜에는 새 운동을 등록할 수 없습니다. 프로그램은 오늘부터 등록됩니다.</p>':''),
+        '<button class="btn btn-outline" id="fd-weight-close">닫기</button>');
+      $('#fd-weight-close').onclick=()=>closeModal(true);
+      $$('[data-weight-route]').forEach(b=>b.onclick=()=>{if(b.disabled)return;const route=b.dataset.weightRoute;closeModal(true);if(route==='routine')openRoutineRegistration(day);else if(route==='program')openProgramChooser();else openFreeChoice(day);});
+      return true;
+    }catch(error){toast(error.message,true);return false;}
+  }
+  function openRoutineRegistration(day){
+    try{
+      registrationReady(day);
+      const snapshot=window.FormdayIndependent?.getCalendarSnapshot?.();
+      if(!snapshot)throw new Error('운동 기록을 먼저 불러와 주세요.');
+      const routines=snapshot.routines||[];let chosen='';
+      const cards=routines.map(r=>'<article class="fd-weight-choice"><button type="button" class="fd-routine-choice" data-register-routine="'+esc(r.id)+'" aria-pressed="false"><span class="fd-routine-choice-copy"><strong>'+esc(r.name)+'</strong><small>'+r.exercises.length+'종목 · '+r.exercises.reduce((n,e)=>n+e.sets.length,0)+'세트</small></span><span class="fd-routine-choice-check" aria-hidden="true">✓</span></button>'+W.planDisclosure(r.exercises,'routine-'+r.id)+'</article>').join('');
+      workoutModal('루틴 등록',scheduleFields('fd-routine',day,null)+'<div class="fd-routine-choices">'+(cards||'<p class="empty-note">저장된 루틴이 없습니다.</p>')+'</div>','<button class="btn btn-outline" id="fd-routine-cancel">취소</button><button class="btn btn-primary" id="fd-routine-register" disabled>선택한 루틴 등록</button>','원래 루틴과 기존 운동 기록은 변경하지 않습니다.');
+      $$('[data-register-routine]').forEach(b=>b.onclick=()=>{chosen=b.dataset.registerRoutine;$$('[data-register-routine]').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));$('#fd-routine-register').disabled=false;});
+      $('#fd-routine-cancel').onclick=()=>closeModal(true);
+      $('#fd-routine-register').onclick=()=>{
+        try{
+          if(!chosen)return;if(blockedLoad||externalChange)throw new Error('최신 기록을 불러와 주세요.');
+          const fresh=window.FormdayIndependent?.getCalendarSnapshot?.();
+          if(!fresh||JSON.stringify(fresh.routines.find(r=>r.id===chosen))!==JSON.stringify(routines.find(r=>r.id===chosen)))throw new Error('루틴이 변경되었습니다. 다시 선택해 주세요.');
+          const date=$('#fd-routine-date').value,next=K.registerRoutine(C,data,fresh,chosen,date,iso(new Date()),$('#fd-routine-start').value,$('#fd-routine-end').value);
+          if(commit(next,'선택한 루틴을 등록했습니다.')){closeModal(true);openDayDetail(date);}
+        }catch(error){formError(error);}
+      };
+      return true;
+    }catch(error){toast(error.message,true);return false;}
+  }
+  function openProgramChooser(){
+    try{
+      registrationReady(iso(new Date()));
+      const snapshot=window.FormdayIndependent?.getCalendarSnapshot?.();
+      if(!snapshot)throw new Error('운동 기록을 먼저 불러와 주세요.');
+      const cards=snapshot.programs.map(p=>'<button type="button" class="fd-weight-route" data-register-program="'+esc(p.id)+'"><span><strong>'+esc(p.name)+'</strong><small>'+(p.mode==='fixed'?'요일 지정형':'순환형')+' · '+p.routineIds.length+'개 루틴</small></span><b aria-hidden="true">›</b></button>').join('');
+      workoutModal('프로그램 선택',cards||'<p class="empty-note">저장된 프로그램이 없습니다.</p>','<button class="btn btn-outline" id="fd-program-choose-close">닫기</button>');
+      $('#fd-program-choose-close').onclick=()=>closeModal(true);
+      $$('[data-register-program]').forEach(b=>b.onclick=()=>{const id=b.dataset.registerProgram;closeModal(true);openProgramRegistration(id);});
+      return true;
+    }catch(error){toast(error.message,true);return false;}
+  }
+  function openFreeChoice(day){
+    try{
+      registrationReady(day);
+      workoutModal('자유운동 등록','<p class="fd-weight-date">'+esc(dayLabel(day))+'</p><button class="fd-weight-route" id="fd-free-empty"><span><strong>일정만 등록</strong><small>운동 시작 시 실제 종목 선택</small></span><b>›</b></button><button class="fd-weight-route" id="fd-free-direct"><span><strong>운동 직접 구성</strong><small>종목과 세트를 미리 설정</small></span><b>›</b></button>','<button class="btn btn-outline" id="fd-free-cancel">취소</button>');
+      $('#fd-free-cancel').onclick=()=>closeModal(true);
+      $('#fd-free-empty').onclick=()=>{closeModal(true);openFreeSchedule(day);};
+      $('#fd-free-direct').onclick=()=>{closeModal(true);openEvent({date:day,type:'strength',directStrength:true,initialTitle:'자유운동',initialDetail:{exercises:[],notes:''},fromDayDetail:true});};
+      return true;
+    }catch(error){toast(error.message,true);return false;}
+  }
+  function openFreeSchedule(day,event=null){
+    try{
+      registrationReady(day);
+      if(event&&trainingIndex().has(event.id+':'+day))throw new Error('이미 시작한 자유운동은 운동 기록에서 확인해 주세요.');
+      const baseline=event?K.signature(event):null;
+      workoutModal(event?'자유운동 일정 수정':'자유운동 일정만 등록',scheduleFields('fd-free',day,event?.title||'자유운동',event?.start||'07:00',event?.end||'08:00')+'<p class="helper">종목과 세트는 아직 등록하지 않습니다. 운동 시작 시 종목을 선택합니다.</p>'+(event?'<button class="btn btn-outline" id="fd-free-configure">운동 직접 구성</button>':''),(event?'<button class="danger" id="fd-free-delete">일정 삭제</button>':'')+'<button class="btn btn-outline" id="fd-free-schedule-cancel">취소</button><button class="btn btn-primary" id="fd-free-save">'+(event?'변경 저장':'일정 등록')+'</button>');
+      $('#fd-free-schedule-cancel').onclick=()=>closeModal(true);
+      $('#fd-free-save').onclick=()=>{
+        try{
+          if(blockedLoad||externalChange)throw new Error('최신 기록을 불러와 주세요.');
+          if(event&&trainingIndex().has(event.id+':'+day))throw new Error('이미 시작한 자유운동은 수정할 수 없습니다.');
+          const date=$('#fd-free-date').value,next=K.registerFreePlan(C,data,date,iso(new Date()),$('#fd-free-start').value,$('#fd-free-end').value,$('#fd-free-title').value,event?.detail.notes||'',event?.id||null,baseline);
+          if(commit(next,'자유운동 일정을 저장했습니다.')){closeModal(true);openDayDetail(date);}
+        }catch(error){formError(error);}
+      };
+      if(event){
+        $('#fd-free-configure').onclick=()=>{if(closeModal())openEvent({event,date:day,directStrength:true,fromDayDetail:true});};
+        $('#fd-free-delete').onclick=()=>{try{
+          if(blockedLoad||externalChange||trainingIndex().has(event.id+':'+day))throw new Error('기록이 변경되었거나 이미 시작한 운동입니다.');
+          if(!confirm('이 자유운동 일정을 삭제할까요?'))return;
+          if(commit(C.remove(data,event.id,day,'series'),'일정을 삭제했습니다.'))closeModal(true);
+        }catch(error){formError(error);}};
+      }
+      return true;
+    }catch(error){toast(error.message,true);return false;}
   }
 
   function getScheduledWorkouts(day) {
@@ -620,11 +727,13 @@
       const signature=training=>JSON.stringify({program:training.programs.find(p=>p.id===programId),routines:training.routines.filter(r=>program.routineIds.includes(r.id))});
       const initialSignature=signature(snapshot);
       let preview=null;
+      const weekCount=()=>fixed?Number($('#fd-program-weeks').value):1;
       modal('캘린더에 프로그램 등록',
-        '<div class="fd-program-register-heading"><strong>'+esc(program.name)+'</strong><span>'+(fixed?'요일 고정형 · 해당 주 1회':'순환형 · 루틴 순서대로 1회')+'</span></div>'+
+        '<div class="fd-program-register-heading"><strong>'+esc(program.name)+'</strong><span>'+(fixed?'요일 지정형 · 마지막 토요일까지':'순환형 · 루틴 순서대로 1회')+'</span></div>'+
         '<p class="fd-program-today" id="fd-program-today"></p>'+
-        field(fixed?'등록할 주의 기준 날짜':'시작 날짜','fd-program-date','date',initialToday,'min="'+initialToday+'" required')+
-        '<div class="fd-program-date-actions"><button type="button" class="btn btn-outline btn-small" id="fd-program-this">'+(fixed?'이번 주':'오늘')+'</button><button type="button" class="btn btn-outline btn-small" id="fd-program-next">'+(fixed?'다음 주':'내일')+'</button></div>'+
+        '<p class="fd-program-question">'+(fixed?'정해진 요일에 맞춰 토요일을 끝으로 운동 일정을 등록합니다. 몇 주 등록할까요?':'오늘부터 순환운동을 등록할까요?')+'</p>'+
+        field('등록 시작일','fd-program-date','date',initialToday,'min="'+initialToday+'" readonly required')+
+        (fixed?selectField('등록할 주 수','fd-program-weeks',[1,2,3,4,8,12].map(n=>[String(n),n+'주']),'1'):'')+
         '<div class="fields fd-program-time">'+field('시작 시간','fd-program-start','time','07:00','required')+field('종료 시간','fd-program-end','time','08:00','required')+'</div>'+
         '<div id="fd-program-preview" aria-live="polite"></div>',
         '<button type="button" class="btn btn-outline" id="fd-program-cancel">취소</button><button type="button" class="btn btn-primary" id="fd-program-apply" disabled>캘린더 등록</button>',
@@ -635,9 +744,10 @@
         dateInput.min=todayNow;
         $('#fd-program-today').textContent='오늘 · '+dayLabel(todayNow);
         try{
-          preview=K.previewProgram(C,data,snapshot,programId,dateInput.value,todayNow,$('#fd-program-start').value,$('#fd-program-end').value);
+          if(dateInput.value!==todayNow)throw new Error('등록 시작일은 오늘입니다. 과거 날짜에는 등록할 수 없습니다.');
+          preview=K.previewProgram(C,data,snapshot,programId,dateInput.value,todayNow,$('#fd-program-start').value,$('#fd-program-end').value,weekCount());
           const labels={new:'등록 예정',duplicate:'이미 등록',past:'지난 날짜 · 제외',rest:'휴식'};
-          $('#fd-program-preview').innerHTML='<div class="fd-program-preview-head"><b>'+esc(dayLabel(preview.first))+' ~ '+esc(dayLabel(preview.last))+'</b><span>'+preview.count+'개 등록 예정</span></div>'+
+          $('#fd-program-preview').innerHTML='<div class="fd-program-preview-head"><b>'+esc(dayLabel(preview.anchor))+' ~ '+esc(dayLabel(preview.last))+'</b><span>'+preview.count+'개 등록 예정</span></div>'+
             preview.rows.map(row=>'<div class="fd-program-preview-row" data-status="'+row.status+'"><span>'+esc(dayLabel(row.date))+'</span><strong>'+esc(row.title)+'</strong><small>'+labels[row.status]+'</small></div>').join('');
           $('#form-error').classList.add('hide');
           apply.disabled=!preview.count;
@@ -647,10 +757,7 @@
           $('#fd-program-preview').innerHTML='';formError(error);
         }
       }
-      const setDate=day=>{$('#fd-program-date').value=day;modalDirty=true;refreshPreview();};
-      $('#fd-program-this').onclick=()=>setDate(iso(new Date()));
-      $('#fd-program-next').onclick=()=>{const day=iso(new Date());setDate(moveDay(day,fixed?7-dateOf(day).getDay():1));};
-      for(const id of ['fd-program-date','fd-program-start','fd-program-end'])$('#'+id).onchange=refreshPreview;
+      for(const id of ['fd-program-date','fd-program-start','fd-program-end',...(fixed?['fd-program-weeks']:[])])$('#'+id).onchange=refreshPreview;
       $('#fd-program-cancel').onclick=()=>closeModal(true);
       $('#fd-program-apply').onclick=()=>{
         try{
@@ -658,7 +765,7 @@
           if(blockedLoad||externalChange)throw new Error('다른 기기에서 기록이 변경됐습니다. 최신 기록을 불러온 뒤 다시 등록해 주세요.');
           const iron=window.FormdayIndependent?.getCalendarSnapshot?.();
           if(!iron||signature(iron)!==initialSignature)throw new Error('프로그램 또는 루틴이 변경됐습니다. 등록 창을 닫고 다시 열어 주세요.');
-          const result=K.registerProgram(C,data,iron,programId,$('#fd-program-date').value,iso(new Date()),$('#fd-program-start').value,$('#fd-program-end').value,preview);
+          const result=K.registerProgram(C,data,iron,programId,$('#fd-program-date').value,iso(new Date()),$('#fd-program-start').value,$('#fd-program-end').value,preview,weekCount());
           if(!result.count){refreshPreview();return;}
           if(commit(result.next,result.count+'개 운동 일정을 캘린더에 등록했습니다.'))closeModal(true);
           else formError(new Error('저장하지 못했습니다. 기존 일정은 유지되었습니다. 연결 상태를 확인한 후 다시 시도해 주세요.'));
@@ -695,7 +802,18 @@ function renderMini(){const d=dateOf(iso(cursor)),y=d.getFullYear(),m=d.getMonth
 
 function renderMonth(){const training=trainingIndex(),y=cursor.getFullYear(),m=cursor.getMonth();const first=new Date(y,m,1),start=new Date(y,m,1-first.getDay());let html='<div class="week-labels">'+DAYS.map(s=>`<span class="week-label">${s}요일</span>`).join('')+'</div><div class="month-grid">';for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const ds=iso(d),events=getDay(ds,true,training);html+=`<div class="month-cell ${d.getMonth()!==m?'other':''} ${ds===selected?'selected':''}" data-date="${ds}" title="${dayLabel(ds)}"><div class="cell-top"><button class="day-num ${ds===today?'today':''}" data-day="${ds}" aria-label="${dayLabel(ds)} 상세보기">${d.getDate()}</button><button class="cell-add" data-add="${ds}" aria-label="일정 추가">＋</button></div>`;for(const {event:e} of events.slice(0,3)){html+=`<button draggable="${e.repeat==='none'&&!e.workoutSessionId}" class="month-event ${isDone(e)?'done':isPartial(e)?'partial':''} ${isShortComplete(e)?'ended-short':''}" style="${styl(e.type)}" data-edit="${e.id}" data-occdate="${ds}" title="${esc(e.title)} — 클릭하여 수정 · 드래그하여 이동"><span class="event-time" title="${esc(periodTitle(e))}">${esc(eventClockLabel(e))}</span><span class="event-text">${isPartial(e)?'◐ ':isShortComplete(e)?'✓ ':''}${esc(e.title)}${isShortComplete(e)?' · '+completionOf(e).done+'/'+completionOf(e).total:''}</span></button>`}if(events.length>3)html+=`<button class="more-events" data-day="${ds}">+ ${events.length-3}개 더 보기</button>`;html+='</div>'}return html+'</div>'}
 
-function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$('#right-badge').textContent=day===today?'TODAY / 오늘 상세':'DAY / 날짜 상세';$('#right-date').textContent=dayLabel(day);$('#right-sub').textContent=`${d.getFullYear()}년 · ${l.length}개 일정${day>today?' · 예정된 기록':''}`;const partialCount=l.filter(({event})=>isPartial(event)).length;$('#agenda-count').textContent=`${l.filter(({event})=>isDone(event)).length}/${l.length} 완료${partialCount?' · 부분 '+partialCount:''}`;$('#agenda').innerHTML=l.length?l.map(({event:e,date})=>`<div class="agenda-item"><span class="agenda-time" title="${esc(periodTitle(e))}">${esc(eventClockLabel(e))}${e.type==='meal'&&!N.validMealPeriod(e.detail.mealPeriod)?'<small class="fd-meal-inferred">추정</small>':''}</span><div class="agenda-card ${isDone(e)?'done':isPartial(e)?'partial':''} ${isShortComplete(e)?'ended-short':''}" style="${styl(e.type)}"><button class="checkbox-btn ${isDone(e)?'checked':isPartial(e)?'partial':''}" data-toggle="${e.id}" data-occdate="${date}" aria-label="${esc(e.title)} ${e.trainingLinked?stateText(e):'완료 전환'}" ${e.trainingLinked?'disabled':''}>${isDone(e)?'✓':isPartial(e)?'−':''}</button><button style="text-align:left;background:transparent;color:inherit;padding:0;flex:1;min-width:0" data-edit="${e.id}" data-occdate="${date}"><span class="agenda-name">${TYPES[e.type].emoji} ${esc(e.title)} ${e.repeat!=='none'?'↻':''}${e.isSample?'<small class="fd-day-sample">샘플</small>':''}${isPartial(e)?'<small class="fd-day-partial">부분 완료</small>':isShortComplete(e)?'<small class="fd-day-ended">운동 완료</small>':''}</span><span class="agenda-desc">${esc(details(e))}</span>${isShortComplete(e)?'<span class="agenda-desc fd-ended-count">실제 '+completionOf(e).done+'/'+completionOf(e).total+'세트 수행 · 미수행 '+(completionOf(e).total-completionOf(e).done)+'세트</span>':''}${e.trainingCompletion?.pending?'<span class="agenda-desc">'+completionOf(e).done+'/'+completionOf(e).total+'세트 수행 · 캘린더 반영 대기</span>':''}</button>${calendarWorkoutActions(e,date)}</div></div>`).join(''):'<div class="empty-note">등록된 일정이 없습니다.<br>위의 등록 버튼으로 이 날짜의 기록을 추가하세요.</div>';
+function renderWorkoutAgenda(e,date,opened){
+    const linked=trainingIndex().get(e.id+':'+date),session=linked&&!['COMPLETED','PARTIAL'].includes(linked.status)?linked:null;
+    const actual=session&&session.calendarSource?.baseline===K.signature(e)?session:null;
+    const exercises=actual?.exercises||e.detail.exercises,sets=exercises.flatMap(x=>x.sets);
+    const count=actual?{done:sets.filter(s=>s.done).length,total:sets.length}:completionOf(e);
+    const free=e.detail.freePlan&&!actual,done=isDone(e),partial=isPartial(e);
+    const state=done?'운동 완료':partial?'부분 완료':actual?'진행 중':'예정';
+    const desc=free?'자유운동 · 시작할 때 종목 선택':exercises.length+'종목 · '+count.done+'/'+count.total+'세트 완료';
+    const progress=count.total?'<div class="fd-weight-progress"><progress max="'+count.total+'" value="'+count.done+'" aria-label="세트 진행률"></progress></div>':'';
+    return '<div class="agenda-item fd-weight-agenda"><span class="agenda-time">'+esc(e.start)+'</span><article class="fd-weight-card"><div class="agenda-card '+(done?'done':partial?'partial':'')+'" style="'+styl(e.type)+'"><button class="checkbox-btn '+(done?'checked':partial?'partial':'')+'" data-toggle="'+esc(e.id)+'" data-occdate="'+date+'" aria-label="'+esc(e.title)+' 완료 전환" '+(e.trainingLinked||free?'disabled':'')+'>'+(done?'✓':partial?'−':'')+'</button><button class="fd-weight-edit" data-edit="'+esc(e.id)+'" data-occdate="'+date+'"><span class="agenda-name">'+esc(e.title)+(e.repeat!=='none'?' ↻':'')+(e.isSample?' <small class="fd-day-sample">샘플</small>':'')+'</span><span class="agenda-desc">'+esc(desc)+'</span>'+(isShortComplete(e)?'<span class="agenda-desc fd-ended-count">실제 '+count.done+'/'+count.total+'세트 수행 · 미수행 '+(count.total-count.done)+'세트</span>':'')+(e.trainingCompletion?.pending?'<span class="agenda-desc">캘린더 반영 대기</span>':'')+'</button><span class="fd-weight-state">'+state+'</span></div>'+progress+W.planDisclosure(exercises,'agenda-'+date+'-'+e.id,opened)+calendarWorkoutActions(e,date)+'</article></div>';
+  }
+  function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false).sort((a,b)=>(a.event.type==='strength'?0:1)-(b.event.type==='strength'?0:1));const opened=new Set(Array.from($('#agenda').querySelectorAll('[data-fold-key]')).filter(x=>x.open).map(x=>x.dataset.foldKey));$('#right-badge').textContent=day===today?'TODAY / 오늘 상세':'DAY / 날짜 상세';$('#right-date').textContent=dayLabel(day);$('#right-sub').textContent=`${d.getFullYear()}년 · ${l.length}개 일정${day>today?' · 예정된 기록':''}`;const partialCount=l.filter(({event})=>isPartial(event)).length;$('#agenda-count').textContent=`${l.filter(({event})=>isDone(event)).length}/${l.length} 완료${partialCount?' · 부분 '+partialCount:''}`;$('#agenda').innerHTML=l.length?l.map(({event:e,date})=>e.type==='strength'?renderWorkoutAgenda(e,date,opened):`<div class="agenda-item"><span class="agenda-time" title="${esc(periodTitle(e))}">${esc(eventClockLabel(e))}${e.type==='meal'&&!N.validMealPeriod(e.detail.mealPeriod)?'<small class="fd-meal-inferred">추정</small>':''}</span><div class="agenda-card ${isDone(e)?'done':isPartial(e)?'partial':''} ${isShortComplete(e)?'ended-short':''}" style="${styl(e.type)}"><button class="checkbox-btn ${isDone(e)?'checked':isPartial(e)?'partial':''}" data-toggle="${e.id}" data-occdate="${date}" aria-label="${esc(e.title)} ${e.trainingLinked?stateText(e):'완료 전환'}" ${e.trainingLinked?'disabled':''}>${isDone(e)?'✓':isPartial(e)?'−':''}</button><button style="text-align:left;background:transparent;color:inherit;padding:0;flex:1;min-width:0" data-edit="${e.id}" data-occdate="${date}"><span class="agenda-name">${TYPES[e.type].emoji} ${esc(e.title)} ${e.repeat!=='none'?'↻':''}${e.isSample?'<small class="fd-day-sample">샘플</small>':''}${isPartial(e)?'<small class="fd-day-partial">부분 완료</small>':isShortComplete(e)?'<small class="fd-day-ended">운동 완료</small>':''}</span><span class="agenda-desc">${esc(details(e))}</span>${isShortComplete(e)?'<span class="agenda-desc fd-ended-count">실제 '+completionOf(e).done+'/'+completionOf(e).total+'세트 수행 · 미수행 '+(completionOf(e).total-completionOf(e).done)+'세트</span>':''}${e.trainingCompletion?.pending?'<span class="agenda-desc">'+completionOf(e).done+'/'+completionOf(e).total+'세트 수행 · 캘린더 반영 대기</span>':''}</button>${calendarWorkoutActions(e,date)}</div></div>`).join(''):'<div class="empty-note">등록된 일정이 없습니다.<br>위의 등록 버튼으로 이 날짜의 기록을 추가하세요.</div>';
   renderNutrition();
   const w=getWeightRecords(day).slice(-7);if(!w.length){$('#weight-trend').innerHTML='<div class="empty-note">아직 체중 기록이 없습니다.</div>';return}const latest=w[w.length-1],diff=w.length>1?latest.detail.weight-w[0].detail.weight:0;let values=w.map(x=>Number(x.detail.weight)),min=Math.min(...values)-.5,max=Math.max(...values)+.5,pts=values.map((v,i)=>`${15+(i/Math.max(1,values.length-1))*230},${46-((v-min)/(max-min))*38}`).join(' ');$('#weight-trend').innerHTML=`<div class="weight-sub">${latest.date} 기준</div><div class="weight-val">${fmt(latest.detail.weight,1)} <small style="font-weight:500;font-size:12px;color:#9aabaa">kg</small> <span style="font-size:10px;color:${diff<=0?'#21816a':'#bd7045'}">${w.length>1?(diff>0?'+':'')+fmt(diff,1)+'kg':''}</span></div><svg class="sparkline" viewBox="0 0 260 54" role="img" aria-label="최근 체중 변화 그래프"><polyline points="${pts}" fill="none" stroke="#2c9874" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>${values.map((v,i)=>`<circle cx="${15+(i/Math.max(1,values.length-1))*230}" cy="${46-((v-min)/(max-min))*38}" r="3" fill="#2c9874"/>`).join('')}</svg>`;
 }
@@ -737,6 +855,7 @@ function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$
     if(actual?.type==='strength'&&(actual.workoutSessionId||trainingIndex().has(id+':'+day))){
       toast('연결된 운동의 전체 완료 상태는 실제 세트 기록으로 판단합니다. 운동 기록에서 확인해 주세요.',true);return;
     }
+    if(actual?.type==='strength'&&actual.detail?.freePlan){toast('운동을 시작하고 실제 종목과 세트를 기록해 주세요.',true);return;}
     if(actual?.type==='strength'&&!actual.completed){
       if(actual.isSample){toast('체험용 운동은 실제 기록으로 완료할 수 없습니다. 내 운동을 먼저 등록해 주세요.',true);return;}
       if(day>iso(new Date())){toast('미래 날짜의 운동은 완료할 수 없습니다.',true);return;}
@@ -857,7 +976,7 @@ function renderRight(){const day=detailDay(),d=dateOf(day),l=getDay(day,false);$
     openDayDetail,
     closeDayDetail,
     getVisibleTypes: () => [...visibleTypes],
-    getScheduledWorkouts, openRoutineSwap, openProgramRegistration, getWorkoutReflection, reflectWorkoutSession,
+    getScheduledWorkouts, openRoutineSwap, openProgramRegistration, openWorkoutRegistration, getWorkoutReflection, reflectWorkoutSession,
     prepareScheduledWorkout: (eventId,date) => {
       if(blockedLoad||externalChange)throw new Error('최신 캘린더 기록을 불러온 뒤 운동을 시작해 주세요.');
       if(!K)throw new Error('캘린더 연결 기능을 불러오지 못했습니다.');
